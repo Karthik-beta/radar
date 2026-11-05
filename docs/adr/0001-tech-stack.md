@@ -1,6 +1,6 @@
 # 0001. Tech stack
 
-Status: accepted, 2026-11-05.
+Status: accepted, 2026-11-05. Language and library choices superseded by [0005](0005-rust.md).
 
 Radar must cost ₹0, run only on Cloudflare's free tier, and never write to GitHub. Those three constraints pick most of the stack. This record lists what we chose and the reasons that would have to change for a choice to be revisited.
 

@@ -24,7 +24,7 @@ Radar runs entirely on Cloudflare's free tier, so it costs nothing to run.
 - A single Durable Object, the Syncer, is the only code that calls GitHub. It polls notifications with conditional requests, enriches pull requests with GraphQL, and stays under 10% of GitHub's rate limit.
 - The dashboard reads from D1 only, so loading the page never spends GitHub API budget.
 
-The stack is TypeScript, Hono, React with Vite, Drizzle, and D1. The reasons for each choice are in the decision records.
+Radar is Rust end to end. The Worker uses Cloudflare's `worker` crate, the UI is a Leptos app compiled to WebAssembly, and both share one `domain` crate. The reasons for each choice are in the decision records.
 
 ## Documentation
 

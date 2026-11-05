@@ -60,6 +60,8 @@ A pure function, `classify(item, me)`, runs in the Syncer on every write. It set
 
 ## Code layout
 
+Superseded by the workspace layout in [0005](0005-rust.md).
+
 ```
 src/
   domain/   pure rules: turn, stage, classify; plain types only
