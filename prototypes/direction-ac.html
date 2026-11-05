@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar A+C</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600&family=Funnel+Display:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #2a2b2f; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 16px; background: #1f2023; border-bottom: 1px solid #333; position: sticky; top: 0; z-index: 5; }
+  .bar button { background: #2c2d31; color: #ccc; border: 1px solid #3a3b40; border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  .bar button[aria-pressed="true"] { background: #e8e8e8; color: #111; border-color: #e8e8e8; }
+  .bar .gap { flex: 1; }
+  .stage { padding: 16px; display: flex; justify-content: center; }
+  .frame { width: 100%; max-width: 1180px; height: 680px; overflow: auto; border-radius: 10px; container-type: inline-size; box-shadow: 0 0 0 1px #3a3b40; }
+  .frame.phone { max-width: 375px; height: 740px; border-radius: 28px; box-shadow: 0 0 0 8px #111, 0 0 0 9px #444; }
+
+  .app { --bg:#141519; --surface:#1c1d22; --line:#25272d; --text:#e8e9ec; --muted:#8a8d96; --faint:#5d6069;
+         --red:#ff5a4e; --warm:#e0b062; --hot:#f07a5a;
+         min-height: 100%; background: var(--bg); color: var(--text); font: 13.5px/1.45 "Schibsted Grotesk", sans-serif; }
+
+  .app header { display: flex; align-items: center; gap: 20px; padding: 14px 24px; border-bottom: 1px solid var(--line); }
+  .mark { font-weight: 600; letter-spacing: -0.01em; }
+  nav { display: flex; gap: 4px; }
+  nav a { padding: 5px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; white-space: nowrap; }
+  nav a b { font-weight: 500; color: var(--faint); margin-left: 6px; font-variant-numeric: tabular-nums; }
+  nav a[aria-current] { background: var(--surface); color: var(--text); }
+  nav a[aria-current] b { color: var(--text); }
+  nav a:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+  .sync { margin-left: auto; color: var(--faint); font-size: 12px; white-space: nowrap; }
+
+  .answer { display: flex; align-items: flex-end; gap: 16px; padding: 28px 24px 20px; }
+  .count { font: 700 72px/0.78 "Funnel Display", sans-serif; letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
+  .answer h1 { font: 600 20px/1.15 "Funnel Display", sans-serif; margin: 0 0 3px; letter-spacing: -0.01em; }
+  .answer p, .summary p { margin: 0; color: var(--muted); }
+  .hotword { color: var(--hot); }
+  .summary { padding: 22px 24px 16px; }
+  .summary h1 { font-weight: 600; font-size: 17px; margin: 0 0 3px; letter-spacing: -0.01em; }
+
+  ul { list-style: none; margin: 0; padding: 0 0 6px; border-top: 1px solid var(--line); }
+  li { display: grid; grid-template-columns: 128px 230px 1fr 190px 48px; gap: 14px; align-items: center;
+       padding: 10px 24px; border-left: 2px solid transparent; transition: opacity .18s, transform .18s; }
+  ul.theirs li { grid-template-columns: 200px 1fr 290px 140px 40px; }
+  li.sel { background: var(--surface); border-left-color: var(--text); }
+  li.gone { opacity: 0; transform: translateX(16px); }
+  .why { color: var(--muted); white-space: nowrap; }
+  .why.ci { color: var(--red); }
+  .repo { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agent { color: var(--faint); font-size: 12px; margin-left: 8px; }
+  .who { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who strong { color: var(--text); font-weight: 500; }
+  .usual { color: var(--faint); white-space: nowrap; }
+  .age { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .age.warm { color: var(--warm); }
+  .age.hot { color: var(--hot); font-weight: 600; }
+
+  .keys { padding: 14px 24px; color: var(--faint); font-size: 12px; display: flex; gap: 18px; }
+  .keys kbd { font: inherit; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-right: 4px; }
+  .empty { padding: 48px 24px; color: var(--muted); }
+
+  .board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; padding: 0 24px 8px; }
+  .col h2 { font-size: 12.5px; font-weight: 500; color: var(--muted); margin: 0 0 8px; display: flex; justify-content: space-between; }
+  .col h2.ci { color: var(--red); }
+  .col h2 b { font-weight: 500; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .card { background: var(--surface); border-radius: 6px; padding: 9px 10px; margin-bottom: 6px; }
+  .card .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px; }
+  .card .m { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+  .card .m span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .none { color: var(--faint); font-size: 12px; padding: 4px 0; }
+  .recent { padding: 18px 24px 24px; }
+  .recent h2 { font-size: 12.5px; font-weight: 500; color: var(--muted); margin: 0 0 6px; }
+  .recent .r { display: grid; grid-template-columns: 70px 230px 1fr 48px; gap: 14px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .recent .closed { color: var(--faint); }
+
+  @container (max-width: 600px) {
+    .app header { flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px 10px; }
+    nav { order: 3; width: 100%; overflow-x: auto; margin: 0 -4px; scrollbar-width: none; }
+    .answer { flex-direction: column; align-items: flex-start; gap: 10px; padding: 28px 16px 22px; }
+    .count { font-size: 104px; }
+    .answer h1 { font-size: 24px; }
+    .summary { padding: 20px 16px 14px; }
+    li, ul.theirs li { grid-template-columns: 1fr auto; grid-template-areas: "t a" "w w" "r r"; row-gap: 3px; padding: 13px 16px; }
+    .title { grid-area: t; white-space: normal; font-weight: 500; }
+    .age { grid-area: a; align-self: start; }
+    .who { grid-area: w; white-space: normal; }
+    .who.ci, .who.ci strong { color: var(--red); }
+    .repo { grid-area: r; font-size: 12.5px; color: var(--faint); }
+    .why, .usual, .keys { display: none; }
+    .board { grid-template-columns: 1fr; gap: 18px; padding: 0 16px 8px; }
+    .recent { padding: 18px 16px 24px; }
+    .recent .r { grid-template-columns: 1fr auto; }
+    .recent .r .repo { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="bar" role="toolbar" aria-label="Demo controls">
+  <button data-dev="laptop" aria-pressed="true">Laptop</button>
+  <button data-dev="phone" aria-pressed="false">Phone</button>
+  <span class="gap"></span>
+  <button id="reset">Reset items</button>
+</div>
+<div class="stage"><div class="frame" id="frame"></div></div>
+
+<script>
+const mine = [
+  { id: 1, reason: 'changes', repo: 'drizzle-team/drizzle-orm', num: 4412, title: 'Support the D1 batch API in the migrator', actor: 'tessa-r', what: 'requested changes', hours: 76, agent: true },
+  { id: 2, reason: 'ci', repo: 'biomejs/biome', num: 6120, title: 'Fix noUnusedImports false positive on type-only re-exports', actor: 'CI', what: '2 checks failing', hours: 49, agent: true },
+  { id: 3, reason: 'replied', repo: 'honojs/hono', num: 3981, title: 'Keep the query string when redirect() gets a relative path', actor: 'mkaplan', what: 'asked a question', hours: 26 },
+  { id: 4, reason: 'review', repo: 'cloudflare/workers-sdk', num: 8870, title: 'Print the D1 migration plan before applying it', actor: 'dlin', what: 'requested your review', hours: 9 },
+  { id: 5, reason: 'mention', repo: 'vitest-dev/vitest', num: 7311, title: 'pool-workers hangs when a test imports a Durable Object class', actor: 'ana-v', what: 'mentioned you', hours: 2 },
+];
+const theirs = [
+  { repo: 'unjs/h3', num: 902, title: 'Add a typed getRouterParams helper', last: 'You opened it', on: 'maintainers', usual: 'usually replies in 4d', days: 16, agent: true },
+  { repo: 'colinhacks/zod', num: 4820, title: 'Document z.templateLiteral edge cases', last: 'You replied to review', on: 'pkr', usual: 'usually replies in 2d', days: 11 },
+  { repo: 'oven-sh/bun', num: 15377, title: 'bun test: report skipped tests in JUnit output', last: 'You pushed 2 commits', on: 'maintainers', usual: 'usually replies in 6d', days: 8, agent: true },
+  { repo: 'drizzle-team/drizzle-kit', num: 611, title: 'Generate CHECK constraints for SQLite', last: 'You opened it', on: 'maintainers', usual: 'usually replies in 9d', days: 5 },
+  { repo: 'honojs/middleware', num: 1204, title: 'Zod validator: surface issue paths in errors', last: 'You answered a question', on: 'yk-ota', usual: 'usually replies in 1d', days: 3 },
+  { repo: 'vitest-dev/vitest', num: 7290, title: 'Coverage thresholds ignore per-file overrides', last: 'You opened the issue', on: 'maintainers', usual: 'usually replies in 3d', days: 2 },
+  { repo: 'cloudflare/workers-sdk', num: 8811, title: 'Add --json to d1 migrations list', last: 'You pushed a fix', on: 'dlin', usual: 'usually replies in 1d', days: 1, agent: true },
+];
+const stages = [
+  { key: 'draft', label: 'Draft' },
+  { key: 'running', label: 'CI running' },
+  { key: 'failing', label: 'CI failing' },
+  { key: 'review', label: 'Awaiting review' },
+  { key: 'changes', label: 'Changes requested' },
+  { key: 'approved', label: 'Approved' },
+];
+const prs = [
+  { stage: 'draft', repo: 'vitest-dev/vitest', num: 7330, title: 'Spike: run pool-workers tests in parallel isolates', days: 1, agent: true },
+  { stage: 'running', repo: 'cloudflare/workers-sdk', num: 8811, title: 'Add --json to d1 migrations list', days: 0, agent: true },
+  { stage: 'failing', repo: 'biomejs/biome', num: 6120, title: 'Fix noUnusedImports false positive on type-only re-exports', days: 2, agent: true },
+  { stage: 'review', repo: 'unjs/h3', num: 902, title: 'Add a typed getRouterParams helper', days: 16, agent: true },
+  { stage: 'review', repo: 'oven-sh/bun', num: 15377, title: 'bun test: report skipped tests in JUnit output', days: 8, agent: true },
+  { stage: 'review', repo: 'drizzle-team/drizzle-kit', num: 611, title: 'Generate CHECK constraints for SQLite', days: 5 },
+  { stage: 'changes', repo: 'drizzle-team/drizzle-orm', num: 4412, title: 'Support the D1 batch API in the migrator', days: 3, agent: true },
+  { stage: 'approved', repo: 'honojs/hono', num: 3981, title: 'Keep the query string when redirect() gets a relative path', days: 1 },
+  { stage: 'approved', repo: 'colinhacks/zod', num: 4820, title: 'Document z.templateLiteral edge cases', days: 2 },
+];
+const recent = [
+  { state: 'Merged', repo: 'honojs/hono', num: 3950, title: 'Type c.req.valid() for multiple validators', days: 2 },
+  { state: 'Merged', repo: 'biomejs/biome', num: 6077, title: 'Lint rule docs: add JSX examples', days: 5 },
+  { state: 'Closed', repo: 'oven-sh/bun', num: 15102, title: 'Speed up bun install lockfile parsing', days: 9 },
+  { state: 'Merged', repo: 'vitest-dev/vitest', num: 7201, title: 'Show the pool name in worker crash errors', days: 12 },
+];
+
+const why = { changes: 'Changes requested', ci: 'CI failing', replied: 'Reply', review: 'Review', mention: 'Mention' };
+const age = h => h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+const ageWords = h => h < 24 ? `${h} hours` : `${Math.floor(h / 24)} days`;
+const heatMine = h => h >= 72 ? 'hot' : h >= 24 ? 'warm' : '';
+const heatTheirs = d => d >= 14 ? 'hot' : d >= 7 ? 'warm' : '';
+const agentMark = it => it.agent ? '<span class="agent">agent</span>' : '';
+
+const frame = document.getElementById('frame');
+let tab = 'mine', list = mine.slice(), sel = 0;
+
+const views = {
+  mine: () => list.length ? `
+    <section class="answer"><span class="count">${list.length}</span>
+      <div><h1>waiting on you</h1><p>The oldest has waited <span class="hotword">${ageWords(list[0].hours)}</span></p></div></section>
+    <ul>${list.map((it, i) => `
+      <li class="${i === sel ? 'sel' : ''}">
+        <span class="why ${it.reason === 'ci' ? 'ci' : ''}">${why[it.reason]}</span>
+        <span class="repo">${it.repo} #${it.num}</span>
+        <span class="title">${it.title}${agentMark(it)}</span>
+        <span class="who ${it.reason === 'ci' ? 'ci' : ''}"><strong>${it.actor}</strong> ${it.what}</span>
+        <span class="age ${heatMine(it.hours)}">${age(it.hours)}</span>
+      </li>`).join('')}</ul>
+    <div class="keys"><span><kbd>j</kbd><kbd>k</kbd>move</span><span><kbd>enter</kbd>open on GitHub</span><span><kbd>e</kbd>dismiss</span><span><kbd>s</kbd>snooze</span></div>`
+    : `<p class="empty">Nothing is waiting on you. ${theirs.length} threads are waiting on others.</p>`,
+
+  theirs: () => {
+    const over = theirs.filter(t => t.days >= 7).length;
+    return `<section class="summary"><h1>${over} have waited over a week</h1><p>Nudging is fair after 7 days. The usual reply time comes from each repo's history.</p></section>
+    <ul class="theirs">${theirs.map((t, i) => `
+      <li class="${i === sel ? 'sel' : ''}">
+        <span class="repo">${t.repo} #${t.num}</span>
+        <span class="title">${t.title}${agentMark(t)}</span>
+        <span class="who">${t.last}, waiting on <strong>${t.on}</strong></span>
+        <span class="usual">${t.usual}</span>
+        <span class="age ${heatTheirs(t.days)}">${t.days}d</span>
+      </li>`).join('')}</ul>
+    <div class="keys"><span><kbd>j</kbd><kbd>k</kbd>move</span><span><kbd>enter</kbd>open on GitHub</span><span><kbd>s</kbd>snooze</span></div>`;
+  },
+
+  pipeline: () => `<section class="summary"><h1>${prs.length} open pull requests</h1><p>Days show how long each PR has been in its current stage.</p></section>
+    <div class="board">${stages.map(s => {
+      const cards = prs.filter(p => p.stage === s.key);
+      return `<div class="col"><h2 class="${s.key === 'failing' ? 'ci' : ''}">${s.label}<b>${cards.length}</b></h2>
+        ${cards.length ? cards.map(p => `<div class="card"><div class="t">${p.title}</div>
+          <div class="m"><span>${p.repo} #${p.num}${p.agent ? ', agent' : ''}</span><span class="age ${s.key === 'review' ? heatTheirs(p.days) : ''}">${p.days ? p.days + 'd' : 'today'}</span></div></div>`).join('')
+        : '<div class="none">None</div>'}</div>`;
+    }).join('')}</div>
+    <section class="recent"><h2>Merged or closed in the last 14 days</h2>
+      ${recent.map(r => `<div class="r"><span class="${r.state === 'Closed' ? 'closed' : ''}">${r.state}</span><span class="repo">${r.repo} #${r.num}</span><span class="title ${r.state === 'Closed' ? 'closed' : ''}">${r.title}</span><span class="age">${r.days}d</span></div>`).join('')}
+    </section>`,
+};
+
+function render() {
+  const tabs = [['mine', 'Your turn', list.length], ['theirs', 'Their turn', theirs.length], ['pipeline', 'Pipeline', prs.length], ['merged', 'Merged', 4]];
+  frame.innerHTML = `<div class="app">
+    <header><span class="mark">Radar</span>
+      <nav>${tabs.map(([k, l, n]) => `<a href="#" data-tab="${k}" ${k === tab ? 'aria-current="page"' : ''}>${l}<b>${n}</b></a>`).join('')}</nav>
+      <span class="sync">Synced 40s ago</span></header>
+    ${(views[tab] || views.pipeline)()}
+  </div>`;
+  frame.querySelectorAll('[data-tab]').forEach(a => a.onclick = e => {
+    e.preventDefault();
+    if (a.dataset.tab === 'merged') return;
+    tab = a.dataset.tab; sel = 0; render();
+  });
+}
+function press(attr, val) {
+  document.querySelectorAll(`[data-${attr}]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === val)));
+}
+document.querySelectorAll('[data-dev]').forEach(b => b.onclick = () => { frame.classList.toggle('phone', b.dataset.dev === 'phone'); press('dev', b.dataset.dev); });
+document.getElementById('reset').onclick = () => { list = mine.slice(); sel = 0; render(); };
+document.addEventListener('keydown', e => {
+  const rows = frame.querySelectorAll('li');
+  if (!rows.length) return;
+  if (e.key === 'j' || e.key === 'k') {
+    sel = Math.max(0, Math.min(rows.length - 1, sel + (e.key === 'j' ? 1 : -1)));
+    rows.forEach((r, i) => r.classList.toggle('sel', i === sel));
+  } else if (e.key === 'e' && tab === 'mine') {
+    rows[sel].classList.add('gone');
+    setTimeout(() => { list.splice(sel, 1); sel = Math.max(0, Math.min(sel, list.length - 1)); render(); }, 180);
+  }
+});
+render();
+</script>
+</body>
+</html>

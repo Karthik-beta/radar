@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600&family=Sora:wght@400;500;600&family=Funnel+Display:wght@500;700&family=Funnel+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #2a2b2f; color: #ddd; font: 14px/1.4 system-ui, sans-serif; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 16px; background: #1f2023; border-bottom: 1px solid #333; position: sticky; top: 0; z-index: 5; }
+  .bar button { background: #2c2d31; color: #ccc; border: 1px solid #3a3b40; border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  .bar button[aria-pressed="true"] { background: #e8e8e8; color: #111; border-color: #e8e8e8; }
+  .bar .gap { flex: 1; }
+  .note { padding: 10px 16px 0; color: #9a9ba0; max-width: 72ch; }
+  .stage { padding: 16px; display: flex; justify-content: center; }
+  .frame { width: 100%; max-width: 1100px; height: 640px; overflow: auto; border-radius: 10px; container-type: inline-size; box-shadow: 0 0 0 1px #3a3b40; }
+  .frame.phone { max-width: 375px; height: 740px; border-radius: 28px; box-shadow: 0 0 0 8px #111, 0 0 0 9px #444; }
+  kbd { font: inherit; }
+
+  /* ---------- A. Triage ---------- */
+  .a { --bg:#141519; --surface:#1b1c21; --line:#25272d; --text:#e6e7ea; --muted:#8a8d96; --faint:#5d6069;
+       min-height: 100%; background: var(--bg); color: var(--text); font: 13.5px/1.45 "Schibsted Grotesk", sans-serif; }
+  .a header { display: flex; align-items: center; gap: 20px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  .a .mark { font-weight: 600; letter-spacing: -0.01em; }
+  .a nav { display: flex; gap: 4px; }
+  .a nav span { padding: 5px 10px; border-radius: 6px; color: var(--muted); white-space: nowrap; }
+  .a nav span b { font-weight: 500; color: var(--faint); margin-left: 6px; font-variant-numeric: tabular-nums; }
+  .a nav span.on { background: var(--surface); color: var(--text); }
+  .a nav span.on b { color: var(--text); }
+  .a .sync { margin-left: auto; color: var(--faint); font-size: 12px; }
+  .a ul { list-style: none; margin: 0; padding: 6px 0; }
+  .a li { display: grid; grid-template-columns: 18px 170px 1fr 190px 72px; gap: 14px; align-items: center; padding: 9px 20px; border-left: 2px solid transparent; cursor: default; transition: opacity .18s, transform .18s; }
+  .a li.sel { background: var(--surface); border-left-color: var(--text); }
+  .a li.gone { opacity: 0; transform: translateX(16px); }
+  .a .glyph { width: 9px; height: 9px; border-radius: 50%; background: var(--c); justify-self: center; }
+  .a .repo { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .a .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .a .title .agent { color: var(--faint); font-size: 12px; margin-left: 8px; }
+  .a .who { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .a .who strong { color: var(--text); font-weight: 500; }
+  .a .age { display: flex; align-items: center; gap: 8px; justify-content: flex-end; font-variant-numeric: tabular-nums; color: var(--heat); }
+  .a .age i { display: block; height: 3px; border-radius: 2px; background: var(--heat); width: var(--w); }
+  .a footer { padding: 12px 20px; color: var(--faint); font-size: 12px; display: flex; gap: 18px; border-top: 1px solid var(--line); }
+  .a footer kbd { color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-right: 4px; }
+  @container (max-width: 600px) {
+    .a header { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
+    .a .sync { margin-left: 0; width: 100%; order: 3; }
+    .a nav { order: 2; width: 100%; overflow-x: auto; }
+    .a li { grid-template-columns: 14px 1fr auto; grid-template-areas: "g t t" ". r a" ". w w"; row-gap: 3px; padding: 12px 16px; }
+    .a .glyph { grid-area: g; align-self: start; margin-top: 6px; }
+    .a .title { grid-area: t; white-space: normal; }
+    .a .repo { grid-area: r; }
+    .a .who { grid-area: w; }
+    .a .age { grid-area: a; }
+    .a .age i { display: none; }
+    .a footer { display: none; }
+  }
+
+  /* ---------- B. Scope ---------- */
+  .b { --bg:#0f1318; --ring:#1f2b35; --text:#dce3ea; --muted:#7d8a96; --blip:#ffb547; --line:#1a232b;
+       min-height: 100%; background: var(--bg); color: var(--text); font: 13.5px/1.5 "Sora", sans-serif; }
+  .b .top { display: grid; grid-template-columns: 300px 1fr; gap: 28px; padding: 24px; align-items: center; border-bottom: 1px solid var(--line); }
+  .b svg { width: 100%; height: auto; display: block; }
+  .b .sweep { transform-origin: 150px 150px; animation: spin 6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .b .sweep { animation: none; } }
+  .b .head h2 { font-weight: 500; font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .b .head p { margin: 0; color: var(--muted); max-width: 44ch; }
+  .b ul { list-style: none; margin: 0; padding: 8px 24px 24px; }
+  .b li { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .b .n { color: var(--blip); font-variant-numeric: tabular-nums; }
+  .b .title { display: block; }
+  .b .meta { color: var(--muted); font-size: 12.5px; }
+  .b .age { color: var(--muted); font-variant-numeric: tabular-nums; }
+  @container (max-width: 600px) {
+    .b .top { grid-template-columns: 1fr; padding: 20px 16px; gap: 14px; }
+    .b svg { max-width: 220px; margin: 0 auto; }
+    .b ul { padding: 4px 16px 20px; }
+    .b li { grid-template-columns: 48px 1fr; }
+    .b .age { grid-column: 2; }
+  }
+
+  /* ---------- C. Your move ---------- */
+  .c { --bg:#000; --text:#f2f2f2; --muted:#8c8c8c; --faint:#555; --line:#1d1d1d; --red:#ff5a4e;
+       min-height: 100%; background: var(--bg); color: var(--text); font: 14px/1.5 "Funnel Sans", sans-serif; }
+  .c .hero { padding: 36px 32px 28px; border-bottom: 1px solid var(--line); display: flex; gap: 22px; align-items: flex-end; flex-wrap: wrap; }
+  .c .big { font: 700 112px/0.8 "Funnel Display", sans-serif; letter-spacing: -0.04em; }
+  .c .hero h2 { font: 500 26px/1.15 "Funnel Display", sans-serif; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .c .hero p { margin: 0; color: var(--muted); }
+  .c section { padding: 22px 32px 6px; }
+  .c h3 { font-weight: 500; font-size: 14px; color: var(--muted); margin: 0 0 6px; }
+  .c h3.red { color: var(--red); }
+  .c .row { display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+  .c .row .t { flex: 1; min-width: 0; }
+  .c .row .t span { display: block; color: var(--muted); font-size: 13px; }
+  .c .row .age { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .c .row .age.old { color: var(--text); font-weight: 600; }
+  @container (max-width: 600px) {
+    .c .hero { padding: 28px 16px 22px; }
+    .c .big { font-size: 88px; }
+    .c .hero h2 { font-size: 22px; }
+    .c section { padding: 18px 16px 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="bar" role="toolbar" aria-label="Demo controls">
+  <button data-dir="a" aria-pressed="true">A. Triage</button>
+  <button data-dir="b" aria-pressed="false">B. Scope</button>
+  <button data-dir="c" aria-pressed="false">C. Your move</button>
+  <span class="gap"></span>
+  <button data-dev="laptop" aria-pressed="true">Laptop</button>
+  <button data-dev="phone" aria-pressed="false">Phone</button>
+</div>
+<p class="note" id="note"></p>
+<div class="stage"><div class="frame" id="frame"></div></div>
+
+<script>
+const items = [
+  { id: 1, reason: 'changes', repo: 'drizzle-team/drizzle-orm', num: 4412, title: 'Support the D1 batch API in the migrator', actor: 'tessa-r', what: 'requested changes', hours: 76, agent: true },
+  { id: 2, reason: 'ci', repo: 'biomejs/biome', num: 6120, title: 'Fix noUnusedImports false positive on type-only re-exports', actor: 'CI', what: '2 checks failing', hours: 49, agent: true },
+  { id: 3, reason: 'replied', repo: 'honojs/hono', num: 3981, title: 'Keep the query string when redirect() gets a relative path', actor: 'mkaplan', what: 'asked a question', hours: 26 },
+  { id: 4, reason: 'review', repo: 'cloudflare/workers-sdk', num: 8870, title: 'Print the D1 migration plan before applying it', actor: 'dlin', what: 'requested your review', hours: 9 },
+  { id: 5, reason: 'mention', repo: 'vitest-dev/vitest', num: 7311, title: 'pool-workers hangs when a test imports a Durable Object class', actor: 'ana-v', what: 'mentioned you', hours: 2 },
+];
+const reasons = {
+  changes: { label: 'Changes requested', group: 'Changes asked on your PRs', color: '#e5a54b' },
+  ci:      { label: 'CI failing',        group: 'Your PRs with failing CI', color: '#ef6461' },
+  replied: { label: 'Reply',             group: 'Replies waiting for you',  color: '#8fb3ff' },
+  review:  { label: 'Review requested',  group: 'Reviews you were asked for', color: '#b591f2' },
+  mention: { label: 'Mentioned',         group: 'Mentions',                 color: '#7cc4a6' },
+};
+const age = h => h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
+const heat = h => h >= 72 ? '#f07a5a' : h >= 24 ? '#e0b062' : '#8a8d96';
+const notes = {
+  a: 'A. Triage. A quiet list you work down with the keyboard. Colour is used for one job: the longer something waits, the warmer its age turns. Try j, k and e.',
+  b: 'B. Scope. Leans into the name. Each waiting item is a blip; the further from the centre, the longer it has waited. The list below carries the detail.',
+  c: 'C. Your move. Pure black and white. One big number answers the question first, then items are grouped by what you have to do. Red is reserved for broken CI.',
+};
+
+function renderA(list) {
+  return `<div class="a">
+    <header><span class="mark">Radar</span>
+      <nav><span class="on">Your turn<b>${list.length}</b></span><span>Their turn<b>7</b></span><span>Pipeline<b>9</b></span><span>Merged<b>4</b></span></nav>
+      <span class="sync">Synced 40s ago</span></header>
+    <ul>${list.map((it, i) => `
+      <li data-id="${it.id}" class="${i === 0 ? 'sel' : ''}" style="--c:${reasons[it.reason].color};--heat:${heat(it.hours)};--w:${Math.min(48, 6 + it.hours / 2)}px">
+        <span class="glyph" title="${reasons[it.reason].label}"></span>
+        <span class="repo">${it.repo}</span>
+        <span class="title">${it.title}${it.agent ? '<span class="agent">agent</span>' : ''}</span>
+        <span class="who"><strong>${it.actor}</strong> ${it.what}</span>
+        <span class="age"><i></i>${age(it.hours)}</span>
+      </li>`).join('')}</ul>
+    <footer><span><kbd>j</kbd><kbd>k</kbd>move</span><span><kbd>enter</kbd>open on GitHub</span><span><kbd>e</kbd>dismiss</span><span><kbd>s</kbd>snooze</span></footer>
+  </div>`;
+}
+
+function renderB(list) {
+  const r = h => 26 + Math.log2(1 + h) / Math.log2(1 + 24 * 14) * 112;
+  const blips = list.map((it, i) => {
+    const a = (i / list.length) * Math.PI * 2 - Math.PI / 2 + 0.4;
+    const x = 150 + Math.cos(a) * r(it.hours), y = 150 + Math.sin(a) * r(it.hours);
+    return `<circle cx="${x}" cy="${y}" r="5" fill="#ffb547"/><text x="${x + 9}" y="${y + 4}" fill="#7d8a96" font-size="11">#${it.num}</text>`;
+  }).join('');
+  const rings = [[1, '1h'], [24, '1d'], [72, '3d'], [24 * 7, '7d']].map(([h, l]) =>
+    `<circle cx="150" cy="150" r="${r(h)}" fill="none" stroke="#1f2b35"/><text x="${150 + 3}" y="${150 - r(h) - 3}" fill="#3d4c58" font-size="10">${l}</text>`).join('');
+  return `<div class="b">
+    <div class="top">
+      <svg viewBox="0 0 300 300" role="img" aria-label="${list.length} items waiting, plotted by age">
+        <defs><linearGradient id="sw" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffb547" stop-opacity="0"/><stop offset="1" stop-color="#ffb547" stop-opacity=".22"/></linearGradient></defs>
+        ${rings}
+        <path class="sweep" d="M150 150 L150 12 A138 138 0 0 1 247 52 Z" fill="url(#sw)"/>
+        <circle cx="150" cy="150" r="3" fill="#dce3ea"/>
+        ${blips}
+      </svg>
+      <div class="head"><h2>${list.length} things are waiting on you</h2><p>The oldest has waited ${age(list[0].hours)}. Seven of your threads are waiting on maintainers.</p></div>
+    </div>
+    <ul>${list.map(it => `
+      <li><span class="n">#${it.num}</span>
+        <span><span class="title">${it.title}</span><span class="meta">${it.repo}, ${it.actor} ${it.what}</span></span>
+        <span class="age">${age(it.hours)}</span></li>`).join('')}</ul>
+  </div>`;
+}
+
+function renderC(list) {
+  const order = ['ci', 'changes', 'replied', 'review', 'mention'];
+  const groups = order.map(k => [k, list.filter(it => it.reason === k)]).filter(([, g]) => g.length);
+  return `<div class="c">
+    <div class="hero"><span class="big">${list.length}</span>
+      <div><h2>things are waiting on you</h2><p>7 waiting on others, 9 open PRs, 4 merged in November</p></div></div>
+    ${groups.map(([k, g]) => `<section><h3 class="${k === 'ci' ? 'red' : ''}">${reasons[k].group}</h3>
+      ${g.map(it => `<div class="row"><div class="t">${it.title}<span>${it.repo} #${it.num}, ${it.actor} ${it.what}</span></div>
+        <span class="age ${it.hours >= 72 ? 'old' : ''}">${age(it.hours)}</span></div>`).join('')}</section>`).join('')}
+  </div>`;
+}
+
+const frame = document.getElementById('frame');
+let dir = 'a', list = items.slice(), sel = 0;
+function render() {
+  frame.innerHTML = { a: renderA, b: renderB, c: renderC }[dir](list);
+  document.getElementById('note').textContent = notes[dir];
+}
+function press(attr, val) {
+  document.querySelectorAll(`[data-${attr}]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === val)));
+}
+document.querySelectorAll('[data-dir]').forEach(b => b.onclick = () => { dir = b.dataset.dir; list = items.slice(); sel = 0; press('dir', dir); render(); });
+document.querySelectorAll('[data-dev]').forEach(b => b.onclick = () => { frame.classList.toggle('phone', b.dataset.dev === 'phone'); press('dev', b.dataset.dev); });
+document.addEventListener('keydown', e => {
+  if (dir !== 'a' || !list.length) return;
+  const rows = frame.querySelectorAll('li');
+  if (e.key === 'j' || e.key === 'k') {
+    sel = Math.max(0, Math.min(list.length - 1, sel + (e.key === 'j' ? 1 : -1)));
+    rows.forEach((r, i) => r.classList.toggle('sel', i === sel));
+  } else if (e.key === 'e') {
+    rows[sel].classList.add('gone');
+    setTimeout(() => { list.splice(sel, 1); sel = Math.min(sel, list.length - 1); render(); frame.querySelectorAll('li').forEach((r, i) => r.classList.toggle('sel', i === sel)); }, 180);
+  }
+});
+render();
+</script>
+</body>
+</html>
