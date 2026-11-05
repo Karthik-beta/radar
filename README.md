@@ -1,5 +1,7 @@
 # Radar
 
+![Radar: what needs me right now, across every open-source repo I work on](design/brand/social-preview.png)
+
 Radar is a private, read-only dashboard for one person's open-source work. It answers one question in under ten seconds: what needs me right now?
 
 I contribute to several open-source projects at once, often through AI agents working in parallel. GitHub shows one repository and one thread at a time, so review requests, failing CI, and stalled pull requests get missed. Radar pulls them onto one screen:

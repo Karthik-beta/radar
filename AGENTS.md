@@ -32,6 +32,10 @@ A new decision gets a new ADR. Copy [docs/adr/template.md](docs/adr/template.md)
 
 To change a token, edit `design/tokens.json`, then regenerate the wiki page with `node scripts/tokens-to-wiki.mjs <wiki-checkout>` and push the wiki. The README has the full steps.
 
+## Brand assets
+
+The mark, icons, manifest, fonts, and social preview are described in [ADR 0004](docs/adr/0004-brand-assets.md). Edit the sources in `design/brand/`, then run `node scripts/build-assets.mjs`. Do not edit the generated files in `public/` or `design/brand/social-preview.png` by hand. Serve every asset from Radar's own origin, and never load fonts or images from a third-party CDN.
+
 ## Writing
 
 Docs, ADRs, and commit messages use short, plain sentences in the present tense. Name the real file, flag, or command, not a description of it.
