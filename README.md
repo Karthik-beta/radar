@@ -47,3 +47,7 @@ The stack is TypeScript, Hono, React with Vite, Drizzle, and D1. The reasons for
    ```
 
 4. Commit and push the wiki checkout.
+
+## License
+
+[MIT](LICENSE)
