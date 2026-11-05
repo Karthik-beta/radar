@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Radar social preview</title>
+<link rel="stylesheet" href="../../public/fonts/fonts.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { width: 1280px; height: 640px; overflow: hidden; background: #141519; color: #e8e9ec;
+         font: 22px/1.4 "Schibsted Grotesk", sans-serif; display: grid; grid-template-columns: 560px 1fr; gap: 56px;
+         align-items: center; padding: 0 80px; }
+  .brand { display: flex; flex-direction: column; gap: 28px; }
+  .name { display: flex; align-items: center; gap: 24px; }
+  .name img { width: 112px; height: 112px; }
+  .name span { font: 700 104px/0.9 "Funnel Display", sans-serif; letter-spacing: -0.045em; }
+  .brand p { margin: 0; color: #8a8d96; font-size: 28px; line-height: 1.35; max-width: 22ch; }
+  .panel { background: #1c1d22; border-radius: 12px; padding: 28px 0 12px; }
+  .answer { display: flex; align-items: flex-end; gap: 16px; padding: 0 28px 22px; }
+  .count { font: 700 84px/0.78 "Funnel Display", sans-serif; letter-spacing: -0.045em; }
+  .answer b { font: 600 24px/1.1 "Funnel Display", sans-serif; display: block; }
+  .answer small { color: #8a8d96; font-size: 17px; }
+  .hot { color: #f07a5a; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 14px 28px; border-top: 1px solid #25272d; font-size: 18px; }
+  .row .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .m { color: #8a8d96; font-size: 15px; grid-column: 1; }
+  .row .a { font-variant-numeric: tabular-nums; color: #8a8d96; }
+  .row .a.hot { color: #f07a5a; font-weight: 600; }
+  .row .a.warm { color: #e0b062; }
+  .row .m.red { color: #ff5a4e; }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <div class="name"><img src="mark-tile.svg" alt=""><span>Radar</span></div>
+    <p>What needs me right now, across every open-source repo I work on.</p>
+  </div>
+  <div class="panel">
+    <div class="answer"><span class="count">5</span><span><b>waiting on you</b><small>The oldest has waited <span class="hot">3 days</span></small></span></div>
+    <div class="row"><span class="t">Support the D1 batch API in the migrator</span><span class="a hot">3d</span><span class="m">tessa-r requested changes</span></div>
+    <div class="row"><span class="t">Fix noUnusedImports false positive on re-exports</span><span class="a warm">2d</span><span class="m red">CI 2 checks failing</span></div>
+    <div class="row"><span class="t">Keep the query string on relative redirects</span><span class="a warm">1d</span><span class="m">mkaplan asked a question</span></div>
+  </div>
+</body>
+</html>
