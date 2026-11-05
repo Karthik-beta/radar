@@ -14,7 +14,7 @@ Radar never writes to GitHub. Every item links to its page on github.com, and ev
 
 ## Status
 
-Planning is done and the code has not started. The next milestone is M0: a Worker on Cloudflare, GitHub sign-in limited to one user ID, and encrypted token storage. The milestones are listed in the [PRD](docs/prd.md).
+Planning is done and the code has not started. The next milestone is M0: a Worker on Cloudflare, GitHub sign-in limited to one user ID, and encrypted token storage. The milestones are listed in the [PRD](docs/prd.md), and the [implementation plan](docs/plan/implementation-plan.md) breaks them into PRs.
 
 ## How it works
 
@@ -30,6 +30,7 @@ Radar is Rust end to end. The Worker uses Cloudflare's `worker` crate, the UI is
 
 - [Product requirements](docs/prd.md)
 - [Architecture decision records](docs/adr/README.md)
+- [Implementation plan](docs/plan/implementation-plan.md), 25 stacked PRs from scaffold to every PRD feature
 - [Design tokens](https://github.com/Karthik-beta/radar/wiki/Design-tokens), on the wiki, generated from [`design/tokens.json`](design/tokens.json)
 - [Design prototype](prototypes/direction-ac.html). Open the file in a browser.
 
