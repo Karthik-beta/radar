@@ -2,8 +2,10 @@
 node_modules/
 
 # Build output
+target/
 dist/
 build/
+spikes/*/out/
 .vite/
 
 # Cloudflare
