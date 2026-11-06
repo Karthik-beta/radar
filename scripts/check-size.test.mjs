@@ -49,3 +49,10 @@ test("missing_dir_exits_2", () => {
   assert.equal(run(missing, bundleDir({ "app.js": "y" })).status, 2);
   assert.equal(run(bundleDir({ "readme.txt": "no bundles" }), bundleDir({ "app.js": "y" })).status, 2);
 });
+
+test("bad_budget_exits_2", () => {
+  const worker = bundleDir({ "index.js": "x" });
+  const ui = bundleDir({ "app.js": "y" });
+  assert.equal(run(worker, ui, ["--worker-budget-kb", "abc"]).status, 2);
+  assert.equal(run(worker, ui, ["--ui-budget-kb", "0"]).status, 2);
+});
