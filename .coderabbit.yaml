@@ -3,7 +3,7 @@ language: en-US
 tone_instructions: "Plain, direct, short sentences. Name the file and symbol. No praise, no filler."
 
 reviews:
-  profile: assertive
+  profile: chill
   auto_approvals:
     enabled: true
     max_merge_risk: moderate

@@ -50,7 +50,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
   - [ ] R25 is a docs fix that branches from `main` and can run at any time.
   - [ ] R08 starts only after R02 has merged with its result in the ADRs.
 - [ ] Tooling PRs outside R01 to R25, such as the CodeRabbit and CI setup, follow the same review and merge rules. They need no plan section, and their title has no R id.
-  - [ ] Their verification is what can run for the change. Every CI check that exists on the PR passes (the `docs` job in `.github/workflows/ci.yml` arrives with the GitHub Actions setup PR, Karthik-beta/radar#2), CodeRabbit approves (or the operator does, under the excluded-files rule in PR mechanics), and one verifier records its output in the PR. It runs each changed script or workflow. For a docs-only PR it runs `check-plan.mjs` on a changed plan and checks every changed link instead. The Cargo checks apply once `Cargo.toml` exists. The ten live lanes and the perf lane apply only to R PRs. If R02 finds that Durable Object alarms do not run on Workers Free, R08 builds the Queue fallback from ADR 0002 instead.
+  - [ ] Their verification is what can run for the change. Every CI check that exists on the PR passes (the `docs` job in `.github/workflows/ci.yml` arrives with the GitHub Actions setup PR, Karthik-beta/radar#2), CodeRabbit is clear, as PR mechanics defines it, and one verifier records its output in the PR. It runs each changed script or workflow. For a docs-only PR it runs `check-plan.mjs` on a changed plan and checks every changed link instead. The Cargo checks apply once `Cargo.toml` exists. The ten live lanes and the perf lane apply only to R PRs. If R02 finds that Durable Object alarms do not run on Workers Free, R08 builds the Queue fallback from ADR 0002 instead.
 - [ ] Hold the file boundaries. Two owners never edit the same file in parallel.
   - [ ] `crates/domain/**` belongs to R03. Later PRs add to it only in PR order, never in parallel.
   - [ ] `migrations/**` gains one new numbered file per PR, with the next free number on `main`. No PR edits an earlier migration.
@@ -66,15 +66,15 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 - [ ] Run `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` once before the PR-facing push. Push with hooks on.
 - [ ] Run `/deslop` before each commit and `/no-comments` before review. If a skill is not installed, record the skip in the PR body.
 - [ ] Wait for CodeRabbit's review. `.coderabbit.yaml` configures it, and it reviews every PR to `main` on its own. If no review appears within 15 minutes, comment `@coderabbitai review` on the PR.
-- [ ] Excluded-files rule. If CodeRabbit skips the PR because `path_filters` in `.coderabbit.yaml` excludes every changed file, the operator's approval in chat replaces CodeRabbit's approval in every step of this plan. Every other PR needs CodeRabbit's approval.
-- [ ] Triage every CodeRabbit comment per `references/bugbot-triage.md` in the pstack plugin. Fix what is real. Reply with a concrete reason to what is noise. Resolve each thread once it is answered. Push fixes until CodeRabbit approves the PR and its commit status is green. Its `Read-only GitHub` and `No secrets` checks are blocking.
+- [ ] CodeRabbit's review is advice with two hard limits. Its explicit approval is not required. A PR is clear of CodeRabbit when its `CodeRabbit` check has `conclusion: success` at the exact head SHA (or it skipped the PR because `path_filters` excludes every changed file), its `Read-only GitHub` and `No secrets` checks pass, and no Critical or Major thread is unresolved. For a skipped review, read the reason in CodeRabbit's review-status comment.
+- [ ] Triage every CodeRabbit comment per `references/bugbot-triage.md` in the pstack plugin. Fix every Critical and Major finding that is real. A Minor finding or a nitpick gets a fix only when it takes a minute, otherwise a one-line reply. Resolve each thread once it is answered. Do not wait for CodeRabbit to confirm a fix, and do not request another review after a wording-only fix, unless the head needs a review to meet the merge gate, for example when CodeRabbit has paused automatic reviews. Then comment `@coderabbitai review`. One fix round per finding is enough.
 - [ ] Rebase onto `main` before the code-ready report and babysit. Keep that merge base in fix rounds. Rebase again only at merge prep, on a `git merge-tree` conflict with `main`, on a CI failure that comes from a change on `main`, or when a known concurrent change to the same files lands.
 
 ### Verdict and merge, for every PR
 
 - [ ] A full swarm runs once, at the code-ready head. Another full swarm runs only for new behavior, a redesign, or a large new diff. A rebase, a merge-conflict resolution, or a minor fix gets a single verifier at the new head, and a wording-only change gets none. Run each full swarm per `skills/swarm/SKILL.md` in the pstack plugin. One gates lane. The ten live lanes from the PR's **Verify, live** block. The perf lane from its **Verify, perf** block. Two or more audit lanes, each with its own focus, that read the diff and the receipts and distrust the PR body. The root audits the receipts in the code-ready report before the verdict.
 - [ ] Judge every finding by the execution playbook's blocking rule. The verdict is clean when none blocks. A failure on trunk behavior in a lane marked `Regression lane against trunk.` is recorded against trunk and does not block the PR. A new head gets a fresh verdict, except for results that stay valid under the patch-id rule in `playbooks/shipping.md`.
-- [ ] Merge only when every review has passed at the exact head SHA. CI is green. CodeRabbit has approved, and every thread is resolved. The excluded-files rule in PR mechanics applies. The root's swarm verdict is clean. For a review-gated PR, the operator has approved in chat. A rebase that leaves the PR's `git patch-id` unchanged keeps every verdict.
+- [ ] Merge only when every review has passed at the exact head SHA. CI is green. CodeRabbit is clear, as PR mechanics defines it. The root's swarm verdict is clean. For a review-gated PR, the operator has approved in chat. A rebase that leaves the PR's `git patch-id` unchanged keeps every verdict.
 - [ ] Then the Opus owner does three things, in this order.
   - [ ] Mark every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>`. The script prints one line per file and fails if any file stays unviewed.
   - [ ] Submit a review with `gh pr review <number> --comment --body "<verdict, CodeRabbit result, and the evidence links>"`. GitHub does not let an account approve its own PR, so the review is a comment.
@@ -164,7 +164,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R01 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R01 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R01 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -235,7 +235,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R02 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R02 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R02 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -307,7 +307,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R03 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R03 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R03 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -378,7 +378,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R04 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R04 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R04 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -456,7 +456,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R05 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R05 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R05 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -533,7 +533,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R06 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R06 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R06 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -615,7 +615,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R07 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R07 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R07 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -690,7 +690,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R08 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R08 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R08 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -759,7 +759,7 @@ Lane setup. Start `wrangler dev` with the recipe's flags plus `--test-scheduled`
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R09 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R09 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R09 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -835,7 +835,7 @@ Lane setup. Generate the scenario with `node tools/github-stub/scenarios/make.mj
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R10 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R10 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R10 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -904,7 +904,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R11 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R11 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R11 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -975,7 +975,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R12 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R12 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R12 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1050,7 +1050,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R13 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R13 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R13 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1125,7 +1125,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R14 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R14 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R14 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1195,7 +1195,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R15 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R15 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R15 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1266,7 +1266,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R16 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R16 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R16 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1342,7 +1342,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R17 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R17 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R17 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1413,7 +1413,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R18 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R18 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R18 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1487,7 +1487,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R19 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R19 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R19 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1562,7 +1562,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R20 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R20 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R20 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1635,7 +1635,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R21 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R21 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R21 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1715,7 +1715,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R22 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R22 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R22 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1793,7 +1793,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R23 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R23 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R23 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1866,7 +1866,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R24 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R24 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R24 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
@@ -1932,7 +1932,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] CI is green and CodeRabbit has approved R25 at the exact head SHA, with every thread resolved.
+- [ ] CI is green and CodeRabbit is clear on R25 at the exact head SHA, with no Critical or Major thread unresolved.
 - [ ] Root's clean swarm verdict at the exact head SHA. If R25 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
