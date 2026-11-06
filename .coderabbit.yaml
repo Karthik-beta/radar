@@ -33,7 +33,8 @@ reviews:
       instructions: |
         Radar is a single-user, read-only GitHub dashboard on the Cloudflare Workers free plan, written in Rust.
         AGENTS.md and docs/adr/ are the rules. When a change contradicts an accepted ADR without a new ADR that supersedes it, flag it.
-        Each PR implements one section R01 to R25 of docs/plan/implementation-plan.md. Check the diff against that section's Files and Build boxes and flag scope creep or missing boxes.
+        Each R PR implements one section R01 to R25 of docs/plan/implementation-plan.md. Check the diff against that section's Files and Build boxes and flag scope creep or missing boxes.
+        Tooling PRs outside R01 to R25, such as CI, review, or docs setup, have no plan section. Check them against their own PR description instead.
     - path: "crates/worker/**"
       instructions: |
         Flag, as blocking:

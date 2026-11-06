@@ -49,7 +49,8 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
   - [ ] While a PR waits on review, the next owner may start on a branch from the waiting PR. It rebases onto `main` and retargets `main` as soon as that PR merges, and it never merges first.
   - [ ] R25 is a docs fix that branches from `main` and can run at any time.
   - [ ] R08 starts only after R02 has merged with its result in the ADRs.
-- [ ] Tooling PRs outside R01 to R25, such as the CodeRabbit and CI setup, follow the same PR mechanics and merge rules. They need no plan section, and their title has no R id. If R02 finds that Durable Object alarms do not run on Workers Free, R08 builds the Queue fallback from ADR 0002 instead.
+- [ ] Tooling PRs outside R01 to R25, such as the CodeRabbit and CI setup, follow the same review and merge rules. They need no plan section, and their title has no R id.
+  - [ ] Their verification is what can run for the change. CI's `docs` job passes, CodeRabbit approves, and one verifier runs the changed script or workflow and records the output in the PR. The Cargo checks apply once `Cargo.toml` exists. The ten live lanes and the perf lane apply only to R PRs. If R02 finds that Durable Object alarms do not run on Workers Free, R08 builds the Queue fallback from ADR 0002 instead.
 - [ ] Hold the file boundaries. Two owners never edit the same file in parallel.
   - [ ] `crates/domain/**` belongs to R03. Later PRs add to it only in PR order, never in parallel.
   - [ ] `migrations/**` gains one new numbered file per PR, with the next free number on `main`. No PR edits an earlier migration.
