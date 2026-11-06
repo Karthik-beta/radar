@@ -13,11 +13,29 @@ The program runs `playbooks/autopilot-full.md` from the pstack plugin (`~/.claud
 
 Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
+## Status
+
+Updated 2026-11-06. The operator paused the program here. `HANDOFF.md`, a local file that git ignores, holds the session notes for resuming.
+
+| R | State | Evidence |
+| --- | --- | --- |
+| R01 | Merged | `e3c9504`, Karthik-beta/radar#5 |
+| R02 | Waiting on the operator | Karthik-beta/radar#8 is open. The Free-plan spike run, its `results/tail-*.jsonl`, and the ADR 0002 and ADR 0005 `## Spike result` sections are still to do. R08 cannot start before R02 merges |
+| R03 | Merged | `2fa9e60`, Karthik-beta/radar#7 |
+| R04 | Merged | `8380043`, Karthik-beta/radar#11 |
+| R05 | Merged | `beb4c93`, Karthik-beta/radar#10 |
+| R06 | Merged | `6db186f`, Karthik-beta/radar#9 |
+| R07 | Merged | `d625d15`, Karthik-beta/radar#12. The `cpuTime` perf box and real GitHub OAuth wait on O2, O3, and O3b. The Worker grew 83.4 KB gzipped over trunk, above the 60 KB rule, and the root accepted it because most of it is R04 and R06 code that R07 first reaches |
+| R08 to R24 | Not started | Each depends on the one before. R08 depends on R02 |
+| R25 | Merged | `ef8f55b`, Karthik-beta/radar#13 |
+
+Open operator items: O1 to O6. R07 needs O2, O3, and O3b before sign-in works on Cloudflare.
+
 ## Program checklist
 
 ### Arm the program
 
-- [ ] State the protocol and this plan to the operator, then stop. Start execution only on the operator's explicit go.
+- [x] State the protocol and this plan to the operator, then stop. Start execution only on the operator's explicit go.
 - [ ] Finish the operator's setup items before R02 and R07 need them. Each is done by the operator, not an agent.
   - [ ] O1. The `karthik.nz` zone is active on the operator's Cloudflare account. Evidence is the zone listed by `npx wrangler whoami` and the Cloudflare dashboard.
   - [ ] O2. Two GitHub OAuth Apps exist. "Radar" has callback `https://radar.karthik.nz/auth/callback`. "Radar dev" has callback `http://localhost:8787/auth/callback`. Evidence is both client IDs recorded in `.dev.vars` and in Wrangler secrets.
@@ -168,7 +186,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R01 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R01 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R01 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `e3c9504` in Karthik-beta/radar#5.
 
 ## Prove Durable Object alarms and CPU on Workers Free (R02)
 
@@ -311,7 +329,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R03 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R03 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R03 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `2fa9e60` in Karthik-beta/radar#7.
 
 ## Create the D1 schema and row access (R04)
 
@@ -382,7 +400,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R04 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R04 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R04 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `8380043` in Karthik-beta/radar#11.
 
 ## Build the web shell with tokens, fonts, icons, and CSP (R05)
 
@@ -460,7 +478,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R05 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R05 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R05 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `beb4c93` in Karthik-beta/radar#10.
 
 ## Build the read-only GitHub client and the GitHub stub (R06)
 
@@ -537,7 +555,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R06 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R06 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R06 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `6db186f` in Karthik-beta/radar#9.
 
 ## Sign in with GitHub as the one allowed user (R07)
 
@@ -619,7 +637,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R07 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R07 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R07 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `d625d15` in Karthik-beta/radar#12.
 
 ## Run the Syncer Durable Object with a work table and alarms (R08)
 
@@ -1936,7 +1954,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] Root's clean swarm verdict at the exact head SHA. If R25 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R25 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R25 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `ef8f55b` in Karthik-beta/radar#13.
 
 ## Close the program
 
