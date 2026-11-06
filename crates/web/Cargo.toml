@@ -1,0 +1,10 @@
+[package]
+name = "web"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+domain.workspace = true
+gloo-net.workspace = true
+leptos.workspace = true

@@ -1,0 +1,13 @@
+{
+  "name": "radar",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check-size": "node scripts/check-size.mjs",
+    "dev": "wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "4.158.0"
+  }
+}
