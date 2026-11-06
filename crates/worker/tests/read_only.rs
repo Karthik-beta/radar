@@ -5,7 +5,13 @@ use std::path::{Path, PathBuf};
 
 use radar_worker::github::query::validate_document;
 
-const ALLOWED_WRITERS: &[&str] = &["github/client.rs"];
+const ALLOWED_WRITERS: &[&str] = &[
+    "github/client.rs",
+    // Exchanges a login code for a token at /login/oauth/access_token. It never calls the GitHub API.
+    "auth/exchange.rs",
+    // Names the inbound POST routes /auth/logout and /auth/disconnect. It sends no request.
+    "auth/route.rs",
+];
 
 const METHOD_PATHS: &[&str] = &[
     "Method::Post",
