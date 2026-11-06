@@ -1,0 +1,28 @@
+{
+  "me": "karthik-beta",
+  "item": {
+    "item_ref": {
+      "repo": "karthik-beta/radar",
+      "number": 42,
+      "kind": "pr"
+    },
+    "author": {
+      "login": "karthik-beta",
+      "kind": "user"
+    },
+    "state": "draft",
+    "created_at": "2026-11-02T09:00:00Z",
+    "updated_at": "2026-11-02T09:00:00Z",
+    "closed_at": null,
+    "review_decision": "review_required",
+    "review_requests": [],
+    "assignees": [],
+    "ci": null,
+    "activity": []
+  },
+  "expect": {
+    "turn": "them",
+    "stage": "draft",
+    "since": "2026-11-02T09:00:00Z"
+  }
+}

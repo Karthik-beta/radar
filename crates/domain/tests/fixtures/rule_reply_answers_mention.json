@@ -1,0 +1,51 @@
+{
+  "me": "karthik-beta",
+  "item": {
+    "item_ref": {
+      "repo": "rust-lang/cargo",
+      "number": 42,
+      "kind": "issue"
+    },
+    "author": {
+      "login": "alice",
+      "kind": "user"
+    },
+    "state": "open",
+    "created_at": "2026-11-02T09:00:00Z",
+    "updated_at": "2026-11-02T10:30:00Z",
+    "closed_at": null,
+    "review_decision": null,
+    "review_requests": [],
+    "assignees": [],
+    "ci": null,
+    "activity": [
+      {
+        "at": "2026-11-02T10:00:00Z",
+        "actor": {
+          "login": "alice",
+          "kind": "user"
+        },
+        "kind": {
+          "type": "comment",
+          "mentions_me": true
+        }
+      },
+      {
+        "at": "2026-11-02T10:30:00Z",
+        "actor": {
+          "login": "karthik-beta",
+          "kind": "user"
+        },
+        "kind": {
+          "type": "comment",
+          "mentions_me": false
+        }
+      }
+    ]
+  },
+  "expect": {
+    "turn": "them",
+    "stage": null,
+    "since": "2026-11-02T10:30:00Z"
+  }
+}
