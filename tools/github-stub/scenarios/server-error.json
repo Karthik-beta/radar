@@ -1,0 +1,9 @@
+{
+  "extends": "basic",
+  "faults": [
+    { "match": "GET /user", "status": 500 },
+    { "match": "GET /rate_limit", "status": 500 },
+    { "match": "GET /notifications", "status": 500 },
+    { "match": "POST /graphql", "status": 500 }
+  ]
+}

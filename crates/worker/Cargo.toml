@@ -25,6 +25,10 @@ rusqlite = { version = "0.41", features = ["bundled"] }
 name = "emit_sql"
 required-features = ["sql-dump"]
 
+[features]
+default = []
+probe = []
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"

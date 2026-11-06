@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn unknown_api_path_maps_to_not_found() {
         assert_eq!(route("GET", "/api/nope"), not_found());
-        assert_eq!(route("POST", "/api/health"), not_found());
+        assert_eq!(route("get", "/api/health"), not_found());
     }
 
     #[test]

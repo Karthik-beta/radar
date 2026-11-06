@@ -1,0 +1,14 @@
+{
+  "extends": "basic",
+  "faults": [
+    { "match": "GET /rate_limit", "status": 403, "retry_after": 17, "times": 1 },
+    { "match": "GET /rate_limit", "status": 429, "retry_after": 23, "times": 1 },
+    {
+      "match": "GET /rate_limit",
+      "status": 403,
+      "rate": { "remaining": 0, "reset": "@+45s" },
+      "times": 1
+    },
+    { "match": "GET /rate_limit", "status": 403, "times": 1 }
+  ]
+}
