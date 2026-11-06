@@ -65,7 +65,7 @@ V1 ships three views (Your turn, Pipeline, Their turn); repo cards, trends and a
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| F1 | **Your turn** view: open threads where the latest event is aimed at me (mention, team mention, review requested, changes requested on my PR, CI failed on my PR, assigned, replied: a maintainer's plain comment on my PR or issue), sorted by how long it has waited. F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
+| F1 | **Your turn** view: my open PRs and issues whose `turn` is `me`, for one of these reasons (mention, team mention, review requested, changes requested on my PR, CI failed on my PR, assigned, replied: a maintainer's plain comment on my PR or issue), sorted by `since`, how long it has waited. F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
 | F2 | Each item shows repo, title, who acted, what happened, age, and a deep link to the exact comment or review | P0 |
 | F3 | **Pipeline** kanban of my open PRs across all repos: Draft, CI running, CI failing, Awaiting review, Changes requested, Approved; plus Merged/Closed in the last 14 days | P0 |
 | F4 | **Their turn**: my PRs and issues whose `turn` is `them`, with days since; flagged amber after 7 days and red after 14 (configurable). F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
@@ -128,7 +128,7 @@ GitHub offers no webhooks on upstream repos I don't own, so Radar uses GitHub's 
 **Polling rules (P)**
 
 1. P1. Notifications are polled with `If-Modified-Since`. GitHub says a 304 leaves the rate limit untouched and that the `X-Poll-Interval` header must be obeyed ([GitHub docs](https://docs.GitHub.com/en/rest/activity/notifications)). Radar stores `Last-Modified` and the next-allowed time in the Syncer's storage, not in KV ([ADR 0002](adr/0002-architecture.md)).
-2. P2. A burst of emails coalesces into one sync: a trigger arriving before the next-allowed time is deferred, not dropped. A kick sets the alarm to the later of now and the next-allowed time, so kicks before then share one alarm. [ADR 0002](adr/0002-architecture.md) replaces the earlier drop rule, because a dropped trigger could wait for the next 10-minute cron.
+2. P2. A burst of emails coalesces into one sync: a trigger arriving before the next-allowed time is deferred, not dropped. A kick makes the poll due at the later of now and the next-allowed time, and only ever moves the Syncer's alarm earlier, so kicks before then share one poll and an earlier enrichment alarm still runs on time. [ADR 0002](adr/0002-architecture.md) replaces the earlier drop rule, because a dropped trigger could wait for the next 10-minute cron.
 3. P3. Enrichment fetches only threads whose `updated_at` changed, batched into one GraphQL query per 20 PRs.
 4. P4. Every response's `x-ratelimit-remaining` is recorded. Below 20% remaining, Radar stops enrichment until reset; on 403/429 it honors `Retry-After` and backs off exponentially.
 5. P5. Requests run sequentially per token (no fan-out), staying far below the secondary limits.
@@ -204,9 +204,9 @@ V1 ("Your turn" + pipeline, live from email triggers) is four milestones away; e
 
 1. **M0 — Skeleton.** Worker + static frontend on radar.karthik.nz, GitHub OAuth with user-ID allowlist, encrypted token storage, D1 migrations. *Done when* only I can sign in.
 2. **M1 — Polling core.** The Syncer runs notifications sync with `If-Modified-Since`/`X-Poll-Interval`, 10-min cron, 90-day PR backfill, GraphQL enrichment, rate-limit tracking. *Done when* the DB matches my GitHub state.
-3. **M2 — Your turn + pipeline (v1).** F1–F5, freshness panel, mobile layout. *Done when* I use it daily instead of github.com/notifications.
+3. **M2 — Your turn + pipeline (v1).** F1–F5, local dismiss/snooze (F9), freshness panel, mobile layout. *Done when* I use it daily instead of github.com/notifications.
 4. **M3 — Email push.** Email Routing to the Email Worker, header parsing, forwarding, Syncer kicks, coalescing. *Done when* a test mention appears within 2 minutes.
-5. **M4 — Insight.** Activity feed, repo cards, trends, local dismiss/snooze, nightly rollup. *Done when* the feed, repo cards, and trends show my real data on the preview deploy.
+5. **M4 — Insight.** Activity feed, repo cards, trends, nightly rollup. *Done when* the feed, repo cards, and trends show my real data on the preview deploy.
 6. **M5 — Agent era (optional).** Webhooks on my forks, `agent/*` branch lane, agent check-in API, phone alerts. *Done when* a push to an `agent/` branch on a fork shows in the Agents view within 2 minutes and a mention reaches my phone through Telegram.
 
 **Risks**
