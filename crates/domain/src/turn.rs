@@ -49,17 +49,28 @@ mod tests {
 
     #[test]
     fn precedence_lists_every_reason_once() {
-        for reason in Reason::PRECEDENCE {
-            let rank = match reason {
+        let all = [
+            Reason::ReviewRequested,
+            Reason::ChangesRequested,
+            Reason::CiFailed,
+            Reason::Mentioned,
+            Reason::Assigned,
+            Reason::Replied,
+        ];
+        for reason in all {
+            // The match fails to compile when a variant is added, which sends the author here to extend `all`.
+            match reason {
                 Reason::ReviewRequested
                 | Reason::ChangesRequested
                 | Reason::CiFailed
                 | Reason::Mentioned
                 | Reason::Assigned
-                | Reason::Replied => Reason::PRECEDENCE.iter().filter(|r| **r == reason),
-            };
-            assert_eq!(rank.count(), 1, "{reason:?}");
+                | Reason::Replied => {}
+            }
+            let listed = Reason::PRECEDENCE.iter().filter(|r| **r == reason).count();
+            assert_eq!(listed, 1, "{reason:?}");
         }
+        assert_eq!(Reason::PRECEDENCE.len(), all.len());
     }
 
     #[test]
