@@ -1,4 +1,5 @@
 mod api;
+pub mod auth;
 pub mod db;
 pub mod github;
 #[cfg(feature = "probe")]
@@ -22,6 +23,9 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         if path.starts_with(probe::PREFIX) {
             return security::apply(probe::handle(&req, &env).await?);
         }
+    }
+    if let Some(route) = auth::Route::parse(&req.method(), &path) {
+        return security::apply(auth::handle(route, &req, &env).await?);
     }
     let response = match api::route(req.method().as_ref(), &path) {
         Route::Json { status, body } => json_response(status, body)?,

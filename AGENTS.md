@@ -35,6 +35,18 @@ Commands, run from the repository root:
 
 The Worker package is `radar-worker`, because a package named `worker` would clash with the `worker` crate, so run `cargo test -p radar-worker`. Lane worktrees may share one `CARGO_TARGET_DIR` to reuse compiled dependencies. `spikes/` holds throwaway measurements, not product code.
 
+## Sign in locally
+
+Sign-in runs against the GitHub stub, never the real GitHub.
+
+1. Copy `.dev.vars.example` to `.dev.vars`. It holds fake values for the stub user `1001`. For your own keys, set `TOKEN_KEY` and `SESSION_KEY` to two different `openssl rand -base64 32` values.
+2. Apply migrations with `npx wrangler d1 migrations apply radar --local --persist-to .wrangler/local`.
+3. Start the stub with `node tools/github-stub/server.mjs --port 8900 --scenario basic`.
+4. Start Radar with `npx wrangler dev --port 8800 --persist-to .wrangler/local --infer-origin-from-routes=false --var GITHUB_API_BASE:http://127.0.0.1:8900 --var GITHUB_WEB_BASE:http://127.0.0.1:8900`. Without `--infer-origin-from-routes=false`, `wrangler dev` rewrites the request URL to the `radar.karthik.nz` route, so the OAuth `redirect_uri` would leave your machine.
+5. Open `http://localhost:8800` and choose "Sign in with GitHub". The stub signs you in as `karthik`, id `1001`. Send `POST /__scenario` with `{"name":"oauth-other-user"}` to the stub to sign in as a user Radar refuses.
+
+Auth fails closed. If `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `TOKEN_KEY`, `SESSION_KEY`, or `ALLOWED_USER_ID` is missing or malformed, sign-in shows "Sign-in is not set up" and the Worker log names the setting. `TOKEN_KEY` must decode to exactly 32 bytes, `SESSION_KEY` to at least 32, and the two must differ.
+
 ## Pull requests
 
 Every change reaches `main` through a pull request. The full rules are in [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md), under **PR mechanics** and **Verdict and merge**. In short:

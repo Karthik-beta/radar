@@ -1,0 +1,9 @@
+# Fake values for local runs against the GitHub stub. Copy to .dev.vars, which git ignores.
+# Production values are Wrangler secrets. Never commit a real one.
+# The keys decode to "dev-only-token-key-not-a-secret!" and "dev-only-session-key-not-secret!".
+# For your own keys run: openssl rand -base64 32
+OAUTH_CLIENT_ID=stub-client
+OAUTH_CLIENT_SECRET=stub-secret
+TOKEN_KEY=ZGV2LW9ubHktdG9rZW4ta2V5LW5vdC1hLXNlY3JldCE=
+SESSION_KEY=ZGV2LW9ubHktc2Vzc2lvbi1rZXktbm90LXNlY3JldCE=
+ALLOWED_USER_ID=1001

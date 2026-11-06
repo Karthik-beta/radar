@@ -4,5 +4,6 @@ pub mod error;
 pub mod health;
 pub mod ids;
 pub mod item;
+pub mod me;
 pub mod stage;
 pub mod turn;
