@@ -10,7 +10,7 @@ ADR 0005 chose plain CSS on custom properties and left every component to be wri
 | --- | --- |
 | Components | [rust-ui](https://leptos.rust-ui.com), the Leptos edition. Its `ui-cli` copies each component into `crates/web/src/components/ui/` as Leptos source that Radar owns. Radar's own components stay in `crates/web/src/components/` |
 | Styling | Tailwind CSS v4, which rust-ui needs. Trunk runs Tailwind's standalone binary, so no Node package is added. The Tailwind version is pinned in `crates/web/Trunk.toml` |
-| Tokens | `scripts/tokens-to-css.mjs` writes `crates/web/style/tokens.css` as a Tailwind `@theme` block that first clears Tailwind's default palette. Every utility colour, size, and spacing comes from `design/tokens.json`, and `tokens.json` stays the one source |
+| Tokens | `scripts/tokens-to-css.mjs` writes `crates/web/style/tokens.css` as a Tailwind `@theme` block. The block starts with `--*: initial;`, which removes every Tailwind default: colours, fonts, text sizes, spacing, radii, breakpoints, and easings. It then maps each token group to its Tailwind namespace: `color` to `--color-*`, `font.family` to `--font-*`, `font.size` to `--text-*`, `font.weight` to `--font-weight-*`, `space` to `--spacing-*`, `radius` to `--radius-*`, `breakpoint` to `--breakpoint-*`, and `motion.easing` to `--ease-*`. Motion durations have no Tailwind namespace, so they become plain custom properties named `--duration-*`. Every utility value comes from `design/tokens.json`, and `tokens.json` stays the one source |
 | Charts | Hand-drawn SVG in Rust, as ADR 0005 says. rust-ui's charts use ApexCharts, a JavaScript library, so Radar does not copy them |
 | Browser helpers | `leptos-use` when a PR needs a hook such as a media query or click-outside |
 | Icons | `icondata` with `leptos_icons`, compiled into the app as inline SVG |
@@ -35,11 +35,11 @@ Rules for copied components:
 
 ## Consequences
 
-- Building the UI needs the Tailwind standalone binary. Trunk downloads it on the first build. R05 proves this works with Tailwind v4 and pins the version. If Trunk cannot run Tailwind v4, `scripts/build.mjs` runs the standalone binary itself.
+- Building the UI needs the Tailwind standalone binary. Trunk downloads it on the first build. R05 proves this works with Tailwind v4 and pins the version. If Trunk cannot run Tailwind v4, `scripts/build.mjs` runs the standalone binary itself and writes a git-ignored stylesheet, and `index.html` links that file with `rel="css"` instead of `rel="tailwind-css"`, so Trunk runs no Tailwind step.
 - Node still runs only Wrangler and `scripts/`, as ADR 0005 says.
 - Tailwind writes one static stylesheet, so the CSP keeps `style-src 'self'`.
 - Copied components are Radar's code. They get no upstream fixes for free, and nothing breaks when rust-ui changes. The Leptos edition of rust-ui is small and young, so this is the safer trade.
-- A class that names a colour outside the tokens, or an arbitrary value such as `bg-[#123456]`, fails a test from R05 on.
+- A class that uses a value outside the tokens, such as `bg-[#123456]` or `p-[13px]`, fails a test from R05 on. Clearing every default makes a class such as `text-sm` or `rounded-lg` produce nothing, so a stray default shows up in review and in that test.
 - The `faint` contrast record that R17 writes becomes ADR 0007.
 
 ## PRD sections this record replaces
