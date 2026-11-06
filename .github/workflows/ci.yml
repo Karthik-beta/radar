@@ -103,6 +103,8 @@ jobs:
       - name: Install trunk and worker-build
         run: cargo install --locked trunk@0.22.1 worker-build@0.8.7
       - run: node scripts/build.mjs
+      - run: node scripts/tokens-to-css.mjs --check
+      - run: node scripts/check-dist.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bundles

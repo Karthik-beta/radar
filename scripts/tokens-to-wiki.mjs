@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
+import { collect, format } from './lib/tokens.mjs';
 
 const wikiDir = process.argv[2];
 if (!wikiDir) {
@@ -14,32 +15,6 @@ if (!wikiDir) {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tree = JSON.parse(readFileSync(join(root, 'design/tokens.json'), 'utf8'));
-
-function collect(node, path, inheritedType, out) {
-  const type = node.$type ?? inheritedType;
-  if ('$value' in node) {
-    out.push({ path, type, value: node.$value, description: node.$description ?? '' });
-    return out;
-  }
-  for (const [key, child] of Object.entries(node)) {
-    if (!key.startsWith('$')) collect(child, [...path, key], type, out);
-  }
-  return out;
-}
-
-const formatters = {
-  color: (v) => v,
-  dimension: (v) => `${v.value}${v.unit}`,
-  duration: (v) => `${v.value}${v.unit}`,
-  fontFamily: (v) => v.map((f) => (f.includes(' ') ? `"${f}"` : f)).join(', '),
-  fontWeight: (v) => String(v),
-  cubicBezier: (v) => `cubic-bezier(${v.join(', ')})`,
-};
-const format = (t) => {
-  const f = formatters[t.type];
-  if (!f) throw new Error(`no formatter for $type "${t.type}" at ${t.path.join('.')}`);
-  return f(t.value);
-};
 
 function swatchPng(hex, size = 20) {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -66,7 +41,7 @@ function swatchPng(hex, size = 20) {
 
 const headings = { color: 'Colour', font: 'Type', space: 'Spacing', radius: 'Radius', motion: 'Motion', breakpoint: 'Breakpoints' };
 const cssName = (t) => `--${t.path.join('-')}`;
-const tokens = collect(tree, [], undefined, []);
+const tokens = collect(tree);
 const groups = Map.groupBy(tokens, (t) => t.path[0]);
 
 const imageDir = join(wikiDir, 'images/tokens');

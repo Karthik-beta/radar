@@ -2,6 +2,7 @@ mod api;
 pub mod github;
 #[cfg(feature = "probe")]
 mod probe;
+mod security;
 mod sync;
 
 use api::Route;
@@ -18,13 +19,14 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     #[cfg(feature = "probe")]
     {
         if path.starts_with(probe::PREFIX) {
-            return probe::handle(&req, &env).await;
+            return security::apply(probe::handle(&req, &env).await?);
         }
     }
-    match api::route(req.method().as_ref(), &path) {
-        Route::Json { status, body } => json_response(status, body),
-        Route::Assets => env.assets("ASSETS")?.fetch_request(req).await,
-    }
+    let response = match api::route(req.method().as_ref(), &path) {
+        Route::Json { status, body } => json_response(status, body)?,
+        Route::Assets => env.assets("ASSETS")?.fetch_request(req).await?,
+    };
+    security::apply(response)
 }
 
 #[event(scheduled)]
