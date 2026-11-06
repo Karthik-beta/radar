@@ -1,0 +1,9 @@
+{
+  "extends": "basic",
+  "graphql": {
+    "Viewer": {
+      "data": { "viewer": null },
+      "errors": [{ "message": "Something went wrong while executing your query." }]
+    }
+  }
+}

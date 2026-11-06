@@ -4,6 +4,10 @@ compatibility_date = "2026-10-01"
 workers_dev = false
 routes = [{ pattern = "radar.karthik.nz", custom_domain = true }]
 
+[vars]
+GITHUB_API_BASE = "https://api.github.com"
+GITHUB_WEB_BASE = "https://github.com"
+
 [build]
 command = "node scripts/build.mjs"
 watch_dir = ["crates/domain/src", "crates/worker/src", "crates/web/src", "crates/web/style", "crates/web/index.html"]
@@ -35,6 +39,10 @@ crons = ["*/10 * * * *", "0 3 * * *"]
 name = "radar-preview"
 workers_dev = true
 routes = []
+
+[env.preview.vars]
+GITHUB_API_BASE = "https://api.github.com"
+GITHUB_WEB_BASE = "https://github.com"
 
 [env.preview.assets]
 directory = "crates/web/dist"

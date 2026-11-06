@@ -1,0 +1,5 @@
+{
+  "extends": "basic",
+  "scopes": ["read:user"],
+  "faults": [{ "match": "GET /notifications", "status": 404 }]
+}

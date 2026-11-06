@@ -1,0 +1,7 @@
+{
+  "extends": "basic",
+  "user": { "login": "someone-else", "id": 2002, "node_id": "U_stub2002", "name": "Someone Else" },
+  "graphql": {
+    "Viewer": { "data": { "viewer": { "login": "someone-else", "databaseId": 2002 } } }
+  }
+}
