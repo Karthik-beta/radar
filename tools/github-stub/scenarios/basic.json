@@ -1,0 +1,58 @@
+{
+  "token": "gho_stubtoken0000",
+  "scopes": ["notifications", "read:user"],
+  "user": {
+    "login": "karthik",
+    "id": 1001,
+    "node_id": "U_stub1001",
+    "type": "User",
+    "name": "Karthik"
+  },
+  "rate": { "limit": 5000, "remaining": 4990, "reset": "@+50m" },
+  "poll_interval": 60,
+  "notifications": {
+    "last_modified": "@-2m",
+    "etag": "\"stub-etag-1\"",
+    "items": [
+      {
+        "id": "7001",
+        "unread": true,
+        "reason": "review_requested",
+        "updated_at": "@-10m",
+        "last_read_at": null,
+        "subject": {
+          "title": "Add the stub",
+          "url": "https://api.github.com/repos/octo/widgets/pulls/12",
+          "latest_comment_url": null,
+          "type": "PullRequest"
+        },
+        "repository": { "full_name": "octo/widgets", "owner": { "login": "octo" } }
+      },
+      {
+        "id": "7002",
+        "unread": true,
+        "reason": "mention",
+        "updated_at": "@-30m",
+        "last_read_at": null,
+        "subject": {
+          "title": "Question about the API",
+          "url": "https://api.github.com/repos/octo/widgets/issues/9",
+          "latest_comment_url": null,
+          "type": "Issue"
+        },
+        "repository": { "full_name": "octo/widgets", "owner": { "login": "octo" } }
+      }
+    ]
+  },
+  "graphql": {
+    "Viewer": { "data": { "viewer": { "login": "karthik", "databaseId": 1001 } } }
+  },
+  "oauth": {
+    "client_id": "stub-client",
+    "client_secret": "stub-secret",
+    "issue_code": "stub-code",
+    "code": "stub-code",
+    "deny": false
+  },
+  "faults": []
+}

@@ -1,0 +1,4 @@
+{
+  "extends": "basic",
+  "rate": { "limit": 5000, "remaining": 400, "reset": "@+20s" }
+}

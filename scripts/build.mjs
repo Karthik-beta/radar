@@ -4,9 +4,15 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+const features = process.env.RADAR_FEATURES;
+
 const steps = [
   { cwd: "crates/web", cmd: "trunk", args: ["build", "--release"] },
-  { cwd: "crates/worker", cmd: "worker-build", args: ["--release"] },
+  {
+    cwd: "crates/worker",
+    cmd: "worker-build",
+    args: features ? ["--release", "--", "--features", features] : ["--release"],
+  },
 ];
 
 for (const { cwd, cmd, args } of steps) {

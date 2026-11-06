@@ -1,5 +1,8 @@
 mod api;
 pub mod db;
+pub mod github;
+#[cfg(feature = "probe")]
+mod probe;
 mod security;
 mod sync;
 
@@ -14,6 +17,12 @@ pub use sync::Syncer;
 #[event(fetch)]
 async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let path = req.path();
+    #[cfg(feature = "probe")]
+    {
+        if path.starts_with(probe::PREFIX) {
+            return security::apply(probe::handle(&req, &env).await?);
+        }
+    }
     let response = match api::route(req.method().as_ref(), &path) {
         Route::Json { status, body } => json_response(status, body)?,
         Route::Assets => env.assets("ASSETS")?.fetch_request(req).await?,

@@ -16,6 +16,8 @@ wasm-bindgen.workspace = true
 worker = { workspace = true, features = ["d1"] }
 
 [features]
+default = []
+probe = []
 sql-dump = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

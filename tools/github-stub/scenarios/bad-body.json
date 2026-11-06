@@ -1,0 +1,9 @@
+{
+  "extends": "basic",
+  "faults": [
+    { "match": "GET /user", "status": 200, "raw": "<html>not json</html>" },
+    { "match": "GET /rate_limit", "status": 200, "raw": "<html>not json</html>" },
+    { "match": "GET /notifications", "status": 200, "raw": "<html>not json</html>" },
+    { "match": "POST /graphql", "status": 200, "raw": "<html>not json</html>" }
+  ]
+}
