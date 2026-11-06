@@ -60,7 +60,6 @@ CREATE TABLE items (
   CHECK (state IN ('open', 'draft') OR closed_at IS NOT NULL)
 ) STRICT;
 
-CREATE INDEX idx_items_repo ON items (repo);
 
 CREATE INDEX idx_items_me_since ON items (since)
   WHERE turn = 'me' AND state IN ('open', 'draft');
