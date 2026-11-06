@@ -65,7 +65,7 @@ V1 ships three views (Your turn, Pipeline, Their turn); repo cards, trends and a
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| F1 | **Your turn** view: my open PRs and issues whose `turn` is `me`, for one of these reasons (mention, team mention, review requested, changes requested on my PR, CI failed on my PR, assigned, replied: a maintainer's plain comment on my PR or issue), sorted by `since`, how long it has waited. F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
+| F1 | **Your turn** view: every open PR or issue I am part of, mine or someone else's, whose `turn` is `me`, for one of these reasons (mention, team mention, review requested, changes requested on my PR, CI failed on my PR, assigned, replied: a maintainer's plain comment on my PR or issue), sorted by `since`, how long it has waited. F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
 | F2 | Each item shows repo, title, who acted, what happened, age, and a deep link to the exact comment or review | P0 |
 | F3 | **Pipeline** kanban of my open PRs across all repos: Draft, CI running, CI failing, Awaiting review, Changes requested, Approved; plus Merged/Closed in the last 14 days | P0 |
 | F4 | **Their turn**: my PRs and issues whose `turn` is `them`, with days since; flagged amber after 7 days and red after 14 (configurable). F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
@@ -202,12 +202,12 @@ V1 ("Your turn" + pipeline, live from email triggers) is four milestones away; e
 
 **Milestones**
 
-1. **M0 — Skeleton.** Worker + static frontend on radar.karthik.nz, GitHub OAuth with user-ID allowlist, encrypted token storage, D1 migrations. *Done when* only I can sign in.
-2. **M1 — Polling core.** The Syncer runs notifications sync with `If-Modified-Since`/`X-Poll-Interval`, 10-min cron, 90-day PR backfill, GraphQL enrichment, rate-limit tracking. *Done when* the DB matches my GitHub state.
-3. **M2 — Your turn + pipeline (v1).** F1–F5, local dismiss/snooze (F9), freshness panel, mobile layout. *Done when* I use it daily instead of github.com/notifications.
-4. **M3 — Email push.** Email Routing to the Email Worker, header parsing, forwarding, Syncer kicks, coalescing. *Done when* a test mention appears within 2 minutes.
-5. **M4 — Insight.** Activity feed, repo cards, trends, nightly rollup. *Done when* the feed, repo cards, and trends show my real data on the preview deploy.
-6. **M5 — Agent era (optional).** Webhooks on my forks, `agent/*` branch lane, agent check-in API, phone alerts. *Done when* a push to an `agent/` branch on a fork shows in the Agents view within 2 minutes and a mention reaches my phone through Telegram.
+1. **M0: Skeleton.** Worker + static frontend on radar.karthik.nz, GitHub OAuth with user-ID allowlist, encrypted token storage, D1 migrations. *Done when* only I can sign in.
+2. **M1: Polling core.** The Syncer runs notifications sync with `If-Modified-Since`/`X-Poll-Interval`, 10-min cron, 90-day PR backfill, GraphQL enrichment, rate-limit tracking. *Done when* the DB matches my GitHub state.
+3. **M2: Your turn + pipeline (v1).** F1-F5, local dismiss/snooze (F9), freshness panel, mobile layout. *Done when* I use it daily instead of github.com/notifications.
+4. **M3: Email push.** Email Routing to the Email Worker, header parsing, forwarding, Syncer kicks, coalescing. *Done when* a test mention appears within 2 minutes.
+5. **M4: Insight.** Activity feed, repo cards, trends, nightly rollup. *Done when* the feed, repo cards, and trends show my real data on the preview deploy.
+6. **M5: Agent era (optional).** Webhooks on my forks, `agent/*` branch lane, agent check-in API, phone alerts. *Done when* a push to an `agent/` branch on a fork shows in the Agents view within 2 minutes and a mention reaches my phone through Telegram.
 
 **Risks**
 
