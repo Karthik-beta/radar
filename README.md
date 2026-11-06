@@ -37,19 +37,25 @@ Radar is Rust end to end. The Worker uses Cloudflare's `worker` crate, the UI is
 ## Updating the design tokens
 
 1. Edit [`design/tokens.json`](design/tokens.json).
-2. Clone the wiki next to this repository:
+2. Rewrite the Tailwind theme, then commit the result:
+
+   ```bash
+   node scripts/tokens-to-css.mjs
+   ```
+
+3. Clone the wiki next to this repository:
 
    ```bash
    git clone https://github.com/Karthik-beta/radar.wiki.git ../radar.wiki
    ```
 
-3. Regenerate the tokens page:
+4. Regenerate the tokens page:
 
    ```bash
    node scripts/tokens-to-wiki.mjs ../radar.wiki
    ```
 
-4. Commit and push the wiki checkout.
+5. Commit and push the wiki checkout.
 
 ## License
 

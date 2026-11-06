@@ -52,7 +52,7 @@ A new decision gets a new ADR. Copy [docs/adr/template.md](docs/adr/template.md)
 
 ## Design tokens
 
-To change a token, edit `design/tokens.json`, then regenerate the wiki page with `node scripts/tokens-to-wiki.mjs <wiki-checkout>` and push the wiki. The README has the full steps.
+To change a token, edit `design/tokens.json`, run `node scripts/tokens-to-css.mjs` to rewrite `crates/web/style/tokens.css`, then regenerate the wiki page with `node scripts/tokens-to-wiki.mjs <wiki-checkout>` and push the wiki. The README has the full steps.
 
 ## Brand assets
 

@@ -8,3 +8,5 @@ publish.workspace = true
 domain.workspace = true
 gloo-net.workspace = true
 leptos.workspace = true
+leptos_router.workspace = true
+tw_merge.workspace = true

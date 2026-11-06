@@ -1,4 +1,5 @@
 mod api;
+mod security;
 mod sync;
 
 use api::Route;
@@ -12,10 +13,11 @@ pub use sync::Syncer;
 #[event(fetch)]
 async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let path = req.path();
-    match api::route(req.method().as_ref(), &path) {
-        Route::Json { status, body } => json_response(status, body),
-        Route::Assets => env.assets("ASSETS")?.fetch_request(req).await,
-    }
+    let response = match api::route(req.method().as_ref(), &path) {
+        Route::Json { status, body } => json_response(status, body)?,
+        Route::Assets => env.assets("ASSETS")?.fetch_request(req).await?,
+    };
+    security::apply(response)
 }
 
 #[event(scheduled)]
