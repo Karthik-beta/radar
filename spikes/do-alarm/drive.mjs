@@ -29,6 +29,15 @@ if (!key) fail('Set SPIKE_KEY in the environment. It is never read from an argum
 if (!values.url) fail('--url is required, for example https://radar-spike.<account>.workers.dev');
 if (!['ok', 'throw'].includes(values.fixture)) fail('--fixture must be ok or throw');
 const base = values.url.replace(/\/+$/, '');
+let target;
+try {
+  target = new URL(base);
+} catch {
+  fail('--url must be an absolute URL');
+}
+if (target.protocol !== 'https:' && !(target.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(target.hostname))) {
+  fail('--url must use https unless it targets localhost over http');
+}
 const rounds = int('rounds', 1);
 const chain = int('chain', 1);
 const gapMs = int('gap-ms', 0);
