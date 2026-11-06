@@ -17,6 +17,13 @@ const bundles = [
   { name: "ui", dir: values["ui-dir"], budgetKb: Number(values["ui-budget-kb"]) },
 ];
 
+for (const { name, budgetKb } of bundles) {
+  if (!Number.isFinite(budgetKb) || budgetKb <= 0) {
+    console.error(`${name}: budget must be a positive number`);
+    process.exit(2);
+  }
+}
+
 const EXTENSIONS = [".wasm", ".js", ".mjs", ".css"];
 
 function files(dir) {
