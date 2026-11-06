@@ -1865,8 +1865,6 @@ dependencies = [
 name = "web"
 version = "0.0.0"
 dependencies = [
- "domain",
- "gloo-net",
  "leptos",
  "leptos_router",
  "tw_merge",
