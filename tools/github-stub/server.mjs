@@ -331,7 +331,14 @@ export function createStub({ scenario: initial = "basic" } = {}) {
   }
 
   const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, "http://stub");
+    const target = req.url ?? "";
+    const cut = target.indexOf("?");
+    const search = cut < 0 ? "" : target.slice(cut);
+    const url = {
+      pathname: cut < 0 ? target : target.slice(0, cut),
+      search,
+      searchParams: new URLSearchParams(search),
+    };
     if (url.pathname.startsWith("/__")) {
       if ((await control(req, res, url)) !== null) return;
     }
@@ -347,7 +354,7 @@ export function createStub({ scenario: initial = "basic" } = {}) {
     };
     state.log.push(entry);
     try {
-      const route = ROUTES[url.pathname];
+      const route = Object.hasOwn(ROUTES, url.pathname) ? ROUTES[url.pathname] : undefined;
       if (!route || !route.methods.includes(req.method)) {
         if (route || req.method !== "GET") {
           entry.violation = "method_not_allowed";

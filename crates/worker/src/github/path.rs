@@ -15,6 +15,10 @@ impl ApiPath {
         {
             return Err(GithubError::BadConfig);
         }
+        let (route, _) = raw.split_once('?').unwrap_or((raw, ""));
+        if route.contains('%') || route.to_ascii_lowercase().starts_with("/graphql") {
+            return Err(GithubError::BadConfig);
+        }
         let lower = raw.to_ascii_lowercase();
         if ["%2e", "%2f", "%5c"].iter().any(|enc| lower.contains(enc)) {
             return Err(GithubError::BadConfig);
@@ -45,6 +49,12 @@ mod tests {
     }
 
     #[test]
+    fn accepts_an_encoded_query_string_on_a_rest_path() {
+        let ok = "/search/issues?q=is%3Apr+author%3Akarthik";
+        assert_eq!(ApiPath::new(ok).expect(ok).as_str(), ok);
+    }
+
+    #[test]
     fn rejects_double_slash_dotdot_scheme_at_sign_and_backslash() {
         for bad in [
             "//evil.example/x",
@@ -61,6 +71,12 @@ mod tests {
             "/a b",
             "/%2e%2E/x",
             "/a%2Fb",
+            "/%67raphql",
+            "/graphql",
+            "/GraphQL",
+            "/graphql/",
+            "/graphql?query=mutation%20%7B%20addStar%20%7D",
+            "/graphql?query=%6dutation%7Bx%7D",
             "user",
             "",
         ] {

@@ -7,9 +7,17 @@ use crate::github::{query, ApiPath, Client, Conditional, Fetched, GithubError, Q
 
 pub const PREFIX: &str = "/__probe/";
 
+const SECRET_HEADER: &str = "x-probe-secret";
+const MIN_SECRET_LEN: usize = 32;
+
 pub async fn handle(req: &Request, env: &Env) -> Result<Response> {
     if req.method() != Method::Get {
         return reply(405, json!({"error": "method_not_allowed"}));
+    }
+    let secret = setting(env, "PROBE_SECRET");
+    let presented = req.headers().get(SECRET_HEADER)?;
+    if !authorized(&api_base(env), secret.as_deref(), presented.as_deref()) {
+        return reply(401, json!({"error": "unauthorized"}));
     }
     let url = req.url()?;
     let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
@@ -80,16 +88,43 @@ async fn run_query(env: &Env, params: &HashMap<String, String>) -> Result<Respon
 }
 
 fn client(env: &Env) -> std::result::Result<Client, GithubError> {
-    let base = env
-        .var("GITHUB_API_BASE")
-        .map_err(|_| GithubError::BadConfig)?
-        .to_string();
-    let token = env
-        .var("PROBE_TOKEN")
+    let token = setting(env, "PROBE_TOKEN").ok_or(GithubError::BadConfig)?;
+    Client::new(&api_base(env), Token::new(token)?)
+}
+
+fn api_base(env: &Env) -> String {
+    env.var("GITHUB_API_BASE")
         .map(|v| v.to_string())
-        .or_else(|_| env.secret("PROBE_TOKEN").map(|s| s.to_string()))
-        .map_err(|_| GithubError::BadConfig)?;
-    Client::new(&base, Token::new(token)?)
+        .unwrap_or_default()
+}
+
+fn setting(env: &Env, name: &str) -> Option<String> {
+    env.var(name)
+        .map(|v| v.to_string())
+        .or_else(|_| env.secret(name).map(|s| s.to_string()))
+        .ok()
+}
+
+// `Client::new` accepts only api.github.com over https or a loopback stub over http,
+// so an http base is a local stub lane and needs no secret.
+fn authorized(base: &str, secret: Option<&str>, presented: Option<&str>) -> bool {
+    if base.starts_with("http://") {
+        return true;
+    }
+    match (secret, presented) {
+        (Some(secret), Some(presented)) => {
+            secret.len() >= MIN_SECRET_LEN && constant_time_eq(secret, presented)
+        }
+        _ => false,
+    }
+}
+
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    a.len() == b.len()
+        && a.bytes()
+            .zip(b.bytes())
+            .fold(0u8, |diff, (x, y)| diff | (x ^ y))
+            == 0
 }
 
 fn error_json(code: &str, err: Option<&GithubError>) -> Value {
@@ -116,4 +151,40 @@ fn error_json(code: &str, err: Option<&GithubError>) -> Value {
 
 fn reply(status: u16, body: Value) -> Result<Response> {
     Ok(Response::from_json(&body)?.with_status(status))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const API: &str = "https://api.github.com";
+    const SECRET: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn loopback_stub_lanes_need_no_secret() {
+        assert!(authorized("http://127.0.0.1:8906", None, None));
+        assert!(authorized("http://localhost:8906", Some("short"), None));
+    }
+
+    #[test]
+    fn deployed_probe_requires_the_matching_secret() {
+        assert!(authorized(API, Some(SECRET), Some(SECRET)));
+        assert!(!authorized(API, Some(SECRET), None));
+        assert!(!authorized(API, Some(SECRET), Some("wrong")));
+        assert!(!authorized(API, Some(SECRET), Some(&SECRET[..31])));
+        assert!(!authorized(API, None, Some(SECRET)));
+        assert!(!authorized(API, None, None));
+    }
+
+    #[test]
+    fn a_secret_shorter_than_32_bytes_never_authorizes() {
+        let short = &SECRET[..31];
+        assert!(!authorized(API, Some(short), Some(short)));
+        assert!(!authorized(API, Some(""), Some("")));
+    }
+
+    #[test]
+    fn an_unset_base_is_not_a_stub_lane() {
+        assert!(!authorized("", None, None));
+    }
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readdirSync } from "node:fs";
+import { connect } from "node:net";
 import { once } from "node:events";
 import { dirname, join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -22,11 +23,24 @@ async function start(scenario = "basic") {
   const log = async () => (await call("/__log")).json();
   const swap = (name) =>
     call("/__scenario", { method: "POST", body: JSON.stringify({ name }) });
-  const close = () => {
-    stub.server.closeAllConnections();
-    stub.server.close();
-  };
+  const close = () =>
+    new Promise((resolve, reject) => {
+      stub.server.close((err) => (err ? reject(err) : resolve()));
+      stub.server.closeAllConnections();
+    });
   return { stub, base, call, authed, log, swap, close };
+}
+
+function rawRequest(port, target) {
+  return new Promise((resolve, reject) => {
+    const socket = connect(port, "127.0.0.1", () => {
+      socket.write(`GET ${target} HTTP/1.1\r\nHost: stub\r\nConnection: close\r\n\r\n`);
+    });
+    let data = "";
+    socket.on("data", (chunk) => (data += chunk));
+    socket.on("end", () => resolve(data));
+    socket.on("error", reject);
+  });
 }
 
 describe("endpoints", () => {
@@ -92,6 +106,21 @@ describe("endpoints", () => {
     assert.equal((await s.authed("/nope")).status, 404);
     const [entry] = await s.log();
     assert.equal(entry.violation, null);
+  });
+
+  it("double_slash_targets_are_logged_as_received_and_do_not_crash_the_stub", async () => {
+    await s.call("/__log/clear", { method: "POST" });
+    const port = s.stub.server.address().port;
+    for (const target of ["//user", "//", "//user?a=b"]) {
+      assert.match(await rawRequest(port, target), /^HTTP\/1\.1 404 /, target);
+    }
+    assert.equal((await s.authed("/user")).status, 200);
+    const log = await s.log();
+    assert.deepEqual(
+      log.slice(0, 3).map((e) => [e.path, e.query]),
+      [["//user", ""], ["//", ""], ["//user", "a=b"]],
+    );
+    assert.ok(log.slice(0, 3).every((e) => e.violation === null));
   });
 
   it("log_records_auth_presence_but_never_the_token", async () => {
