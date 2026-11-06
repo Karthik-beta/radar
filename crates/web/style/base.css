@@ -1,0 +1,45 @@
+@layer base {
+  :root {
+    color-scheme: dark;
+    --gutter: var(--spacing-6);
+  }
+
+  html,
+  body {
+    background-color: var(--color-bg);
+  }
+
+  body {
+    margin: 0;
+    color: var(--color-text);
+    font-family: var(--font-ui);
+    font-size: var(--text-body);
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-text);
+    outline-offset: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@media (max-width: 600px) {
+  :root {
+    --gutter: var(--spacing-4);
+  }
+
+  nav {
+    scrollbar-width: none;
+  }
+}

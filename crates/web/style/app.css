@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@import "./tokens.css";
+@import "./base.css";
+
+@source "../src";
+
+@custom-variant phone-down (@media (width <= theme(--breakpoint-phone)));
