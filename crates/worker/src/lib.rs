@@ -1,4 +1,5 @@
 mod api;
+pub mod db;
 pub mod github;
 #[cfg(feature = "probe")]
 mod probe;

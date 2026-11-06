@@ -62,6 +62,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p radar-worker --all-targets --features sql-dump -- -D warnings
       - run: cargo clippy -p radar-worker --all-targets --features probe -- -D warnings
 
   test:
