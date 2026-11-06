@@ -33,7 +33,7 @@ Every change reaches `main` through a pull request. The full rules are in [docs/
 1. An Opus owner is responsible for each PR from branch to merge.
 2. CodeRabbit reviews every PR, configured by [.coderabbit.yaml](.coderabbit.yaml). Answer every comment. Fix what is real, and reply with a reason to what is not.
 3. Merge only when CI is green, CodeRabbit has approved, and every other review has passed.
-4. Then mark every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>`, submit a review with `gh pr review <number> --comment`, and squash-merge with `gh pr merge <number> --squash --delete-branch`.
+4. Then mark every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>`, submit a review with `gh pr review <number> --comment --body "<verdict, CodeRabbit result, and evidence links>"`, and squash-merge with `gh pr merge <number> --squash --delete-branch`.
 
 These `gh` commands are developer tooling. They do not change the rule that Radar itself never writes to GitHub.
 

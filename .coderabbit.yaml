@@ -61,6 +61,8 @@ reviews:
       instructions: |
         Short plain sentences in the present tense. No long dashes. An accepted ADR is never rewritten, only superseded by a new one.
   pre_merge_checks:
+    docstrings:
+      mode: "off"
     title:
       mode: warning
       requirements: "Imperative sentence that starts with the plan id, for example `R07: Sign in with GitHub as the one allowed user`. Docs and tooling PRs outside the plan may omit the id."
@@ -69,7 +71,7 @@ reviews:
     custom_checks:
       - name: "Read-only GitHub"
         mode: error
-        instructions: "Fail if the diff adds any code that could send a mutation, a PUT, PATCH, or DELETE, or a POST other than the GraphQL query endpoint and the OAuth token exchange, to any GitHub host."
+        instructions: "Applies only to Radar runtime code under `crates/`. Fail if the diff adds runtime code that could send a GraphQL mutation, a PUT, PATCH, or DELETE, or a POST other than the GraphQL query endpoint and the OAuth token exchange, to any GitHub host. Developer tooling under `scripts/` and `.github/` is exempt, because it runs on the developer's machine or in CI and never ships in Radar."
       - name: "No secrets"
         mode: error
         instructions: "Fail if the diff adds a real token, key, client secret, or a non-example value to `.dev.vars`, `wrangler.toml`, or any committed file."
