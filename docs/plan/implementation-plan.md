@@ -55,7 +55,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
   - [ ] `crates/domain/**` belongs to R03. Later PRs add to it only in PR order, never in parallel.
   - [ ] `migrations/**` gains one new numbered file per PR, with the next free number on `main`. No PR edits an earlier migration.
   - [ ] `crates/worker/src/sync/**` belongs to R08 to R11, which run in sequence. R20 edits the `Rollup` arm, R22 adds `WorkKind::SeedHistory`, and R24 adds `WorkKind::SendAlerts`, each only in PR order, and each owner tells the root before editing.
-  - [ ] `crates/web/src/views/**` gains one file per view PR. Shared components in `crates/web/src/components/**` change in R13, or later in PR order. R20 to R23 each add one `Tab` variant in `crates/web/src/components/tabs.rs`, in stack order.
+  - [ ] `crates/web/src/views/**` gains one file per view PR. Shared components in `crates/web/src/components/**` change in R13, or later in PR order. Components copied from rust-ui live in `crates/web/src/components/ui/`, follow the rules in ADR 0006, and are added only by the PR that first uses them. R20 to R23 each add one `Tab` variant in `crates/web/src/components/tabs.rs`, in stack order.
   - [ ] `tools/github-stub/**` belongs to R06. Later PRs add scenarios, extend `tools/github-stub/scenarios/make.mjs` (from R10), and teach `server.mjs` new queries, only in PR order.
 - [ ] Hold the review gate. R05, R07, R13, R14, R15, R16, R17, R19, R20, R21, R22, and R23 change what the operator sees or does. They wait for the operator's review in chat with screenshots and a video before merge.
 
@@ -392,8 +392,8 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 - [ ] Create `scripts/lib/tokens.mjs` (token walk and value formatters), `scripts/tokens-to-css.mjs`, `scripts/tokens-to-css.test.mjs`, and `scripts/check-dist.mjs`.
 - [ ] Edit `scripts/tokens-to-wiki.mjs` to import its walk and formatters from `scripts/lib/tokens.mjs`.
-- [ ] Create `crates/web/style/tokens.css` (generated) and `crates/web/style/base.css`.
-- [ ] Edit `crates/web/index.html`, `crates/web/Trunk.toml`, and `crates/web/Cargo.toml` (add `leptos_router`).
+- [ ] Create `crates/web/style/tokens.css` (generated), `crates/web/style/base.css`, and `crates/web/style/app.css`, the Tailwind entry file.
+- [ ] Edit `crates/web/index.html`, `crates/web/Trunk.toml` (pin the Tailwind version), and `crates/web/Cargo.toml` (add `leptos_router` and `tw_merge`, which rust-ui components use).
 - [ ] Edit `crates/web/src/main.rs` and `crates/web/src/app.rs`. Create `crates/web/src/components/mod.rs`, `crates/web/src/components/tabs.rs`, `crates/web/src/components/header.rs`, and `crates/web/src/views/mod.rs`, `crates/web/src/views/not_found.rs`.
 - [ ] Create `crates/worker/src/security.rs`. Edit `crates/worker/src/lib.rs` and `wrangler.toml`.
 - [ ] Edit `.github/workflows/ci.yml` and `AGENTS.md`.
@@ -402,9 +402,10 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 - [ ] Name the data shapes first. `Tab { YourTurn, TheirTurn, Pipeline, Merged }` in `crates/web/src/components/tabs.rs` with `Tab::ALL` (the ADR 0003 order), `label()`, `href()` (`/`, `/theirs`, `/pipeline`, and `/pipeline` for Merged, which then scrolls to the recent list), and `from_path(&str) -> Option<Tab>`, which never returns `Merged`. Routes are paths, never `#` hashes. In the Worker, `Csp` is a const table of directive and source list pairs, and `HEADERS` is a const list of four name and value pairs built from it. Later view PRs add a variant and a row, never a string edit.
 - [ ] `scripts/lib/tokens.mjs` holds the `collect` walk and the formatters now in `scripts/tokens-to-wiki.mjs`. Both generators import it. Before the edit, run `node scripts/tokens-to-wiki.mjs /tmp/wiki-before`. After it, run the script into `/tmp/wiki-after`. `diff -r` must print nothing, and the owner records that in the PR body.
-- [ ] `scripts/tokens-to-css.mjs` writes `crates/web/style/tokens.css` as one `:root` block with a "Generated, do not edit" header. Names follow the wiki script, such as `--color-bg`, `--font-family-ui`, `--space-4`, and `--motion-duration-dismiss`. `--check` exits 1 when the file differs from the generated text. An unknown `$type` exits non-zero. The output is sorted and byte-stable.
-- [ ] `crates/web/style/base.css` sets `color-scheme: dark`, the page background `var(--color-bg)`, text `var(--color-text)`, the UI font at `var(--font-size-body)`, and tabular figures. It sets a visible `:focus-visible` ring and removes motion under `prefers-reduced-motion`. It has one `@media (max-width: 600px)` block, which the test compares with `--breakpoint-phone`. It holds no hex colors.
-- [ ] `crates/web/index.html` has the head from ADR 0004 (icons, manifest, `theme-color`, the font preload, `/fonts/fonts.css`) and Trunk links for the Rust app, `style/tokens.css`, `style/base.css`, and a copy of `public/` into the dist root. After `trunk build`, the files must sit at `/fonts/schibsted-grotesk.woff2`, `/icon.svg`, and `/manifest.webmanifest`. If `copy-dir` nests them, use `data-target-path` or a `post_build` hook.
+- [ ] `scripts/tokens-to-css.mjs` writes `crates/web/style/tokens.css` as one Tailwind v4 `@theme` block with a "Generated, do not edit" header (ADR 0006). The block starts with `--*: initial;`, so every Tailwind default is gone, not only the colours. Each token group maps to its Tailwind v4 namespace, as ADR 0006 lists, so names are `--color-bg`, `--font-ui`, `--text-body`, `--font-weight-medium`, `--spacing-4`, `--radius-md`, `--breakpoint-phone`, and `--ease-standard`. Motion durations have no namespace and become `--duration-dismiss`. Tailwind emits them as custom properties on `:root`, so plain CSS can still use `var(--color-bg)`. `--check` exits 1 when the file differs from the generated text. An unknown `$type` exits non-zero. The output is sorted and byte-stable.
+- [ ] `crates/web/style/app.css` holds `@import "tailwindcss";`, then imports `tokens.css` and `base.css`, and names the Rust sources with `@source "../src";`. `index.html` links it with `<link data-trunk rel="tailwind-css" href="style/app.css">`, so Trunk runs the pinned standalone Tailwind binary and no Node package is added. If Trunk cannot run Tailwind v4, `scripts/build.mjs` runs the pinned standalone binary on `style/app.css` before `trunk build` and writes `style/app.out.css`, which git ignores. `index.html` then links `style/app.out.css` with `rel="css"` and has no `rel="tailwind-css"` link, so Trunk runs no Tailwind step. The owner writes the choice in the PR body.
+- [ ] `crates/web/style/base.css` sets `color-scheme: dark`, the page background `var(--color-bg)`, text `var(--color-text)`, the UI font at `var(--text-body)`, and tabular figures. It sets a visible `:focus-visible` ring and removes motion under `prefers-reduced-motion`. It has one `@media (max-width: 600px)` block, which the test compares with `--breakpoint-phone`. It holds no hex colors.
+- [ ] `crates/web/index.html` has the head from ADR 0004 (icons, manifest, `theme-color`, the font preload, `/fonts/fonts.css`) and Trunk links for the Rust app, the Tailwind entry `style/app.css`, and a copy of `public/` into the dist root. After `trunk build`, the files must sit at `/fonts/schibsted-grotesk.woff2`, `/icon.svg`, and `/manifest.webmanifest`. If `copy-dir` nests them, use `data-target-path` or a `post_build` hook.
 - [ ] Trunk's default init script is inline, and the CSP forbids inline scripts. Make Trunk emit an external script instead. Use `pattern_script` in `Trunk.toml`, or `filehash = false` with a static `boot.js`, whichever Trunk supports. The owner writes the choice in the PR body.
 - [ ] `scripts/check-dist.mjs` fails unless `crates/web/dist` holds `index.html`, both `.woff2` fonts, `fonts/fonts.css`, `manifest.webmanifest`, the three PNG icons, `icon.svg`, and `favicon.ico`, and unless `index.html` has no inline `<script>` body.
 - [ ] `App` renders `Header` (the text wordmark "Radar" and a `nav` of the four tabs with `aria-current="page"` on the active one) over an empty main area, using `leptos_router`. A path that matches no `Tab` shows `not_found` inside the shell. Tabs show their label only, with no counts yet. The phone layout follows `prototypes/direction-ac.html` at 600 px and below, where the tabs take their own row and scroll sideways.
@@ -422,7 +423,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `scripts/tokens-to-css.test.mjs` gains `every_token_becomes_a_custom_property`, `output_is_byte_stable`, `check_flags_a_stale_file`, `unknown_type_exits_nonzero`, `no_hex_literal_outside_tokens_css`, and `breakpoint_matches_the_base_css_media_query`. Run `node --test scripts`.
+- [ ] `scripts/tokens-to-css.test.mjs` gains `every_token_becomes_a_custom_property`, `output_is_byte_stable`, `check_flags_a_stale_file`, `unknown_type_exits_nonzero`, `no_hex_literal_outside_tokens_css`, `no_arbitrary_or_off_token_class_in_rust_sources`, `every_tailwind_default_is_cleared`, `each_group_uses_its_tailwind_namespace`, and `breakpoint_matches_the_base_css_media_query`. Run `node --test scripts`.
 - [ ] `crates/web/src/components/tabs.rs` gains `from_path_round_trips_every_routed_tab`, `merged_links_to_the_pipeline`, `unknown_path_is_none`, and `all_follows_the_adr_order`. Run `cargo test -p web`.
 - [ ] `crates/worker/src/security.rs` gains `csp_denies_by_default`, `csp_never_allows_unsafe_inline_or_eval`, `all_four_headers_are_set`, and `a_weaker_upstream_csp_is_overwritten`. Run `cargo test -p worker security::`.
 - [ ] Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `node scripts/build.mjs`.
@@ -988,6 +989,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 - [ ] Create `crates/web/src/api.rs` (fetch client and `ApiError`), `crates/web/src/store.rs` (the load state machine), `crates/web/src/keys.rs` (the pure key reducer), `crates/web/src/heat.rs` (age heat and age words), and `crates/web/src/url.rs` (`is_github_url`).
 - [ ] Create the shared components in `crates/web/src/components/`. They are `triage_row.rs`, `age.rs`, `key_hints.rs`, `count_block.rs`, `empty_state.rs`, and `snooze_menu.rs`. Later view PRs reuse these and change them only in PR order.
+- [ ] Copy rust-ui's dropdown menu into `crates/web/src/components/ui/dropdown_menu.rs` and build `snooze_menu.rs` on it, per ADR 0006. Rewrite its colour classes to token names, keep it working under the CSP, and record the rust-ui commit in the PR body.
 - [ ] Create `crates/web/src/views/your_turn.rs` and `crates/web/style/your-turn.css`. Edit `crates/web/src/app.rs` for the tab counters and the sync time, and `crates/web/index.html` to link the stylesheet.
 - [ ] Edit `crates/web/Cargo.toml` to add the fetch dependency (`gloo-net`) and the `web-sys` features the view uses.
 - [ ] Edit `tools/github-stub/scenarios/make.mjs` to add kinds `your-turn-edge` (ages of 23, 25, 71, and 73 hours, a CI failure, an agent item), `your-turn-hostile`, and `your-turn-theirs-only`.
@@ -1279,7 +1281,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 - [ ] Create `scripts/check-contrast.mjs`, which reads `design/tokens.json` and checks every text and background pair the UI uses.
 - [ ] Create `scripts/audit-a11y.mjs`, which runs Lighthouse's accessibility category on each view with the session cookie from a curl jar.
 - [ ] Edit the stylesheets in `crates/web/style/` for focus rings, tap targets, reflow, and `prefers-reduced-motion`. Edit `design/tokens.json` and regenerate `crates/web/style/tokens.css` with `node scripts/tokens-to-css.mjs`, only if the contrast script fails a pair.
-- [ ] Create `docs/adr/0006-faint-contrast.md` from `docs/adr/template.md`. Edit `docs/adr/README.md` to add its row, and edit the status line and row of ADR 0003 to read "Superseded in part by 0006", as the ADR README's "Change a decision" section says.
+- [ ] Create `docs/adr/0007-faint-contrast.md` from `docs/adr/template.md`. Edit `docs/adr/README.md` to add its row, and edit the status line and row of ADR 0003 to read "Superseded in part by 0007", as the ADR README's "Change a decision" section says.
 - [ ] Edit `crates/web/src/app.rs`, `crates/web/src/components/triage_row.rs`, and `crates/web/src/components/snooze_menu.rs` for landmarks, the live region, and per-view document titles. Edit `crates/web/index.html` for `lang` and the viewport meta.
 - [ ] Edit `scripts/build-assets.mjs` only if the manifest needs a change. Never edit `public/manifest.webmanifest` by hand (ADR 0004).
 - [ ] Edit `.github/workflows/ci.yml` to run `node scripts/check-contrast.mjs`.
@@ -1289,7 +1291,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 - [ ] Name the data shape first. `scripts/check-contrast.mjs` holds a table `PAIRS = [{ fg, bg, min, use }]` of token names, for example `text` on `bg` at 4.5, `muted` on `surface` at 4.5, and `faint` on `surface` at 4.5, with large text and focus rings at 3. It computes WCAG contrast from `design/tokens.json`, prints one line per pair, and exits 1 on any failure.
 - [ ] Run it first. Measured by hand on 2026-11-05, `faint` is 2.90 on `bg` and 2.68 on `surface`, against 4.5 needed for the sync time, key hints, and agent mark. `muted`, `warm`, `hot`, and `red` all pass. Lighten `faint` to the darkest value that passes 4.5 on `surface`, keep it below `muted` in lightness, regenerate the CSS, and show before and after at the review gate. The operator may veto the value there.
-- [ ] Record the change in `docs/adr/0006-faint-contrast.md`, which supersedes the `faint` value in ADR 0003 instead of silently changing a recorded value. It states the old value `#5d6069`, the new value, the measured ratios on `bg` and `surface` before and after, and the text that uses `faint`. ADR 0003 keeps its text and gains only the status that points to 0006.
+- [ ] Record the change in `docs/adr/0007-faint-contrast.md`, which supersedes the `faint` value in ADR 0003 instead of silently changing a recorded value. It states the old value `#5d6069`, the new value, the measured ratios on `bg` and `surface` before and after, and the text that uses `faint`. ADR 0003 keeps its text and gains only the status that points to 0007.
 - [ ] Tell the operator in the handover that the wiki page needs `node scripts/tokens-to-wiki.mjs <wiki-checkout>` and a push, because that is a public write the owner does not make (AGENTS.md).
 - [ ] Focus. One rule, `:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }`, on every interactive element. No rule removes an outline without replacing it.
 - [ ] Reduced motion. Under `@media (prefers-reduced-motion: reduce)`, the dismiss slide and every transition and animation get a duration of 0, and the row simply disappears.
@@ -1971,6 +1973,7 @@ These stay unproven until R02 runs on Cloudflare.
 | A development login that skips OAuth | Code that can mint a session without GitHub would exist in production. The stub emulates GitHub's OAuth endpoints instead |
 | Queues and KV for sync, as in the PRD | Replaced by the Syncer in ADR 0002. R02 decides whether the Queue fallback is needed |
 | The operator lands every PR (`autopilot-stack`) | The operator wants each PR reviewed by CodeRabbit and merged by its Opus owner. Deploys stay with the operator |
+| Hand-written components on plain CSS (ADR 0005) | ADR 0006 chose rust-ui components copied into the repository, styled with Tailwind on the tokens |
 | One long stack of unmerged PRs | Each PR merges before the next one starts, so `main` always holds the verified work and CodeRabbit reviews small diffs |
 
 ## Appendix C. Risks
@@ -1985,13 +1988,14 @@ These stay unproven until R02 runs on Cloudflare.
 | `cursor-team-kit` control skills are not installed | Every live lane | Lanes drive the browser through the Playwright MCP server or the Claude browser pane instead |
 | The Playwright MCP server failed to connect in the planning session | Every web lane | Check it at program start. Fall back to the Claude browser pane |
 | GitHub notification email is delayed or off for some events | R18, R19 | The 10-minute poll still catches every change. R19 warns after 24 hours of silence |
-| The `faint` token (`#5d6069`) has 2.90 to 1 contrast on `bg`, below the 4.5 to 1 that WCAG AA needs for text | R17 | R17 lightens `faint` in `design/tokens.json` and records it in ADR 0006, which supersedes ADR 0003's value. The operator can veto at the review gate |
+| The `faint` token (`#5d6069`) has 2.90 to 1 contrast on `bg`, below the 4.5 to 1 that WCAG AA needs for text | R17 | R17 lightens `faint` in `design/tokens.json` and records it in ADR 0007, which supersedes ADR 0003's value. The operator can veto at the review gate |
+| Trunk cannot run Tailwind v4, or a copied rust-ui component breaks the CSP | R05, R13 | R05 falls back to running the standalone Tailwind binary from `scripts/build.mjs`. Lane 6 of R05 and the CSP checks in later lanes catch a component that sets a `style` attribute or ships a script |
 | `reviewDecision` is empty on repos without required reviews | R03, R10 | Stage comes from the latest review per reviewer. R03 has a test for it |
 
 ## Appendix D. Links and reading list
 
 - Read before editing anything. `AGENTS.md`, `docs/prd.md`, and every file in `docs/adr/`.
-- Read before UI work. `docs/adr/0003-design.md`, `design/tokens.json`, and `prototypes/direction-ac.html`.
+- Read before UI work. `docs/adr/0003-design.md`, `docs/adr/0006-ui-components.md`, `design/tokens.json`, `prototypes/direction-ac.html`, and the rust-ui Leptos docs at `https://leptos.rust-ui.com`.
 - Read before Worker work. The `workers-rs` README and examples, and `spikes/rust-fit/worker-size/src/lib.rs`.
 - Run the pstack `how` skill before R07, R08, and R10, because each changes how data enters Radar.
 - Run the pstack `interrogate` skill before handing over R03, R07, and R08, because a wrong rule there corrupts everything after it.

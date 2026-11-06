@@ -54,7 +54,7 @@ reviews:
         Pure rules shared by the Worker and the UI. Flag any dependency on `worker`, `leptos`, or I/O. Prefer enums and state machines over booleans. Tests should assert behavior through `classify` and public types, not internals.
     - path: "crates/web/**"
       instructions: |
-        Leptos UI. Every colour, size, spacing, radius, and motion value comes from the CSS custom properties generated from design/tokens.json. Flag hard-coded values. Colour has two jobs only: time waited (warm, hot) and failing CI (red). Check keyboard access, visible focus, 375 px layouts, and prefers-reduced-motion. Nothing may load from a third-party origin.
+        Leptos UI. Every colour, size, spacing, radius, and motion value comes from design/tokens.json, through the Tailwind theme or the CSS custom properties generated from it (ADR 0006). Flag hard-coded values, arbitrary Tailwind values, and colour classes outside the tokens. Components in crates/web/src/components/ui/ are copied from rust-ui and owned by Radar. They must work under the CSP without 'unsafe-inline'. Colour has two jobs only: time waited (warm, hot) and failing CI (red). Check keyboard access, visible focus, 375 px layouts, and prefers-reduced-motion. Nothing may load from a third-party origin.
     - path: "migrations/**"
       instructions: |
         D1 is SQLite. Never edit an earlier migration. Check that every dashboard query has a supporting index and that upserts are idempotent.

@@ -5,7 +5,7 @@ Radar is a single-user, read-only dashboard for one person's open-source work, r
 ## Read before you change anything
 
 - [docs/adr/](docs/adr/README.md) holds every accepted decision. When an ADR disagrees with the PRD, the ADR wins. Each ADR lists the PRD sections it replaces.
-- [design/tokens.json](design/tokens.json) holds every colour, size, spacing, radius, and motion value. UI code uses these tokens and never hard-codes a value.
+- [design/tokens.json](design/tokens.json) holds every colour, size, spacing, radius, and motion value. UI code uses these tokens through Tailwind classes or CSS custom properties and never hard-codes a value. UI components come from rust-ui, copied into the repository, as [ADR 0006](docs/adr/0006-ui-components.md) describes.
 
 ## Rules that must not break
 
