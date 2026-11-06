@@ -1,0 +1,56 @@
+name = "radar"
+main = "crates/worker/build/worker/shim.mjs"
+compatibility_date = "2026-10-01"
+workers_dev = false
+routes = [{ pattern = "radar.karthik.nz", custom_domain = true }]
+
+[build]
+command = "node scripts/build.mjs"
+watch_dir = ["crates/domain/src", "crates/worker/src", "crates/web/src", "crates/web/style", "crates/web/index.html"]
+
+[assets]
+directory = "crates/web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/auth/*", "/hooks/*", "/__*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "radar"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "SYNCER"
+class_name = "Syncer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Syncer"]
+
+[triggers]
+crons = ["*/10 * * * *", "0 3 * * *"]
+
+[env.preview]
+name = "radar-preview"
+workers_dev = true
+routes = []
+
+[env.preview.assets]
+directory = "crates/web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/auth/*", "/hooks/*", "/__*"]
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "radar-preview"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[env.preview.durable_objects.bindings]]
+name = "SYNCER"
+class_name = "Syncer"
+
+[env.preview.triggers]
+crons = ["*/10 * * * *", "0 3 * * *"]

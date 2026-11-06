@@ -1,0 +1,20 @@
+[package]
+name = "radar-worker"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "radar_worker"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+domain.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true
+worker.workspace = true
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

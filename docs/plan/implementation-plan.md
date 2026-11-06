@@ -120,8 +120,8 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] `wrangler.toml` declares D1 binding `DB` (database `radar`, `migrations_dir = "migrations"`, placeholder `database_id` the operator replaces at the first deploy), Durable Object binding `SYNCER` for class `Syncer` with `[[migrations]] tag = "v1"` and `new_sqlite_classes = ["Syncer"]`, `[triggers] crons = ["*/10 * * * *", "0 3 * * *"]`, and `routes` with the custom domain `radar.karthik.nz`. Production sets `workers_dev = false`.
 - [ ] `wrangler.toml` has `[env.preview]` for a Worker named `radar-preview` with its own D1 database `radar-preview`, the same Durable Object, assets and crons, `workers_dev = true`, and no routes. Every later PR that needs real Cloudflare CPU numbers uses it. The operator deploys it with `npx wrangler deploy --env preview`.
 - [ ] `scripts/build.mjs` runs `trunk build --release` in `crates/web`, then `worker-build --release` in `crates/worker`, and exits non-zero when either fails. It always builds the UI first, because Wrangler needs `crates/web/dist` to exist at start.
-- [ ] `scripts/check-size.mjs` gzips (level 9) every `.wasm`, `.js`, `.mjs`, and `.css` file under `crates/worker/build/worker` and `crates/web/dist`, prints one line per bundle with its budget, and exits 1 above 400 KB for the Worker or 200 KB for the UI. It exits 2 when a directory is missing or holds no files, so an empty build never passes. Flags are `--worker-budget-kb`, `--ui-budget-kb`, `--worker-dir`, and `--ui-dir`.
-- [ ] `.github/workflows/ci.yml` runs on push and pull request with `permissions: contents: read`. Jobs are `fmt` (`cargo fmt --all --check`), `clippy` (`cargo clippy --workspace --all-targets -- -D warnings`), `test` (`cargo test --workspace` and `node --test scripts`), `wasm` (`node scripts/build.mjs`), and `size` (`node scripts/check-size.mjs` after `wasm`). Pin `trunk` and the `worker-build` release that matches `worker` 0.8 with `cargo install --locked`, cache with `Swatinem/rust-cache`, and pin every third-party action to a full commit SHA.
+- [ ] `scripts/check-size.mjs` gzips (level 9) every `.wasm`, `.js`, `.mjs`, and `.css` file under `crates/worker/build` and `crates/web/dist`, prints one line per bundle with its budget, and exits 1 above 400 KB for the Worker or 200 KB for the UI. It exits 2 when a directory is missing or holds no files, so an empty build never passes. Flags are `--worker-budget-kb`, `--ui-budget-kb`, `--worker-dir`, and `--ui-dir`.
+- [ ] `.github/workflows/ci.yml` runs on push and pull request with `permissions: contents: read`. Jobs are `fmt` (`cargo fmt --all --check`), `clippy` (`cargo clippy --workspace --all-targets -- -D warnings`), `test` (`cargo test --workspace` and `node --test "scripts/*.test.mjs"`), `wasm` (`node scripts/build.mjs`), and `size` (`node scripts/check-size.mjs` after `wasm`). Pin `trunk` and the `worker-build` release that matches `worker` 0.8 with `cargo install --locked`, cache with `Swatinem/rust-cache`, and pin every third-party action to a full commit SHA.
 - [ ] `AGENTS.md` lists `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `node scripts/build.mjs`, `node scripts/check-size.mjs`, and `npx wrangler dev`. It says lane worktrees may share `CARGO_TARGET_DIR` to reuse compiled dependencies.
 
 **You see.**
@@ -136,8 +136,8 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [ ] `crates/domain/src/health.rs` gains `health_serializes_status_and_version` and `unknown_status_is_rejected`. `crates/domain/src/error.rs` gains `error_body_uses_snake_case_codes`. Run `cargo test -p domain`.
-- [ ] `crates/worker/src/api.rs` gains `unknown_api_path_maps_to_not_found` and `unknown_double_underscore_path_maps_to_not_found`, which check the status and the `ErrorBody` the router builds for `/api/nope` and `/__nope`. Run `cargo test -p worker`.
-- [ ] `scripts/check-size.test.mjs` gains `under_budget_exits_0`, `over_budget_exits_1`, and `missing_dir_exits_2`, each on temporary directories. Run `node --test scripts`.
+- [ ] `crates/worker/src/api.rs` gains `unknown_api_path_maps_to_not_found` and `unknown_double_underscore_path_maps_to_not_found`, which check the status and the `ErrorBody` the router builds for `/api/nope` and `/__nope`. Run `cargo test -p radar-worker`.
+- [ ] `scripts/check-size.test.mjs` gains `under_budget_exits_0`, `over_budget_exits_1`, and `missing_dir_exits_2`, each on temporary directories. Run `node --test "scripts/*.test.mjs"`.
 - [ ] Every crate compiles for Wasm. Run `cargo build --workspace --target wasm32-unknown-unknown --release` and `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe. The GitHub stub and the migrations do not exist yet, so lanes skip those two boot steps.
@@ -148,7 +148,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Lane 4. Request unknown paths with `curl -i http://127.0.0.1:<8800 + n>/api/nope` and `curl -i http://127.0.0.1:<8800 + n>/__nope`. Save `r01-api-404.png`. Pass when both statuses are 404, both content types are JSON, and both bodies are `{"error":"not_found"}`, not the hello page.
 - [ ] Lane 5. Open the deep link `http://127.0.0.1:<8800 + n>/some/deep/link` in the browser. Save `r01-spa-fallback.png`. Pass when the status is 200 and the hello page renders, which proves the single page application fallback.
 - [ ] Lane 6. Start Radar per the boot recipe with `--test-scheduled` added and run `curl "http://127.0.0.1:<8800 + n>/__scheduled?cron=*%2F10+*+*+*+*"`. Save `r01-cron.png` as a terminal capture of the request and the `wrangler dev` log. Pass when the log shows `scheduled reconcile` followed by `syncer kick`, which proves the cron wiring and the Durable Object binding.
-- [ ] Lane 7. Plant `let _ = Some(1).unwrap();` in `crates/worker/src/api.rs` and run `cargo clippy -p worker -- -D warnings`. Revert the change. Save `r01-clippy-gate.png` as a terminal capture. Pass when clippy fails with `clippy::unwrap_used` and the revert leaves `git diff` empty.
+- [ ] Lane 7. Plant `let _ = Some(1).unwrap();` in `crates/worker/src/api.rs` and run `cargo clippy -p radar-worker -- -D warnings`. Revert the change. Save `r01-clippy-gate.png` as a terminal capture. Pass when clippy fails with `clippy::unwrap_used` and the revert leaves `git diff` empty.
 - [ ] Lane 8. Read the CI run for the head SHA with `gh run list --commit <sha>` and `gh run view <id>`. Save `r01-ci.png` as a terminal capture. Pass when `fmt`, `clippy`, `test`, `wasm`, and `size` all conclude `success`.
 - [ ] Lane 9. Run `node scripts/check-size.mjs`, then `node scripts/check-size.mjs --worker-budget-kb 1`. Save `r01-size-gate.png` as a terminal capture. Pass when the first run exits 0 and the second exits 1 with the Worker line marked over budget.
 - [ ] Lane 10. Run `node scripts/build.mjs` twice, then `git status --porcelain` and `git check-ignore .dev.vars artifacts/review/x.mp4 crates/web/dist crates/worker/build target`. Save `r01-clean-tree.png` as a terminal capture. Pass when the second build succeeds, `git status --porcelain` prints nothing, and every named path is ignored.
@@ -207,7 +207,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `spikes/do-alarm/summarize.test.mjs` gains `medians_match_the_sample`, `no_alarm_gives_queue_fallback`, `short_run_is_inconclusive`, `slow_cold_start_is_inconclusive`, `passing_run_gives_syncer_batch_20`, `cold_between_7_and_10_ms_gives_batch_10`, `slow_ten_pr_rerun_gives_queue_fallback`, `malformed_lines_are_counted_and_skipped`, and `empty_input_exits_nonzero`. Run `node --test spikes/do-alarm`.
+- [ ] `spikes/do-alarm/summarize.test.mjs` gains `medians_match_the_sample`, `no_alarm_gives_queue_fallback`, `short_run_is_inconclusive`, `slow_cold_start_is_inconclusive`, `passing_run_gives_syncer_batch_20`, `cold_between_7_and_10_ms_gives_batch_10`, `slow_ten_pr_rerun_gives_queue_fallback`, `malformed_lines_are_counted_and_skipped`, and `empty_input_exits_nonzero`. Run `node --test "spikes/do-alarm/*.test.mjs"`.
 - [ ] `cargo test --workspace` at the repository root does not compile the spike. Run it and check that `cargo metadata --no-deps --format-version 1` lists no `do-alarm` package.
 - [ ] The spike builds for Wasm. Run `cargo build --release --target wasm32-unknown-unknown` in `spikes/do-alarm`.
 
@@ -348,11 +348,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `crates/worker/src/db/items.rs` tests, run against an in-memory SQLite built from `migrations/0001_init.sql`, are `upsert_twice_keeps_one_row`, `older_update_does_not_overwrite_newer`, `turn_me_without_reason_is_rejected`, `turn_them_with_reason_is_rejected`, `unknown_stage_is_rejected`, and `hostile_title_is_stored_verbatim` (quotes, emoji, and `'); DROP TABLE items;--`). Run `cargo test -p worker db::`.
+- [ ] `crates/worker/src/db/items.rs` tests, run against an in-memory SQLite built from `migrations/0001_init.sql`, are `upsert_twice_keeps_one_row`, `older_update_does_not_overwrite_newer`, `turn_me_without_reason_is_rejected`, `turn_them_with_reason_is_rejected`, `unknown_stage_is_rejected`, and `hostile_title_is_stored_verbatim` (quotes, emoji, and `'); DROP TABLE items;--`). Run `cargo test -p radar-worker db::`.
 - [ ] `events.rs` tests are `same_timeline_node_is_one_event`, `new_timeline_node_is_a_new_event`, `same_ci_transition_is_one_event`, and `unknown_kind_is_rejected` (N8).
 - [ ] `local_state.rs` tests are `dismissed_item_hidden_until_newer_human_activity`, `snoozed_item_returns_at_wake_time`, and `your_turn_query_orders_oldest_first`.
 - [ ] `queries.rs` tests run `EXPLAIN QUERY PLAN` on each constant and assert it uses an index and does not scan `items`. `auth.rs` has `second_auth_row_is_rejected`.
-- [ ] A round trip test builds an `ItemRow` from every `domain` classification fixture and reads it back as the same `Turn`, `Stage`, and `since`. Run `cargo test -p worker` and `cargo clippy -p worker --all-targets -- -D warnings`.
+- [ ] A round trip test builds an `ItemRow` from every `domain` classification fixture and reads it back as the same `Turn`, `Stage`, and `since`. Run `cargo test -p radar-worker` and `cargo clippy -p radar-worker --all-targets -- -D warnings`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe. This PR has no HTTP caller of the row layer yet, so lanes apply the migration to local D1, run the exact SQL from `emit_sql` with `npx wrangler d1 execute radar --local --persist-to .wrangler/lane-<n> --file <sql>`, and read the result. The stub is not needed, so skip its boot step.
 
@@ -423,9 +423,9 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `scripts/tokens-to-css.test.mjs` gains `every_token_becomes_a_custom_property`, `output_is_byte_stable`, `check_flags_a_stale_file`, `unknown_type_exits_nonzero`, `no_hex_literal_outside_tokens_css`, `no_arbitrary_or_off_token_class_in_rust_sources`, `every_tailwind_default_is_cleared`, `each_group_uses_its_tailwind_namespace`, and `breakpoint_matches_the_base_css_media_query`. Run `node --test scripts`.
+- [ ] `scripts/tokens-to-css.test.mjs` gains `every_token_becomes_a_custom_property`, `output_is_byte_stable`, `check_flags_a_stale_file`, `unknown_type_exits_nonzero`, `no_hex_literal_outside_tokens_css`, `no_arbitrary_or_off_token_class_in_rust_sources`, `every_tailwind_default_is_cleared`, `each_group_uses_its_tailwind_namespace`, and `breakpoint_matches_the_base_css_media_query`. Run `node --test "scripts/*.test.mjs"`.
 - [ ] `crates/web/src/components/tabs.rs` gains `from_path_round_trips_every_routed_tab`, `merged_links_to_the_pipeline`, `unknown_path_is_none`, and `all_follows_the_adr_order`. Run `cargo test -p web`.
-- [ ] `crates/worker/src/security.rs` gains `csp_denies_by_default`, `csp_never_allows_unsafe_inline_or_eval`, `all_four_headers_are_set`, and `a_weaker_upstream_csp_is_overwritten`. Run `cargo test -p worker security::`.
+- [ ] `crates/worker/src/security.rs` gains `csp_denies_by_default`, `csp_never_allows_unsafe_inline_or_eval`, `all_four_headers_are_set`, and `a_weaker_upstream_csp_is_overwritten`. Run `cargo test -p radar-worker security::`.
 - [ ] Run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `node scripts/build.mjs`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe. The stub is not needed for this PR, so skip its boot step. Use a Chromium browser, which allows `Secure` cookies and service features on `localhost`.
@@ -490,7 +490,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] `tools/github-stub/server.mjs` is Node with no dependencies. It takes `--port` and `--scenario <name>`, binds `127.0.0.1`, and serves `GET /user`, `GET /rate_limit`, `GET /notifications`, `POST /graphql`, `GET /login/oauth/authorize`, and `POST /login/oauth/access_token`. `/user`, `/rate_limit`, `/notifications`, and `/graphql` need `Authorization` to carry the scenario token, else 401.
 - [ ] Stub behavior. `/notifications` honors `If-Modified-Since` and `If-None-Match` with 304, and sends `Last-Modified`, `ETag`, and `X-Poll-Interval`. Every API response carries `x-ratelimit-*` and `X-OAuth-Scopes`. `/graphql` finds the operation name in the query and answers from `graphql[<name>]`, paging by the `after` variable. The authorize endpoint redirects to `redirect_uri` with `code` and the same `state`, or with `error=access_denied` when the scenario denies. The token endpoint checks `client_id`, `client_secret`, and `code`, and answers `bad_verification_code` otherwise.
 - [ ] Stub controls. A scenario `faults` list, such as `{ "match": "GET /rate_limit", "status": 500, "times": 3 }` or a 403 with `retry_after`, injects failures. `GET /__log` returns every request with method, path, `If-Modified-Since`, `If-None-Match`, whether `Authorization` was present (never its value), GraphQL operation kind, and a `violation` field. `POST /__scenario` with `{name}` swaps the scenario and `POST /__log/clear` empties the log.
-- [ ] The stub defends itself. Any method other than GET, or other than POST on `/graphql` and the token endpoint, and any GraphQL document that is not a `query`, gets 405 or 400 and a `violation` in the log. `tools/github-stub/README.md` documents flags, endpoints, the scenario format, and the log fields. CI runs `node --test scripts tools`.
+- [ ] The stub defends itself. Any method other than GET, or other than POST on `/graphql` and the token endpoint, and any GraphQL document that is not a `query`, gets 405 or 400 and a `violation` in the log. `tools/github-stub/README.md` documents flags, endpoints, the scenario format, and the log fields. CI runs `node --test "scripts/*.test.mjs" "tools/**/*.test.mjs"`.
 
 **You see.**
 
@@ -498,7 +498,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] With `RADAR_FEATURES=probe`, `curl "http://localhost:8787/__probe/get?path=/user"` returns the stub user with `meta.scopes` listing `notifications` and `read:user`.
 - [ ] A second `/__probe/get?path=/notifications&ims=<Last-Modified>` returns `"outcome":"not_modified"`, and `curl http://127.0.0.1:8900/__log` shows the `If-Modified-Since` header was sent.
 - [ ] Under `rate-limited`, the probe returns `"error":"rate_limited"` with `retry_after_secs` equal to the stub's `Retry-After`.
-- [ ] `cargo test -p worker github::` and `cargo test -p worker --test read_only` pass, and `node --test tools` passes.
+- [ ] `cargo test -p radar-worker github::` and `cargo test -p radar-worker --test read_only` pass, and `node --test "tools/**/*.test.mjs"` passes.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -506,8 +506,8 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] `error.rs` or `client.rs` gains `status_304_is_not_modified`, `retry_after_on_403_is_rate_limited`, `retry_after_on_429_is_rate_limited`, `exhausted_budget_on_403_uses_reset`, `plain_403_is_forbidden`, `graphql_errors_in_a_200_are_errors`, and `server_error_carries_status`.
 - [ ] `query.rs` gains `rejects_mutation_subscription_and_mixed_documents`, `accepts_queries_with_mutation_in_comments_strings_and_field_names`, and `every_registered_document_is_a_query`. `client.rs` gains `refuses_non_loopback_http_base`, `accepts_https_api_github_com`, and `token_debug_is_redacted`.
 - [ ] `tests/read_only.rs` gains `no_write_methods_outside_the_client`, `every_graphql_file_is_registered`, and `probe_is_not_a_default_feature`. A deliberate bad fixture directory proves the scanner fails, in `scanner_fails_on_a_planted_post`.
-- [ ] `tools/github-stub/server.test.mjs` gains one case per endpoint, plus `conditional_get_returns_304`, `mutation_is_rejected_and_logged`, `put_is_rejected_and_logged`, `fault_injection_counts_down`, and `oauth_round_trip`. Run `node --test tools`.
-- [ ] Run `cargo test -p worker`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo build -p worker --target wasm32-unknown-unknown --release`.
+- [ ] `tools/github-stub/server.test.mjs` gains one case per endpoint, plus `conditional_get_returns_304`, `mutation_is_rejected_and_logged`, `put_is_rejected_and_logged`, `fault_injection_counts_down`, and `oauth_round_trip`. Run `node --test "tools/**/*.test.mjs"`.
+- [ ] Run `cargo test -p radar-worker`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo build -p radar-worker --target wasm32-unknown-unknown --release`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe. Set `RADAR_FEATURES=probe` before the `npx wrangler dev` step and add `--var PROBE_TOKEN:gho_stubtoken0000`, which matches the `basic` scenario. Migrations are not needed.
 
@@ -518,7 +518,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Lane 5. Probe `/__probe/query?doc=Viewer`, then switch to `graphql-errors` with `POST /__scenario`. Save `r06-graphql.png` as a terminal capture. Pass when the first call returns parsed data, the stub log shows an operation of kind `query` on `POST /graphql`, and the second returns a `graphql` error with the stub's message.
 - [ ] Lane 6. Switch to `rate-limited` and probe `/rate_limit` repeatedly. Save `r06-rate-limit.png` as a terminal capture. Pass when a 403 with `Retry-After` and a 429 both return `rate_limited` with the stub's seconds, a 403 with `x-ratelimit-remaining: 0` and only a reset time returns seconds derived from it, and a plain 403 returns `forbidden`.
 - [ ] Lane 7. Send hostile paths. Probe `path=//evil.example/x`, `path=@evil.example/x`, `path=/../x`, `path=https://evil.example`, and `path=/a%5Cb` with a second stub on port `<9000 + n>` playing the other host. Save `r06-paths.png` as a terminal capture. Pass when every call is rejected before any request is made, and the second stub's log is empty.
-- [ ] Lane 8. Prove the read-only guard fails closed. In the lane worktree add a `.graphql` file that holds a `mutation`, then run `cargo test -p worker`. Revert, then add a `Method::Put` use outside `github/client.rs` and run it again. Save `r06-guard.png` as a terminal capture. Pass when each run fails and names the file, and each revert returns to green.
+- [ ] Lane 8. Prove the read-only guard fails closed. In the lane worktree add a `.graphql` file that holds a `mutation`, then run `cargo test -p radar-worker`. Revert, then add a `Method::Put` use outside `github/client.rs` and run it again. Save `r06-guard.png` as a terminal capture. Pass when each run fails and names the file, and each revert returns to green.
 - [ ] Lane 9. Break the transport. Stop the stub and probe, then restart it under `server-error` and probe, then under a scenario that returns a body that is not JSON. Save `r06-failures.png` as a terminal capture. Pass when the three calls return `transport`, `server` with 500, and `parse` naming the path, each within 5 s, with no panic, and `/api/health` still returns 200 afterwards.
 - [ ] Lane 10. Check secrets and the probe boundary. Grep the `wrangler dev` output for `gho_stubtoken0000`, request `/__probe/get` on a build made without `RADAR_FEATURES`, and start with `--var GITHUB_API_BASE:http://example.com`. Save `r06-boundary.png` as a terminal capture. Pass when the grep finds nothing, the plain build answers a JSON 404 `{"error":"not_found"}` for the probe and not the HTML page, and the bad base is refused with `BadConfig` and no outbound request.
 
@@ -585,7 +585,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] `flow.rs` gains `allowed_id_signs_in`, `other_id_is_denied`, `id_is_compared_as_a_number`, `missing_code_is_bad_state`, `state_mismatch_is_bad_state`, and `provider_error_is_provider_denied`. `keys.rs` gains `short_keys_are_rejected`, `equal_keys_are_rejected`, and `bad_base64_is_rejected`.
 - [ ] `session.rs` gains `missing_cookie_is_missing`, `same_origin_guard_rejects_a_foreign_origin_and_a_missing_one`, `a_cookie_for_another_user_id_is_wrong_user`, `a_cookie_with_an_old_epoch_is_stale`, `logout_leaves_the_epoch_unchanged`, and `disconnect_bumps_the_epoch_and_clears_the_token`. An authorize URL test asserts the scope is exactly `notifications read:user` and the state is URL safe.
 - [ ] `exchange.rs` gains `accepts_https_github_com_and_loopback_http` and `refuses_any_other_base`, including `https://github.com.evil.example` and `http://example.com`.
-- [ ] Run `cargo test -p worker auth::`, `cargo test -p worker --test read_only`, and `cargo build -p worker --target wasm32-unknown-unknown --release`.
+- [ ] Run `cargo test -p radar-worker auth::`, `cargo test -p radar-worker --test read_only`, and `cargo build -p radar-worker --target wasm32-unknown-unknown --release`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe. Copy `.dev.vars.example` to `.dev.vars` in each worktree, run the stub with `--scenario basic` unless the lane names another, and use a Chromium browser. Apply migrations with the boot recipe command before starting Radar.
 
@@ -656,7 +656,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] `curl http://localhost:8787/__probe/syncer/status` prints a `SyncStatus` with `pending_by_kind` and `rate.remaining` from the stub.
 - [ ] After a unit fails three times, the status shows `dead_by_kind` with one entry, and the log shows no further attempt for that row until a kick re-arms it.
 - [ ] With no token, the status shows `blocked` as `no_token`, and the stub log shows no request.
-- [ ] `cargo test -p worker sync::` ends with `test result: ok`.
+- [ ] `cargo test -p radar-worker sync::` ends with `test result: ok`.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -664,7 +664,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] `apply` tests are `success_deletes_the_row`, `first_failure_retries_in_10_seconds`, `second_failure_retries_in_60_seconds`, `third_failure_marks_dead`, `rate_limited_adds_no_attempt`, and `strikes_double_the_wait_and_reset_on_success`.
 - [ ] `gate.rs` gains `below_20_percent_closes_enrich_but_not_poll`, `exactly_20_percent_is_open`, and `reopens_at_reset`. `work.rs` gains `same_unit_twice_is_one_key`, `batch_key_ignores_id_order`, and `kind_round_trips_through_columns`.
 - [ ] `kick` tests are `many_kicks_make_one_row`, `kick_during_cooldown_is_deferred_not_dropped`, `rollup_kick_inserts_nightly_once`, `kick_revives_a_dead_poll_row_with_zero_attempts`, `nightly_kick_rearms_a_dead_backfill_row_at_its_cursor`, and `reconcile_kick_leaves_a_dead_enrich_row_dead`. A test `cron_strings_match_wrangler_toml` reads `wrangler.toml`. `sync_status.rs` in `domain` gains `status_round_trips_json`.
-- [ ] Run `cargo test -p worker sync::`, `cargo test -p domain`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo build -p worker --target wasm32-unknown-unknown --release`.
+- [ ] Run `cargo test -p radar-worker sync::`, `cargo test -p domain`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo build -p radar-worker --target wasm32-unknown-unknown --release`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe. Build with `RADAR_FEATURES=probe`, copy `.dev.vars.example` to `.dev.vars`, start Radar with `--test-scheduled`, and sign in once through the browser so the `auth` table holds the stub token, unless the lane says otherwise. Use the `fast-poll` scenario, which sets `X-Poll-Interval` to 5 s, unless the lane names another. Lane captures are terminal captures.
 
@@ -729,9 +729,9 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `crates/worker/src/sync/poll.rs` gains table-driven cases for `plan_poll`. A first page of three threads yields three upserts and one enrich batch of two ids. A thread with an unchanged `updated_at` yields no enrich entry. 45 changed threads yield full batches of `ENRICH_BATCH` and the remainder last, which is 20, 20, and 5 when the constant is 20. The test reads the constant and never hard-codes 20. Run `cargo test -p worker poll`.
-- [ ] Phase cases. A page with a `rel="next"` link yields `Scanning` with `next_page = 2` and does not commit the new `Last-Modified`. The last page yields `Idle` holding the page-1 value. A 304 keeps the phase and sets `next_poll_at = now + interval`. Run `cargo test -p worker poll`.
-- [ ] Header and boundary cases. A missing `X-Poll-Interval` yields 60 s and a value of 120 yields 120 s. A page missing `updated_at` returns an error with an empty plan. An unknown subject type parses as `Other`. A `Link` header parser test covers one, two, and no `next` relations. Run `cargo test -p worker poll`.
+- [ ] `crates/worker/src/sync/poll.rs` gains table-driven cases for `plan_poll`. A first page of three threads yields three upserts and one enrich batch of two ids. A thread with an unchanged `updated_at` yields no enrich entry. 45 changed threads yield full batches of `ENRICH_BATCH` and the remainder last, which is 20, 20, and 5 when the constant is 20. The test reads the constant and never hard-codes 20. Run `cargo test -p radar-worker poll`.
+- [ ] Phase cases. A page with a `rel="next"` link yields `Scanning` with `next_page = 2` and does not commit the new `Last-Modified`. The last page yields `Idle` holding the page-1 value. A 304 keeps the phase and sets `next_poll_at = now + interval`. Run `cargo test -p radar-worker poll`.
+- [ ] Header and boundary cases. A missing `X-Poll-Interval` yields 60 s and a value of 120 yields 120 s. A page missing `updated_at` returns an error with an empty plan. An unknown subject type parses as `Other`. A `Link` header parser test covers one, two, and no `next` relations. Run `cargo test -p radar-worker poll`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
@@ -804,10 +804,10 @@ Lane setup. Start `wrangler dev` with the recipe's flags plus `--test-scheduled`
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `crates/worker/src/github/enrich_response.rs` parses `enrich_20.json` into 20 nodes, and `enrich_edge.json` into one `Gone`, one ghost author, and one `Bot` actor. A response with a missing required field returns an error. Run `cargo test -p worker enrich`.
-- [ ] `build_enrich_query(20)` and `build_enrich_query(1)` start with `query`, contain no `mutation`, never contain `body`, and the existing N2 test over every query constant and builder output still passes. Run `cargo test -p worker`.
-- [ ] Event ids are deterministic. Building events twice from the same fixture yields the same ids, one per timeline node, and a new timeline node yields one new id. A rollup change from failing to passing yields one `CiPassed` event, and an unchanged rollup yields none. A `mention` reason yields one `Mentioned` event on the newest human comment after mine, and a bot comment never does. Run `cargo test -p worker enrich`.
-- [ ] The mapping test feeds `enrich_edge.json` through the mapper and `domain::classify`. A bot comment after my comment leaves `Turn::Them`. An empty `reviewDecision` takes the stage from the latest review per reviewer. Run `cargo test -p worker enrich`.
+- [ ] `crates/worker/src/github/enrich_response.rs` parses `enrich_20.json` into 20 nodes, and `enrich_edge.json` into one `Gone`, one ghost author, and one `Bot` actor. A response with a missing required field returns an error. Run `cargo test -p radar-worker enrich`.
+- [ ] `build_enrich_query(20)` and `build_enrich_query(1)` start with `query`, contain no `mutation`, never contain `body`, and the existing N2 test over every query constant and builder output still passes. Run `cargo test -p radar-worker`.
+- [ ] Event ids are deterministic. Building events twice from the same fixture yields the same ids, one per timeline node, and a new timeline node yields one new id. A rollup change from failing to passing yields one `CiPassed` event, and an unchanged rollup yields none. A `mention` reason yields one `Mentioned` event on the newest human comment after mine, and a bot comment never does. Run `cargo test -p radar-worker enrich`.
+- [ ] The mapping test feeds `enrich_edge.json` through the mapper and `domain::classify`. A bot comment after my comment leaves `Turn::Them`. An empty `reviewDecision` takes the stage from the latest review per reviewer. Run `cargo test -p radar-worker enrich`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
@@ -874,9 +874,9 @@ Lane setup. Generate the scenario with `node tools/github-stub/scenarios/make.mj
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `next_step` cases in `sync/backfill.rs`. A page with `hasNextPage` yields the same kind with the new cursor. The last `Authored` page yields `AuthoredIssues` at `after: None`, whose last page yields `Involves` at `after: None`. The last `Involves` page yields `Done`. Run `cargo test -p worker backfill`.
-- [ ] Window cases. `Backfill90d` and `Nightly7d` produce the expected `updated:>=` date for a fixed `now`, and the query strings contain `is:pr author:@me`, `is:issue author:@me`, and `involves:@me` and nothing else but the date. Run `cargo test -p worker backfill`.
-- [ ] `SEARCH_QUERY` starts with `query`, has no `mutation` and no `body`, and passes R06's N2 test. `search_page.json` and `search_last_page.json` parse. Run `cargo test -p worker`.
+- [ ] `next_step` cases in `sync/backfill.rs`. A page with `hasNextPage` yields the same kind with the new cursor. The last `Authored` page yields `AuthoredIssues` at `after: None`, whose last page yields `Involves` at `after: None`. The last `Involves` page yields `Done`. Run `cargo test -p radar-worker backfill`.
+- [ ] Window cases. `Backfill90d` and `Nightly7d` produce the expected `updated:>=` date for a fixed `now`, and the query strings contain `is:pr author:@me`, `is:issue author:@me`, and `involves:@me` and nothing else but the date. Run `cargo test -p radar-worker backfill`.
+- [ ] `SEARCH_QUERY` starts with `query`, has no `mutation` and no `body`, and passes R06's N2 test. `search_page.json` and `search_last_page.json` parse. Run `cargo test -p radar-worker`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
@@ -945,9 +945,9 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 - [ ] `crates/domain/tests/api_contract.rs` serializes a fixed `Dashboard` and compares it with `golden/dashboard.json`, so a field rename breaks the test. Run `cargo test -p domain`.
 - [ ] `visible()` cases. A dismissed item with a newer `last_human_at` is visible again. A snoozed item is hidden until its time and visible after. A dismissed item with an equal `last_human_at` stays hidden. A dismissed item whose `since` moves but whose `last_human_at` does not stays hidden. Run `cargo test -p domain`.
-- [ ] `assemble()` cases with fixed rows. Counters equal list lengths, lists sort oldest first, a merge 13 days ago is in `recent` and 15 days ago is not, and empty input yields six empty pipeline columns. Run `cargo test -p worker api`.
+- [ ] `assemble()` cases with fixed rows. Counters equal list lengths, lists sort oldest first, a merge 13 days ago is in `recent` and 15 days ago is not, and empty input yields six empty pipeline columns. Run `cargo test -p radar-worker api`.
 - [ ] `ScopeState::parse` cases. `"notifications, read:user"` is `Ok`. `"read:user"` is `MissingNotifications`. An absent header is `Unknown`. `"notifications-extra"` does not count as `notifications`. `NudgeThresholds::new(0, 5)` and `new(7, 7)` fail. Run `cargo test -p domain`.
-- [ ] Request validation cases. A snooze body of `{ "for": "1y" }` is rejected, and a POST with a foreign `Origin` is rejected before any D1 call. Run `cargo test -p worker api`.
+- [ ] Request validation cases. A snooze body of `{ "for": "1y" }` is rejected, and a POST with a foreign `Origin` is rejected before any D1 call. Run `cargo test -p radar-worker api`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
@@ -1387,7 +1387,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] The same table returns `NotGithub` for a missing header, an empty header, and a header of only spaces. Run `cargo test -p domain email`.
 - [ ] The same table returns `repo: None` for `List-Id` values `../../x <y>`, `owner <y>`, `a/b/c <y>`, and an empty string, and returns `octo/radar-demo` for the real GitHub form. Run `cargo test -p domain email`.
 - [ ] A header value of 257 bytes behaves as missing, and one of 256 bytes is accepted. Run `cargo test -p domain email`.
-- [ ] The whole workspace still builds for the Worker target. Run `cargo build -p worker --target wasm32-unknown-unknown`.
+- [ ] The whole workspace still builds for the Worker target. Run `cargo build -p radar-worker --target wasm32-unknown-unknown`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
@@ -1682,7 +1682,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 - [ ] `build_trends` with no data returns 52 buckets with the right Monday starts and zero counts. Run `cargo test -p domain trends`.
 - [ ] A week that exists in both live data and `rollups_weekly` takes the rolled numbers once. A `seeded` row fills a week before the backfill window and is marked `Seeded`. Run `cargo test -p domain trends`.
-- [ ] `sync/history.rs` gains `seed_skips_weeks_inside_the_backfill_window`, `seed_never_overwrites_a_rolled_week`, and `two_years_make_two_units`, and `contribution_history.graphql` passes R06's `every_registered_document_is_a_query`. Run `cargo test -p worker history`.
+- [ ] `sync/history.rs` gains `seed_skips_weeks_inside_the_backfill_window`, `seed_never_overwrites_a_rolled_week`, and `two_years_make_two_units`, and `contribution_history.graphql` passes R06's `every_registered_document_is_a_query`. Run `cargo test -p radar-worker history`.
 - [ ] Two events by me in one repo in one week give `repos: 1`, and events in two repos give 2. Run `cargo test -p domain trends`.
 - [ ] A pull request merged on a Sunday and one opened on a Monday land in different weeks, and a year boundary week is placed correctly. Run `cargo test -p domain trends`.
 - [ ] `heat_level` returns the right level at 0, 1 of 9, 3 of 9, 4 of 9, 6 of 9, and 9 of 9. `nice_max` returns 4 for 0, 5 for 5, 10 for 7, and 20 for 11. Run `cargo test -p domain trends`.
@@ -1763,7 +1763,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] `flag_overlaps` marks two unfinished rows on one issue, ignores a `Finished` row, and ignores the same issue number in two different repos. Run `cargo test -p domain agents`.
 - [ ] The signature check accepts a known good HMAC vector and rejects a flipped bit, an empty header, `sha1=` form, uppercase hex of a wrong digest, and a missing `sha256=` prefix. Run `cargo test -p domain agents`.
 - [ ] `AgentCheckin` parsing rejects an unknown field, a 41 character agent name, a 141 character note, and `repo` of `a/b/c`. Run `cargo test -p domain agents`.
-- [ ] `hooks/secret.rs` gains `missing_secret_fails_closed`, `empty_secret_fails_closed`, `thirty_one_byte_secret_fails_closed`, and `thirty_two_byte_secret_is_accepted`. Run `cargo test -p worker hooks`.
+- [ ] `hooks/secret.rs` gains `missing_secret_fails_closed`, `empty_secret_fails_closed`, `thirty_one_byte_secret_fails_closed`, and `thirty_two_byte_secret_is_accepted`. Run `cargo test -p radar-worker hooks`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
@@ -1840,7 +1840,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] `decide` returns `Skip(WrongReason)` for `CiFailed`, `Commented`, and `Assigned` events, `Skip(BotActor)` for a bot mention, `Skip(NotMyTurn)` for a dismissed or closed item, and `Skip(TooOld)` at 6 hours and 1 second. Run `cargo test -p domain alert`.
 - [ ] `AlertsMode::from_secrets` returns `Off` for no secrets, only a token, only a chat id, and an empty string for either, and `On` for both. Run `cargo test -p domain alert`.
 - [ ] `alert_text` keeps `*`, `_`, `<`, and backticks from a title unchanged, and never contains the token. Run `cargo test -p domain alert`.
-- [ ] `tests/read_only.rs` passes with the new allow-list entry, and `telegram_client_never_names_a_github_host` fails on a planted `GITHUB_API_BASE` in a scratch copy of `alerts/telegram.rs`. A `work.rs` test `send_alerts_enqueued_twice_is_one_row` passes. Run `cargo test -p worker --test read_only` and `cargo test -p worker sync::`.
+- [ ] `tests/read_only.rs` passes with the new allow-list entry, and `telegram_client_never_names_a_github_host` fails on a planted `GITHUB_API_BASE` in a scratch copy of `alerts/telegram.rs`. A `work.rs` test `send_alerts_enqueued_twice_is_one_row` passes. Run `cargo test -p radar-worker --test read_only` and `cargo test -p radar-worker sync::`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
@@ -1853,7 +1853,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] Lane 7. Telegram failure. Start the Telegram stub with `--fail-first 2`, then sync three times. Save `alerts-retry.png` as a terminal capture. Pass when the first two attempts end in `Failed` with `attempts` 1 and 2, the third ends in `Sent`, and no event is attempted more than 3 times.
 - [ ] Lane 8. Rate limit and permanent failure. Start the stub with `--status 429`, then sync five times. Save `alerts-429.png` as a terminal capture. Pass when each event is attempted at most 3 times in total, the Syncer does not loop, and the other work units still run.
 - [ ] Lane 9. Secret hygiene. After the lanes above, search the `wrangler dev` log, the output of `wrangler d1 execute radar --local --command ".dump"`, and the bodies of `/api/dashboard` and `/api/freshness` for `lane-token`. Also sync a title that contains `*bold* <b>x</b> [a](b)`. Save `alerts-secrets.png` as a terminal capture. Pass when `lane-token` appears in none of them, the logged path is `/bot<redacted>/sendMessage`, and the stub received the title as literal text.
-- [ ] Lane 10. Read-only boundary. Read the GitHub stub's request log after all lanes and run `rg -n "reqwest|Method::Post|Method::Put|Method::Patch|Method::Delete" crates/worker/src/github`. Save `alerts-read-only.png` as a terminal capture. Pass when the GitHub log has only GET requests and GraphQL queries, the `rg` search prints nothing, `cargo test -p worker github` still passes the mutation and method tests from R06, `cargo test -p worker --test read_only` passes with `alerts/telegram.rs` as the only new allow-list entry, and the `wrangler dev` log shows every `sendMessage` under a `unit start kind=send_alerts` line and none under `kind=enrich`.
+- [ ] Lane 10. Read-only boundary. Read the GitHub stub's request log after all lanes and run `rg -n "reqwest|Method::Post|Method::Put|Method::Patch|Method::Delete" crates/worker/src/github`. Save `alerts-read-only.png` as a terminal capture. Pass when the GitHub log has only GET requests and GraphQL queries, the `rg` search prints nothing, `cargo test -p radar-worker github` still passes the mutation and method tests from R06, `cargo test -p radar-worker --test read_only` passes with `alerts/telegram.rs` as the only new allow-list entry, and the `wrangler dev` log shows every `sendMessage` under a `unit start kind=send_alerts` line and none under `kind=enrich`.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
