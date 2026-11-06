@@ -1,0 +1,101 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+tone_instructions: "Plain, direct, short sentences. Name the file and symbol. No praise, no filler."
+
+reviews:
+  profile: assertive
+  auto_approvals:
+    enabled: true
+    max_merge_risk: moderate
+    max_security_risk: low
+  high_level_summary: true
+  collapse_walkthrough: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  review_status: true
+  commit_status: true
+  fail_commit_status: true
+  poem: false
+  in_progress_fortune: false
+  suggested_reviewers: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!**/Cargo.lock"
+    - "!public/fonts/*.woff2"
+    - "!public/*.png"
+    - "!public/favicon.ico"
+    - "!design/brand/*.png"
+    - "!spikes/*/out/**"
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Radar is a single-user, read-only GitHub dashboard on the Cloudflare Workers free plan, written in Rust.
+        AGENTS.md and docs/adr/ are the rules. When a change contradicts an accepted ADR without a new ADR that supersedes it, flag it.
+        Each R PR implements one section R01 to R25 of docs/plan/implementation-plan.md. Check the diff against that section's Files and Build boxes and flag scope creep or missing boxes.
+        Tooling PRs outside R01 to R25, such as CI, review, or docs setup, have no plan section. Check them against their own PR description instead.
+    - path: "crates/worker/**"
+      instructions: |
+        Flag, as blocking:
+        - Any code path that can send a non-GET request or a GraphQL mutation to GitHub. Only `crates/worker/src/github/client.rs`, the OAuth code exchange in `crates/worker/src/auth/`, and `crates/worker/src/alerts/telegram.rs` may send POST, and none of them to the GitHub API with a mutation.
+        - Any GitHub call outside the Syncer Durable Object, apart from the OAuth sign-in flow. Page loads read from D1 only.
+        - `unwrap`, `expect`, `panic!`, indexing that can panic, or `todo!` outside tests. A panic aborts the Wasm instance.
+        - Use of Workers KV for sync state, Tokio, threads, or `std::time::SystemTime`.
+        - More than one unit of GitHub work per Syncer alarm, or CPU-heavy loops that risk the 10 ms free-plan limit.
+        - Storing comment bodies or other content beyond titles, states, timestamps, and logins.
+        - External data used without parsing into a typed struct at the boundary.
+        - Webhook or check-in handlers that do not fail closed when a secret is missing, empty, or shorter than 32 bytes.
+    - path: "crates/worker/src/auth/**"
+      instructions: |
+        Security review. Check OAuth state validation, the numeric user ID allowlist on every request, cookie flags (HttpOnly, Secure, SameSite=Lax), the session epoch, AES-GCM with a random nonce per encryption, and constant-time comparison of signatures.
+    - path: "crates/domain/**"
+      instructions: |
+        Pure rules shared by the Worker and the UI. Flag any dependency on `worker`, `leptos`, or I/O. Prefer enums and state machines over booleans. Tests should assert behavior through `classify` and public types, not internals.
+    - path: "crates/web/**"
+      instructions: |
+        Leptos UI. Every colour, size, spacing, radius, and motion value comes from the CSS custom properties generated from design/tokens.json. Flag hard-coded values. Colour has two jobs only: time waited (warm, hot) and failing CI (red). Check keyboard access, visible focus, 375 px layouts, and prefers-reduced-motion. Nothing may load from a third-party origin.
+    - path: "migrations/**"
+      instructions: |
+        D1 is SQLite. Never edit an earlier migration. Check that every dashboard query has a supporting index and that upserts are idempotent.
+    - path: "docs/**"
+      instructions: |
+        Short plain sentences in the present tense. No long dashes. An accepted ADR is never rewritten, only superseded by a new one.
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: warning
+      requirements: "Imperative sentence that starts with the plan id, for example `R07: Sign in with GitHub as the one allowed user`. Docs and tooling PRs outside the plan may omit the id."
+    description:
+      mode: warning
+    custom_checks:
+      - name: "Read-only GitHub"
+        mode: error
+        instructions: "Applies only to Radar runtime code under `crates/`. Fail if the diff adds runtime code that could send a GraphQL mutation, a PUT, PATCH, or DELETE, or a POST other than the GraphQL query endpoint and the OAuth token exchange, to any GitHub host. Developer tooling under `scripts/` and `.github/` is exempt, because it runs on the developer's machine or in CI and never ships in Radar."
+      - name: "No secrets"
+        mode: error
+        instructions: "Fail if the diff adds a real token, key, client secret, or a non-example value to `.dev.vars`, `wrangler.toml`, or any committed file."
+  tools:
+    clippy:
+      enabled: true
+    gitleaks:
+      enabled: true
+    markdownlint:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    sqlfluff:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "docs/adr/*.md"

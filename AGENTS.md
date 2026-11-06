@@ -26,6 +26,17 @@ Radar is a single-user, read-only dashboard for one person's open-source work, r
 
 The project scaffold arrives in milestone M0. Until then there are no build, test, or lint commands. `spikes/` holds throwaway measurements, not product code.
 
+## Pull requests
+
+Every change reaches `main` through a pull request. The full rules are in [docs/plan/implementation-plan.md](docs/plan/implementation-plan.md), under **PR mechanics** and **Verdict and merge**. In short:
+
+1. An Opus owner is responsible for each PR from branch to merge.
+2. CodeRabbit reviews every PR, configured by [.coderabbit.yaml](.coderabbit.yaml). Answer every comment. Fix what is real, and reply with a reason to what is not.
+3. Merge only when CI is green, CodeRabbit has approved, and every other review has passed. If CodeRabbit skips a PR because every changed file is excluded by `path_filters` (font and image binaries, `Cargo.lock`, and spike build output), the operator's approval in chat replaces CodeRabbit's.
+4. Then mark every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>`, submit a review with `gh pr review <number> --comment --body "<verdict, CodeRabbit result, and evidence links>"`, and squash-merge with `gh pr merge <number> --squash --delete-branch`.
+
+These `gh` commands are developer tooling. They do not change the rule that Radar itself never writes to GitHub.
+
 ## Decisions
 
 A new decision gets a new ADR. Copy [docs/adr/template.md](docs/adr/template.md) and follow the steps in [docs/adr/README.md](docs/adr/README.md). Do not rewrite an accepted ADR. Supersede it.

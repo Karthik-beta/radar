@@ -3,13 +3,13 @@
 This plan builds Radar from an empty Cargo workspace to every feature in the [PRD](../prd.md), following ADRs [0001](../adr/0001-tech-stack.md) to [0005](../adr/0005-rust.md).
 It is for one operator, Karthik, and the subagents that work for him.
 The rule the program enforces is that Radar never writes to GitHub and never costs money, and that every PR proves its behavior on the real surface before it is handed over.
-PRs form one linear stack in the order R01, R02, R03, R04, R06, R05, R07, then R08 to R24 in number order. R25 branches from `main` alone. M0 is R01 to R07. M1 is R08 to R11. M2, the v1 release, is R12 to R17. M3 is R18 and R19. M4 is R20 to R22. M5 is R23 and R24. R25 is a docs fix that can run at any time.
+PRs merge one at a time in the order R01, R02, R03, R04, R06, R05, R07, then R08 to R24 in number order. The next owner may start early work on a branch from a PR that waits on review, but never merges first. Each goes through its own pull request, an Opus owner, CodeRabbit review, and a squash merge to `main`. M0 is R01 to R07. M1 is R08 to R11. M2, the v1 release, is R12 to R17. M3 is R18 and R19. M4 is R20 to R22. M5 is R23 and R24. R25 is a docs fix that can run at any time.
 
 ## How to read this
 
 One box is one unit of work. Every box names the evidence that checks it. A nested box is a sub-step of the box above it. Check a box only when its evidence exists, a file, a log line, a screenshot, a test run, or a SHA. The body is a how-to. The appendices explain and record.
 
-The program runs `playbooks/autopilot-stack.md` from the pstack plugin (`~/.claude/plugins/cache/cursor-plugins/pstack/<version>/skills/poteto-mode/playbooks/autopilot-stack.md`). Owners build and verify. Nobody merges. The operator lands every PR, bottom of the stack first. Every deploy to Cloudflare is an operator item, because a deploy is an irreversible write.
+The program runs `playbooks/autopilot-full.md` from the pstack plugin (`~/.claude/plugins/cache/cursor-plugins/pstack/<version>/skills/poteto-mode/playbooks/autopilot-full.md`). Every R goes through a pull request. An Opus owner is responsible for each PR from branch to merge. When every review passes, the owner marks every changed file as Viewed, submits a review with a comment, and squash-merges the PR to `main`. Every deploy to Cloudflare stays an operator item, because a deploy is an irreversible write.
 
 Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -31,44 +31,54 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
   - [ ] `git show origin/main:docs/plan/implementation-plan.md`
   - [ ] `git show origin/main:docs/adr/0002-architecture.md`
   - [ ] `git show origin/main:docs/adr/0005-rust.md`
-  - [ ] The pstack files `playbooks/autopilot-stack.md`, `playbooks/autopilot-full.md`, `playbooks/opening-a-pr.md`, and `skills/swarm/SKILL.md`, read from the installed plugin.
+  - [ ] The pstack files `playbooks/autopilot-full.md`, `playbooks/opening-a-pr.md`, and `skills/swarm/SKILL.md`, read from the installed plugin.
 - [ ] On the operator's go, arm the audit tick as `/loop 1h` with the tick prompt below. Never leave the cadence to memory.
 - [ ] Use this tick prompt, verbatim. "Re-read the execution playbook from trunk. Audit the operation against it and fix drift in this tick. Probe every active lane and judge progress by side effects only. Stand down a stuck lane and dispatch its replacement now. Then post a short status message to the operator in chat only when the audit found a tracked change that no earlier status message reported, such as a PR opened, a code-ready head, a round launched or closed, a verdict, a merge, a stuck agent and the action taken, a blocker added or cleared, or a decision only the operator can make. Name every such change and nothing else. Do not repeat a table, the merged list, or an unchanged blocker. If the audit found none, end the turn with no reply text. Either way, log this tick's row in your decision trail. The row names the items reported, or none."
 - [ ] On the operator's hold or stand-down, send every owner a zero-writes order at once.
 
 ### Spawn owners
 
-- [ ] Spawn one owner per PR with the full lifecycle the execution playbook names. Use `subagent_type` `pstack:poteto-agent` and the model below. The models follow `~/.claude/rules/pstack-models.md`.
-  - [ ] Opus, high effort, owns the PRs where a subtle mistake is expensive. These are R02, R03, R07, R08, R12, and R23. R12 and R23 hold API auth, CSRF checks, and webhook verification.
-  - [ ] Sonnet, high effort, owns the feature PRs. These are R01, R04, R05, R06, R09 to R11, R13 to R18, R20 to R22, and R24.
-  - [ ] Haiku, high effort, owns the small mechanical PRs. These are R19 and R25.
+- [ ] Spawn one Opus owner per PR, at high effort, with `subagent_type` `pstack:poteto-agent`. The owner is responsible for the PR from branch to merge. It reviews every diff its writers produce, answers every review comment, and performs the merge. The models follow `~/.claude/rules/pstack-models.md`.
+- [ ] The owner delegates code writing by difficulty and reviews the result before it is pushed.
+  - [ ] Opus writes the code where a subtle mistake is expensive. These are R02, R03, R07, R08, R12, and R23. R12 and R23 hold API auth, CSRF checks, and webhook verification.
+  - [ ] Sonnet, high effort, writes the feature PRs. These are R01, R04, R05, R06, R09 to R11, R13 to R18, R20 to R22, and R24.
+  - [ ] Haiku, high effort, writes the small mechanical PRs. These are R19 and R25.
   - [ ] Explorers that only read code run on Haiku. Swarm verification lanes run on Sonnet. Audits and verdicts run on Opus.
-- [ ] Follow this one linear stack. Each PR stacks on the one before it, per `playbooks/autopilot-stack.md`.
-  - [ ] The order is R01, R02, R03, R04, R06, R05, R07, R08, R09, R10, R11, R12, R13, R14, R15, R16, R17, R18, R19, R20, R21, R22, R23, R24. R01 branches from `main`. Every later PR in that list branches from the PR just before it.
-  - [ ] R25 is a docs fix that branches from `main` alone and can run at any time.
-  - [ ] R08 waits for R02's result in its own ancestry. If R02 finds that Durable Object alarms do not run on Workers Free, R08 builds the Queue fallback from ADR 0002 instead.
+- [ ] Follow this order. Each PR branches from `main` after the PR before it has merged.
+  - [ ] The order is R01, R02, R03, R04, R06, R05, R07, R08, R09, R10, R11, R12, R13, R14, R15, R16, R17, R18, R19, R20, R21, R22, R23, R24.
+  - [ ] While a PR waits on review, the next owner may start on a branch from the waiting PR. It rebases onto `main` and retargets `main` as soon as that PR merges, and it never merges first.
+  - [ ] R25 is a docs fix that branches from `main` and can run at any time.
+  - [ ] R08 starts only after R02 has merged with its result in the ADRs.
+- [ ] Tooling PRs outside R01 to R25, such as the CodeRabbit and CI setup, follow the same review and merge rules. They need no plan section, and their title has no R id.
+  - [ ] Their verification is what can run for the change. Every CI check that exists on the PR passes (the `docs` job in `.github/workflows/ci.yml` arrives with the GitHub Actions setup PR, Karthik-beta/radar#2), CodeRabbit approves (or the operator does, under the excluded-files rule in PR mechanics), and one verifier records its output in the PR. It runs each changed script or workflow. For a docs-only PR it runs `check-plan.mjs` on a changed plan and checks every changed link instead. The Cargo checks apply once `Cargo.toml` exists. The ten live lanes and the perf lane apply only to R PRs. If R02 finds that Durable Object alarms do not run on Workers Free, R08 builds the Queue fallback from ADR 0002 instead.
 - [ ] Hold the file boundaries. Two owners never edit the same file in parallel.
-  - [ ] `crates/domain/**` belongs to R03. Later PRs add to it only through the stack, never in parallel.
-  - [ ] `migrations/**` gains one new numbered file per PR, with the next free number on its parent branch. No PR edits an earlier migration.
-  - [ ] `crates/worker/src/sync/**` belongs to R08 to R11, which run in sequence. R20 edits the `Rollup` arm, R22 adds `WorkKind::SeedHistory`, and R24 adds `WorkKind::SendAlerts`, each only through the stack, and each owner tells the root before editing.
-  - [ ] `crates/web/src/views/**` gains one file per view PR. Shared components in `crates/web/src/components/**` change in R13, or later through the stack. R20 to R23 each add one `Tab` variant in `crates/web/src/components/tabs.rs`, in stack order.
-  - [ ] `tools/github-stub/**` belongs to R06. Later PRs add scenarios, extend `tools/github-stub/scenarios/make.mjs` (from R10), and teach `server.mjs` new queries, only through the stack.
+  - [ ] `crates/domain/**` belongs to R03. Later PRs add to it only in PR order, never in parallel.
+  - [ ] `migrations/**` gains one new numbered file per PR, with the next free number on `main`. No PR edits an earlier migration.
+  - [ ] `crates/worker/src/sync/**` belongs to R08 to R11, which run in sequence. R20 edits the `Rollup` arm, R22 adds `WorkKind::SeedHistory`, and R24 adds `WorkKind::SendAlerts`, each only in PR order, and each owner tells the root before editing.
+  - [ ] `crates/web/src/views/**` gains one file per view PR. Shared components in `crates/web/src/components/**` change in R13, or later in PR order. R20 to R23 each add one `Tab` variant in `crates/web/src/components/tabs.rs`, in stack order.
+  - [ ] `tools/github-stub/**` belongs to R06. Later PRs add scenarios, extend `tools/github-stub/scenarios/make.mjs` (from R10), and teach `server.mjs` new queries, only in PR order.
 - [ ] Hold the review gate. R05, R07, R13, R14, R15, R16, R17, R19, R20, R21, R22, and R23 change what the operator sees or does. They wait for the operator's review in chat with screenshots and a video before merge.
 
 ### PR mechanics, for every PR
 
 - [ ] Resolve the forge once. Default to `gh`; if `command -v origin` succeeds and Origin can resolve the repository, use `origin pr` for every PR operation. Record any fallback to `gh`. Never require `gt`.
-- [ ] Open the PR ready, never draft, per **Opening a PR**. Use `gh pr create --base <base-branch>`. A stack child targets its parent branch.
+- [ ] Open the PR ready, never draft, per **Opening a PR**. Use `gh pr create --base main`. The title starts with the plan id, for example `R07: Sign in with GitHub as the one allowed user`. The body links the plan section and lists the evidence for every checked box.
 - [ ] Run `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace` once before the PR-facing push. Push with hooks on.
 - [ ] Run `/deslop` before each commit and `/no-comments` before review. If a skill is not installed, record the skip in the PR body.
-- [ ] Triage every Bugbot and security-reviewer comment per `references/bugbot-triage.md` in the pstack plugin.
-- [ ] Rebase onto the parent branch before the code-ready report and babysit. Keep that merge base in fix rounds. Rebase again only at handoff, on a `git merge-tree` conflict with the parent, on a CI failure that comes from a change on the parent, or when a known concurrent change to the same files lands.
+- [ ] Wait for CodeRabbit's review. `.coderabbit.yaml` configures it, and it reviews every PR to `main` on its own. If no review appears within 15 minutes, comment `@coderabbitai review` on the PR.
+- [ ] Excluded-files rule. If CodeRabbit skips the PR because `path_filters` in `.coderabbit.yaml` excludes every changed file, the operator's approval in chat replaces CodeRabbit's approval in every step of this plan. Every other PR needs CodeRabbit's approval.
+- [ ] Triage every CodeRabbit comment per `references/bugbot-triage.md` in the pstack plugin. Fix what is real. Reply with a concrete reason to what is noise. Resolve each thread once it is answered. Push fixes until CodeRabbit approves the PR and its commit status is green. Its `Read-only GitHub` and `No secrets` checks are blocking.
+- [ ] Rebase onto `main` before the code-ready report and babysit. Keep that merge base in fix rounds. Rebase again only at merge prep, on a `git merge-tree` conflict with `main`, on a CI failure that comes from a change on `main`, or when a known concurrent change to the same files lands.
 
 ### Verdict and merge, for every PR
 
 - [ ] A full swarm runs once, at the code-ready head. Another full swarm runs only for new behavior, a redesign, or a large new diff. A rebase, a merge-conflict resolution, or a minor fix gets a single verifier at the new head, and a wording-only change gets none. Run each full swarm per `skills/swarm/SKILL.md` in the pstack plugin. One gates lane. The ten live lanes from the PR's **Verify, live** block. The perf lane from its **Verify, perf** block. Two or more audit lanes, each with its own focus, that read the diff and the receipts and distrust the PR body. The root audits the receipts in the code-ready report before the verdict.
 - [ ] Judge every finding by the execution playbook's blocking rule. The verdict is clean when none blocks. A failure on trunk behavior in a lane marked `Regression lane against trunk.` is recorded against trunk and does not block the PR. A new head gets a fresh verdict, except for results that stay valid under the patch-id rule in `playbooks/shipping.md`.
-- [ ] Stop at verified, per `playbooks/autopilot-stack.md`. Hand each verified PR to the operator with its verdict. After the handoff, nobody pushes without the operator's go. A restack that leaves a PR's `git patch-id` unchanged keeps its verdict.
+- [ ] Merge only when every review has passed at the exact head SHA. CI is green. CodeRabbit has approved, and every thread is resolved. The excluded-files rule in PR mechanics applies. The root's swarm verdict is clean. For a review-gated PR, the operator has approved in chat. A rebase that leaves the PR's `git patch-id` unchanged keeps every verdict.
+- [ ] Then the Opus owner does three things, in this order.
+  - [ ] Mark every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>`. The script prints one line per file and fails if any file stays unviewed.
+  - [ ] Submit a review with `gh pr review <number> --comment --body "<verdict, CodeRabbit result, and the evidence links>"`. GitHub does not let an account approve its own PR, so the review is a comment.
+  - [ ] Squash-merge with `gh pr merge <number> --squash --delete-branch`. Record the merge SHA in the plan box.
 
 ### Boot recipe, for every live lane
 
@@ -154,10 +164,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
+- [ ] CI is green and CodeRabbit has approved R01 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R01 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict. The operator lands the stack bottom-up.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R01 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Prove Durable Object alarms and CPU on Workers Free (R02)
 
@@ -224,10 +235,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R01 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict. The operator lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R02 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R02 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R02 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Encode whose turn it is in the domain crate (R03)
 
@@ -295,10 +307,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R02 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict. The operator lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R03 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R03 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R03 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Create the D1 schema and row access (R04)
 
@@ -365,10 +378,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R03 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict. The operator lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R04 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R04 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R04 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Build the web shell with tokens, fonts, icons, and CSP (R05)
 
@@ -441,10 +455,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R06 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict. The operator lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R05 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R05 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R05 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Build the read-only GitHub client and the GitHub stub (R06)
 
@@ -517,10 +532,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R04 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict. The operator lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R06 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R06 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R06 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Sign in with GitHub as the one allowed user (R07)
 
@@ -598,10 +614,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R05 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict. The operator lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R07 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R07 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R07 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Run the Syncer Durable Object with a work table and alarms (R08)
 
@@ -672,10 +689,11 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R07 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict. The operator lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R08 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R08 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R08 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Poll notifications without spending rate limit (R09)
 
@@ -740,10 +758,11 @@ Lane setup. Start `wrangler dev` with the recipe's flags plus `--test-scheduled`
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R08 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R09 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R09 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R09 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Enrich pull requests and issues with GraphQL (R10)
 
@@ -756,7 +775,7 @@ Lane setup. Start `wrangler dev` with the recipe's flags plus `--test-scheduled`
 - [ ] Edit the query constants in `crates/worker/src/github/` to add `ENRICH_FRAGMENT` and `build_enrich_query(n)`, built through R06's `QueryDoc`.
 - [ ] Edit `crates/worker/src/db/items.rs` and `crates/worker/src/db/events.rs` (R04) so upserts write the new columns and `events` rows are insert-or-ignore.
 - [ ] Create `crates/domain/src/event.rs` with the event model below, and export it from `crates/domain/src/lib.rs`. R20, R21, R22, and R24 read it.
-- [ ] Create `migrations/<next number>_item_extras.sql` adding `items.requested_reviewers` (JSON array of logins, default `'[]'`), `items.stage_since`, and `items.latest_url`. `items.head_ref` already exists from R04's `0001_init.sql`, so this migration does not add it. Use the next free number on the parent branch, and never edit an earlier migration.
+- [ ] Create `migrations/<next number>_item_extras.sql` adding `items.requested_reviewers` (JSON array of logins, default `'[]'`), `items.stage_since`, and `items.latest_url`. `items.head_ref` already exists from R04's `0001_init.sql`, so this migration does not add it. Use the next free number on `main`, and never edit an earlier migration.
 - [ ] Create `crates/worker/tests/fixtures/enrich_20.json`, the 20-item response shape of `spikes/rust-fit/measure.mjs` extended with the new fields, and `enrich_edge.json` (ghost author, null alias with `NOT_FOUND`, a bot comment).
 - [ ] Create `tools/github-stub/scenarios/make.mjs`. It writes a scenario file for a named kind, with timestamps relative to now, to stdout. Each file carries an `_expect` object that the stub ignores. Kinds are `enrich-basic`, `enrich-bot`, `enrich-read`, `enrich-45`, `enrich-gone`, `enrich-limited`, `enrich-502`, and `enrich-body-marker`.
 - [ ] Edit `tools/github-stub/server.mjs` so `/graphql` answers the enrich query. It reads the `$o<i>`, `$n<i>`, `$i<i>` variables and answers each alias from `scenario.items["owner/repo#number"]`, with `null` plus a `NOT_FOUND` error for unknown keys.
@@ -815,10 +834,11 @@ Lane setup. Generate the scenario with `node tools/github-stub/scenarios/make.mj
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R09 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R10 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R10 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R10 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Backfill 90 days and run the nightly search (R11)
 
@@ -883,10 +903,12 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R10 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up. M1 is done only when the operator has checked the real-account compare box under **You see**.
+- [ ] CI is green and CodeRabbit has approved R11 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R11 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R11 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [ ] M1 is done only when the operator has checked the real-account compare box under **You see**.
 
 ## Serve the dashboard API (R12)
 
@@ -894,7 +916,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Files.**
 
-- [ ] Create `crates/domain/src/api.rs` with the response types shared by the Worker and the UI, and `crates/domain/src/settings.rs` with `NudgeThresholds`. Edit `crates/domain/src/lib.rs` to export both. These land through the stack, never in parallel.
+- [ ] Create `crates/domain/src/api.rs` with the response types shared by the Worker and the UI, and `crates/domain/src/settings.rs` with `NudgeThresholds`. Edit `crates/domain/src/lib.rs` to export both. These land in PR order, never in parallel.
 - [ ] Create `crates/domain/tests/api_contract.rs` and the golden file `crates/domain/tests/golden/dashboard.json`.
 - [ ] Create `crates/worker/src/api/mod.rs`, `dashboard.rs`, `items.rs`, and `freshness.rs`. Edit the router in `crates/worker/src/lib.rs` to mount `/api/dashboard`, `/api/items/:id/dismiss`, `/api/items/:id/snooze`, and `/api/freshness`.
 - [ ] Create `crates/worker/src/db/dashboard.rs` with the one batch of selects. Edit `crates/worker/src/db/local_state.rs` (R04) to add `dismiss` and `snooze`.
@@ -952,10 +974,11 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R11 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R12 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R12 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R12 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Show Your turn with keyboard triage (R13)
 
@@ -964,7 +987,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 **Files.**
 
 - [ ] Create `crates/web/src/api.rs` (fetch client and `ApiError`), `crates/web/src/store.rs` (the load state machine), `crates/web/src/keys.rs` (the pure key reducer), `crates/web/src/heat.rs` (age heat and age words), and `crates/web/src/url.rs` (`is_github_url`).
-- [ ] Create the shared components in `crates/web/src/components/`. They are `triage_row.rs`, `age.rs`, `key_hints.rs`, `count_block.rs`, `empty_state.rs`, and `snooze_menu.rs`. Later view PRs reuse these and change them only through the stack.
+- [ ] Create the shared components in `crates/web/src/components/`. They are `triage_row.rs`, `age.rs`, `key_hints.rs`, `count_block.rs`, `empty_state.rs`, and `snooze_menu.rs`. Later view PRs reuse these and change them only in PR order.
 - [ ] Create `crates/web/src/views/your_turn.rs` and `crates/web/style/your-turn.css`. Edit `crates/web/src/app.rs` for the tab counters and the sync time, and `crates/web/index.html` to link the stylesheet.
 - [ ] Edit `crates/web/Cargo.toml` to add the fetch dependency (`gloo-net`) and the `web-sys` features the view uses.
 - [ ] Edit `tools/github-stub/scenarios/make.mjs` to add kinds `your-turn-edge` (ages of 23, 25, 71, and 73 hours, a CI failure, an agent item), `your-turn-hostile`, and `your-turn-theirs-only`.
@@ -1025,10 +1048,11 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R12 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R13 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R13 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R13 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Show Their turn with nudge timing (R14)
 
@@ -1038,7 +1062,7 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 - [ ] Create `migrations/<next number>_settings.sql` with a `settings` table that holds one row.
 - [ ] Edit `crates/worker/src/db/dashboard.rs` and `crates/worker/src/api/dashboard.rs` (R12) to read the row into `Dashboard.nudge`.
-- [ ] Edit `crates/domain/src/settings.rs` (R12) to add `NudgeThresholds::from_row`. Land it through the stack.
+- [ ] Edit `crates/domain/src/settings.rs` (R12) to add `NudgeThresholds::from_row`. Land it in PR order.
 - [ ] Create `crates/web/src/views/their_turn.rs` and `crates/web/style/their-turn.css`. Edit `crates/web/src/app.rs` to enable the Their turn tab and its route, and `crates/web/index.html` to link the stylesheet.
 - [ ] Edit `crates/web/src/heat.rs` (R13) to add `days_phrase`. Reuse `triage_row.rs`, `age.rs`, `key_hints.rs`, and `keys.rs` from R13 without changing them.
 - [ ] Edit `tools/github-stub/scenarios/make.mjs` to add kinds `their-turn-mixed` and `their-turn-none`.
@@ -1099,10 +1123,11 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R13 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R14 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R14 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R14 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Show the pull request pipeline (R15)
 
@@ -1168,10 +1193,11 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R14 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R15 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R15 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R15 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Show freshness and the re-authorize banner (R16)
 
@@ -1238,10 +1264,11 @@ Lane setup. Generate each scenario with `node tools/github-stub/scenarios/make.m
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R15 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R16 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R16 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R16 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Pass phone, keyboard, and accessibility checks for v1 (R17)
 
@@ -1313,10 +1340,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R16 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator with the verdict, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R17 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R17 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R17 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Trigger syncs from GitHub notification emails (R18)
 
@@ -1361,7 +1389,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Run the cron with `curl "http://127.0.0.1:<8800 + n>/__scheduled?cron=*/10+*+*+*+*"` and `GET /api/health` at trunk (the parent branch tip) and at head, then run the email post of `mention.eml` at both. Trunk has no email handler, so record its status code for the post and gate the behavior the diff adds, which is a `200` and a due `PollNotifications` row. Save `email-regression.png` as a terminal capture. Pass when the cron leaves the same Syncer status at both, `/api/health` returns `200` JSON at both, and head returns `200` for the post.
+- [ ] Lane 1. Regression lane against trunk. Run the cron with `curl "http://127.0.0.1:<8800 + n>/__scheduled?cron=*/10+*+*+*+*"` and `GET /api/health` at trunk (`main`) and at head, then run the email post of `mention.eml` at both. Trunk has no email handler, so record its status code for the post and gate the behavior the diff adds, which is a `200` and a due `PollNotifications` row. Save `email-regression.png` as a terminal capture. Pass when the cron leaves the same Syncer status at both, `/api/health` returns `200` JSON at both, and head returns `200` for the post.
 - [ ] Lane 2. Forged mention (E4). Sign in, boot the stub on `email-forged`, let one poll complete, and wait past the poll interval. Run the email post of `forged-mention.eml` and wait for the next `unit done`. Save `email-forged.png` as a terminal capture. Pass when the stub log shows exactly one new `GET /notifications` after the post, it carries `If-Modified-Since` and answers 304, no GraphQL request follows, and `select count(*) from items` and `select count(*) from events` are unchanged.
 - [ ] Lane 3. Reason table. Run the email post of `review-requested.eml`, `mention.eml`, `team-mention.eml`, `ci-activity.eml`, and `unknown-reason.eml` in turn. Save `email-reasons.png` as a terminal capture. Pass when the five log lines show `review_requested` with `repo=octo/radar-demo outcome=kicked`, then `mention`, `team_mention`, `ci_activity`, and `other`, every post returns `200`, and the Syncer status shows one due `PollNotifications` row.
 - [ ] Lane 4. Burst. Post `mention.eml` 50 times in 10 seconds with a shell loop. Save `email-burst.png` as a terminal capture. Pass when the Syncer status shows exactly one `PollNotifications` row and one pending alarm, and `wrangler dev` shows no error.
@@ -1383,10 +1411,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R17 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R18 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R18 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R18 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Warn when notification emails stop (R19)
 
@@ -1394,7 +1423,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Files.**
 
-- [ ] Create `migrations/00NN_email_state.sql`, where `NN` is the next free number on the parent branch.
+- [ ] Create `migrations/00NN_email_state.sql`, where `NN` is the next free number on `main`.
 - [ ] Create `crates/domain/src/email_health.rs` and export it from `crates/domain/src/lib.rs`.
 - [ ] Create `crates/worker/src/db/email_state.rs`.
 - [ ] Edit `crates/worker/src/email.rs` to record each GitHub email after the forward and the kick.
@@ -1430,7 +1459,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Sign in through the stub, open the freshness panel at trunk (the parent branch tip) and at head with `EMAIL_QUIET_SECS` unset and no email sent. Trunk has no email row, so gate the rows both sides share plus the new row. Save `freshness-regression.png`. Pass when last sync, API budget, and dead work rows are identical at both, no banner shows at head, and the new row reads "No email yet".
+- [ ] Lane 1. Regression lane against trunk. Sign in through the stub, open the freshness panel at trunk (`main`) and at head with `EMAIL_QUIET_SECS` unset and no email sent. Trunk has no email row, so gate the rows both sides share plus the new row. Save `freshness-regression.png`. Pass when last sync, API budget, and dead work rows are identical at both, no banner shows at head, and the new row reads "No email yet".
 - [ ] Lane 2. Healthy and duplicate. Start with `EMAIL_QUIET_SECS:5`, run the email post of `mention.eml` twice, and reload the panel. Save `freshness-healthy.png`. Pass when the row shows an age under 5 seconds, no banner shows, and `wrangler d1 execute radar --local --command "select count(*) from email_state"` returns 1.
 - [ ] Lane 3. Silent. With the stub on scenario `email-silent`, run the email post of `mention.eml`, wait 6 seconds, trigger a poll with the cron URL, and focus the tab. Save `freshness-silent.png`. Pass when the banner shows with a thread count of at least 1 and the settings link.
 - [ ] Lane 4. Idle. Run the email post of `mention.eml` against a stub scenario with no notification threads, and wait 6 seconds. Save `freshness-idle.png`. Pass when no banner shows and the row says the last email age with no newer GitHub activity.
@@ -1456,10 +1485,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R18 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R19 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R19 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R19 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Show the activity feed and roll up old events (R20)
 
@@ -1467,7 +1497,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Files.**
 
-- [ ] Create `migrations/00NN_feed_index.sql` with an index on `events (occurred_at DESC, id DESC)` and one on `events (repo, occurred_at DESC)`. Use the next free number on the parent branch.
+- [ ] Create `migrations/00NN_feed_index.sql` with an index on `events (occurred_at DESC, id DESC)` and one on `events (repo, occurred_at DESC)`. Use the next free number on `main`.
 - [ ] Create `crates/domain/src/feed.rs` and `crates/domain/src/rollup.rs`, and export both from `crates/domain/src/lib.rs`.
 - [ ] Create `crates/worker/src/db/feed.rs`, `crates/worker/src/api/feed.rs`, and `crates/worker/src/rollup.rs`.
 - [ ] Edit `crates/worker/src/sync/work.rs` so `WorkKind::Rollup` carries `RollupKey { Nightly, Week(WeekStart) }`, and edit the `Rollup` arm in `crates/worker/src/sync/handlers.rs` to call `rollup::run`. These files belong to R08 to R11, so the owner tells the root before the code-ready report.
@@ -1504,7 +1534,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Sign in through the stub and open Your turn at trunk (the parent branch tip) and at head on the same scenario. Trunk has no Feed tab, so gate Your turn and `GET /api/dashboard` at both plus the Feed tab at head. Save `feed-regression.png`. Pass when the two `/api/dashboard` bodies are identical, Your turn looks the same at both, and only head has a Feed tab.
+- [ ] Lane 1. Regression lane against trunk. Sign in through the stub and open Your turn at trunk (`main`) and at head on the same scenario. Trunk has no Feed tab, so gate Your turn and `GET /api/dashboard` at both plus the Feed tab at head. Save `feed-regression.png`. Pass when the two `/api/dashboard` bodies are identical, Your turn looks the same at both, and only head has a Feed tab.
 - [ ] Lane 2. Happy path. Run scenario `feed-basic`, 12 events across 3 repos, and open the Feed tab. Save `feed-basic.png`. Pass when 12 rows show newest first and the row count equals `wrangler d1 execute radar --local --command "select count(*) from events"`.
 - [ ] Lane 3. Filters and empty state. Choose one repo, then add a kind that no event of that repo has. Save `feed-filter-empty.png`. Pass when the repo filter shows only that repo's rows, the URL query holds both values and survives a reload, and the empty state names the full event count.
 - [ ] Lane 4. Pagination. Run scenario `feed-many` generated by `node scripts/gen-feed-scenario.mjs`, then click "Load older" until it disappears. Save `feed-paging.png`. Pass when every id appears once, times never increase down the list, and the final count equals the D1 count.
@@ -1530,10 +1560,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R19 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R20 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R20 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R20 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Show repo cards with maintainer reply times (R21)
 
@@ -1576,7 +1607,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Sign in through the stub and open Their turn at trunk (the parent branch tip) and at head on `repo-cards`. Trunk has no Repos tab and shows a dash for usual reply, so gate row order, ages, and links at both plus the filled cell at head. Save `repos-regression.png`. Pass when row order, ages, and links are identical at both, trunk shows a dash in every row, and head shows a value for every repo that has a reply.
+- [ ] Lane 1. Regression lane against trunk. Sign in through the stub and open Their turn at trunk (`main`) and at head on `repo-cards`. Trunk has no Repos tab and shows a dash for usual reply, so gate row order, ages, and links at both plus the filled cell at head. Save `repos-regression.png`. Pass when row order, ages, and links are identical at both, trunk shows a dash in every row, and head shows a value for every repo that has a reply.
 - [ ] Lane 2. Happy path and idempotency. Open the Repos tab on `repo-cards`, then run the cron URL twice to sync again. Save `repos-basic.png`. Pass when each card's counts equal a `wrangler d1 execute radar --local` select over `items`, and the cards are unchanged after the two syncs.
 - [ ] Lane 3. Merge rate. Open the cards for a repo with 3 merged, 1 closed, and 2 open pull requests, and for a repo with only open ones. Save `repos-merge-rate.png`. Pass when the first reads "75% merged" and the second reads "No merged or closed yet", not "0%".
 - [ ] Lane 4. Median reply. Open the card whose responses took 1, 2, 4, and 9 days. Save `repos-median.png`. Pass when it reads "Maintainers reply in 3d".
@@ -1602,10 +1633,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R20 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R21 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R21 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R21 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Show contribution trends as SVG charts (R22)
 
@@ -1616,7 +1648,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] Create `crates/domain/src/trends.rs` and export it from `crates/domain/src/lib.rs`. It reuses `week_start` from `crates/domain/src/rollup.rs`.
 - [ ] Create `crates/worker/src/db/trends.rs` and `crates/worker/src/api/trends.rs`.
 - [ ] Create `crates/web/src/views/trends.rs`, and add the `Trends` variant to the `Tab` enum in `crates/web/src/components/tabs.rs`, in R20's quiet `More` nav group with no counter.
-- [ ] Create `migrations/00NN_rollup_source.sql`, with `NN` the next free number on the parent branch, adding `rollups_weekly.source TEXT NOT NULL DEFAULT 'rolled' CHECK (source IN ('rolled', 'seeded'))`.
+- [ ] Create `migrations/00NN_rollup_source.sql`, with `NN` the next free number on `main`, adding `rollups_weekly.source TEXT NOT NULL DEFAULT 'rolled' CHECK (source IN ('rolled', 'seeded'))`.
 - [ ] Create `crates/worker/src/github/queries/contribution_history.graphql`, registered through `query_doc!`, and `crates/worker/src/sync/history.rs`, the handler for `WorkKind::SeedHistory`. Edit `crates/worker/src/sync/work.rs`, `handlers.rs`, and `mod.rs` to add the kind and enqueue it. These files belong to R08 to R11, so the owner tells the root before editing.
 - [ ] Edit `tools/github-stub/server.mjs` so `/graphql` answers `ContributionHistory` from `scenario.history`, and create `tools/github-stub/scenarios/trends-history.json` with two years of pull request contributions.
 - [ ] Create `crates/web/src/charts/mod.rs`, `crates/web/src/charts/bars.rs`, and `crates/web/src/charts/heatmap.rs`.
@@ -1655,7 +1687,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Sign in through the stub and open Your turn, Their turn, and Pipeline at trunk (the parent branch tip) and at head on the same scenario. Trunk has no Trends tab, so gate the three views plus the Trends tab at head. Save `trends-regression.png`. Pass when the three views and `/api/dashboard` are identical at both and only head has Trends.
+- [ ] Lane 1. Regression lane against trunk. Sign in through the stub and open Your turn, Their turn, and Pipeline at trunk (`main`) and at head on the same scenario. Trunk has no Trends tab, so gate the three views plus the Trends tab at head. Save `trends-regression.png`. Pass when the three views and `/api/dashboard` are identical at both and only head has Trends.
 - [ ] Lane 2. Happy path and session. First run `curl -i http://127.0.0.1:<8800 + n>/api/trends` with no cookie, then sign in and open Trends on `trends-26w`. Save `trends-basic.png`. Pass when the unauthenticated call returns `401` with no data, and each bar height matches the opened and merged counts from `select` queries on `items`.
 - [ ] Lane 3. Seeded, rolled, and live weeks. Run scenario `trends-history`, sign in, let the backfill finish, and fire the nightly cron twice. Then run scenario `feed-old` from R20 with the nightly cron and open Trends. Save `trends-rolled.png`. Pass when the stub log shows one `ContributionHistory` query per year of history and none on the second nightly run, weeks older than 90 days show the stub's numbers marked `Seeded`, rolled weeks come from `rollups_weekly`, recent weeks come from `items`, all 52 weeks have data, and the summed `opened` equals the sum of the pre-rollup counts plus the seeded counts.
 - [ ] Lane 4. Empty state. On a fresh `--persist-to` directory, open Trends. Save `trends-empty.png`. Pass when the summary reads "Nothing merged yet.", the charts show empty axes, and the page text has no `NaN`, `undefined`, or `null`.
@@ -1681,10 +1713,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R21 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R22 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R22 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R22 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Show agent work before a PR exists (R23)
 
@@ -1692,7 +1725,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Files.**
 
-- [ ] Create `migrations/00NN_agent_work.sql`, with `NN` the next free number on the parent branch.
+- [ ] Create `migrations/00NN_agent_work.sql`, with `NN` the next free number on `main`.
 - [ ] Create `crates/domain/src/agents.rs` and export it from `crates/domain/src/lib.rs`.
 - [ ] Create `crates/worker/src/hooks/mod.rs`, `crates/worker/src/hooks/secret.rs`, `crates/worker/src/hooks/github.rs`, `crates/worker/src/hooks/checkin.rs`, `crates/worker/src/api/agents.rs`, and `crates/worker/src/db/agents.rs`. Add the three routes `POST /hooks/github`, `POST /hooks/checkin`, and `GET /api/agents` in `crates/worker/src/lib.rs`.
 - [ ] Create `crates/web/src/views/agents.rs`, and add the `Agents` variant to the `Tab` enum in `crates/web/src/components/tabs.rs`, in R20's quiet `More` nav group with no counter.
@@ -1732,7 +1765,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Sign in through the stub and open Your turn at trunk (the parent branch tip) and at head on the same scenario. Trunk has no Agents tab, so gate Your turn and `/api/dashboard` at both plus the Agents tab at head. Save `agents-regression.png`. Pass when the two `/api/dashboard` bodies are identical and only head has an Agents tab.
+- [ ] Lane 1. Regression lane against trunk. Sign in through the stub and open Your turn at trunk (`main`) and at head on the same scenario. Trunk has no Agents tab, so gate Your turn and `/api/dashboard` at both plus the Agents tab at head. Save `agents-regression.png`. Pass when the two `/api/dashboard` bodies are identical and only head has an Agents tab.
 - [ ] Lane 2. Signed push, then branch deleted. Start Radar with `--var WEBHOOK_SECRET:lane-webhook-secret-0123456789abcdef` (36 bytes) and run `node scripts/send-webhook.mjs <port> tools/github-stub/webhooks/push-agent-branch.json --secret lane-webhook-secret-0123456789abcdef`. Then post `push-delete.json` the same way. Save `agents-push.png`. Pass when the first output is `200` with `recorded` and the Agents tab shows a Working row for the branch, and after the delete the row leaves the Agents tab on the next refetch and the stored `reported` value is `finished`.
 - [ ] Lane 3. Bad signatures. Post `push-agent-branch.json` with a wrong secret, with no signature header, with only `X-Hub-Signature`, and as a `GET`. Save `agents-bad-signature.png` as a terminal capture. Pass when the first three return `401`, the `GET` returns `405`, and `select count(*) from agent_work` is unchanged.
 - [ ] Lane 4. Ignored pushes. Post `push-main.json`, `push-foreign-owner.json`, and `ping.json` with the right secret. Save `agents-ignored.png` as a terminal capture. Pass when the outcomes are `ignored_ref`, `ignored_owner`, and `pong`, and no row is added.
@@ -1758,10 +1791,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R22 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R23 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R23 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R23 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Send phone alerts through Telegram (R24)
 
@@ -1769,7 +1803,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Files.**
 
-- [ ] Create `migrations/00NN_alerts.sql`, with `NN` the next free number on the parent branch.
+- [ ] Create `migrations/00NN_alerts.sql`, with `NN` the next free number on `main`.
 - [ ] Create `crates/domain/src/alert.rs` and export it from `crates/domain/src/lib.rs`.
 - [ ] Create `crates/worker/src/alerts/mod.rs` and `crates/worker/src/alerts/telegram.rs`.
 - [ ] Edit `crates/worker/src/sync/work.rs` to add `WorkKind::SendAlerts` with the key `main`, `crates/worker/src/sync/enrich.rs` to enqueue it after it writes events, and `crates/worker/src/sync/handlers.rs` to route it to `alerts::dispatch`. These files belong to R08 to R11, so the owner tells the root first.
@@ -1808,7 +1842,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Run scenario `alerts` with no secrets at trunk (the parent branch tip) and at head, and count the GitHub stub's requests at each. Trunk sends no alerts, so gate the GitHub request count and the Your turn rows at both plus zero Telegram calls at head. Save `alerts-regression.png` as a terminal capture. Pass when the two request logs have the same count and paths, the `items` rows match, and the Telegram stub records nothing.
+- [ ] Lane 1. Regression lane against trunk. Run scenario `alerts` with no secrets at trunk (`main`) and at head, and count the GitHub stub's requests at each. Trunk sends no alerts, so gate the GitHub request count and the Your turn rows at both plus zero Telegram calls at head. Save `alerts-regression.png` as a terminal capture. Pass when the two request logs have the same count and paths, the `items` rows match, and the Telegram stub records nothing.
 - [ ] Lane 2. Happy path. Start the Telegram stub on `9000 + n`, then Radar with `--var TELEGRAM_BOT_TOKEN:lane-token --var TELEGRAM_CHAT_ID:42 --var TELEGRAM_API_BASE:http://127.0.0.1:<9000 + n>`, and run the sync on `alerts`. Save `alerts-sent.png` as a terminal capture. Pass when the stub shows two requests, one for the mention and one for the review request, each with `chat_id` 42 and the title and link in the text.
 - [ ] Lane 3. Off by default. Start Radar with no Telegram vars and run the sync. Save `alerts-off.png` as a terminal capture. Pass when the log shows `alerts off` once, the stub shows no request, and `select count(*) from alerts` is 0.
 - [ ] Lane 4. Partial config. Start with only `TELEGRAM_BOT_TOKEN`, then with only `TELEGRAM_CHAT_ID`. Save `alerts-partial.png` as a terminal capture. Pass when both runs behave as lane 3.
@@ -1830,10 +1864,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
-- [ ] Rebased onto the R23 branch after the verdict, patch-id unchanged.
-- [ ] Handed to the operator, who lands the stack bottom-up.
+- [ ] CI is green and CodeRabbit has approved R24 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R24 is review-gated, the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R24 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Bring the PRD in line with the ADRs (R25)
 
@@ -1895,19 +1930,20 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Merge.**
 
-- [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
+- [ ] CI is green and CodeRabbit has approved R25 at the exact head SHA, with every thread resolved.
+- [ ] Root's clean swarm verdict at the exact head SHA. If R25 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
-- [ ] Handed to the operator, who lands the stack bottom-up.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R25 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
 
 ## Close the program
 
 - [ ] Every box above is checked with its evidence.
-- [ ] The operator has landed R01 to R24, and R25.
+- [ ] Every R, R01 to R25, is merged to `main` through its own PR.
 - [ ] M2 is done. The operator has used Radar daily for a week instead of github.com/notifications, and checks this box.
 - [ ] M4 is done. The feed, repo cards, and trends show the operator's real data on the preview deploy, and the operator checks this box.
 - [ ] M5 is done. A push to an `agent/` branch on a fork shows in the Agents view within 2 minutes, a mention reaches the operator's phone through Telegram, and the operator checks this box.
-- [ ] Reply to the operator with the report `playbooks/autopilot-stack.md` names, each PR with its verdict.
+- [ ] Reply to the operator with the report `playbooks/autopilot-full.md` names, each PR with its verdict and merge SHA.
 
 ## Appendix A. Prototype evidence
 
@@ -1934,7 +1970,8 @@ These stay unproven until R02 runs on Cloudflare.
 | Test against real GitHub in live lanes | Needs a real token in every lane, is not repeatable, and spends rate limit. The GitHub stub serves fixtures instead |
 | A development login that skips OAuth | Code that can mint a session without GitHub would exist in production. The stub emulates GitHub's OAuth endpoints instead |
 | Queues and KV for sync, as in the PRD | Replaced by the Syncer in ADR 0002. R02 decides whether the Queue fallback is needed |
-| Merge on green by owners (`autopilot-full`) | The operator wants to land each PR. Deploys stay with the operator |
+| The operator lands every PR (`autopilot-stack`) | The operator wants each PR reviewed by CodeRabbit and merged by its Opus owner. Deploys stay with the operator |
+| One long stack of unmerged PRs | Each PR merges before the next one starts, so `main` always holds the verified work and CodeRabbit reviews small diffs |
 
 ## Appendix C. Risks
 
