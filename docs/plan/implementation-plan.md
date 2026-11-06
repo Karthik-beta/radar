@@ -103,7 +103,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Create `crates/web/Cargo.toml`, `crates/web/Trunk.toml`, `crates/web/index.html`, `crates/web/src/main.rs`, and `crates/web/src/app.rs`.
 - [ ] Create `wrangler.toml`, `package.json`, and `package-lock.json`.
 - [ ] Create `scripts/build.mjs`, `scripts/check-size.mjs`, and `scripts/check-size.test.mjs`.
-- [ ] Create `.github/workflows/ci.yml`.
+- [ ] Edit `.github/workflows/ci.yml`. Its `rust` job already exists and runs once `Cargo.toml` is present. R01 adds the jobs the box below names, keeps every action pinned to a commit SHA, and adds a `cargo` entry to `.github/dependabot.yml`.
 - [ ] Edit `.gitignore` to add `artifacts/`, the folder for review media.
 - [ ] Edit `AGENTS.md` to replace the sentence "The project scaffold arrives in milestone M0. Until then there are no build, test, or lint commands." with the real commands.
 
