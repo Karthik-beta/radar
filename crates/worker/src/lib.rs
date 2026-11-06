@@ -1,4 +1,5 @@
 mod api;
+pub mod db;
 mod security;
 mod sync;
 
