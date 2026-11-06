@@ -16,7 +16,12 @@ impl ApiPath {
             return Err(GithubError::BadConfig);
         }
         let (route, _) = raw.split_once('?').unwrap_or((raw, ""));
-        if route.contains('%') || route.to_ascii_lowercase().starts_with("/graphql") {
+        let unnormalized = route
+            .split('/')
+            .skip(1)
+            .any(|segment| segment.is_empty() || segment == ".");
+        if unnormalized || route.contains('%') || route.to_ascii_lowercase().starts_with("/graphql")
+        {
             return Err(GithubError::BadConfig);
         }
         let lower = raw.to_ascii_lowercase();
@@ -75,6 +80,10 @@ mod tests {
             "/graphql",
             "/GraphQL",
             "/graphql/",
+            "/./graphql",
+            "/./graphql?query=mutation%7Bx%7D",
+            "/repos/./x",
+            "/user/",
             "/graphql?query=mutation%20%7B%20addStar%20%7D",
             "/graphql?query=%6dutation%7Bx%7D",
             "user",
