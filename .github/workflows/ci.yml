@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Docs and scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Check script syntax
+        run: for f in scripts/*.mjs; do node --check "$f"; done
+      - name: Render the design tokens page
+        run: node scripts/tokens-to-wiki.mjs "$RUNNER_TEMP/wiki"
+      - name: Check links between repository files
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --offline --no-progress './**/*.md'
+          fail: true
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Look for the Cargo workspace
+        id: cargo
+        run: |
+          if [ -f Cargo.toml ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; echo "No Cargo.toml yet. R01 adds the workspace."; fi
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        if: steps.cargo.outputs.present == 'true'
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.cargo.outputs.present == 'true'
+      - name: Format
+        if: steps.cargo.outputs.present == 'true'
+        run: cargo fmt --all --check
+      - name: Lint
+        if: steps.cargo.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        if: steps.cargo.outputs.present == 'true'
+        run: cargo test --workspace
+      - name: Build for wasm32
+        if: steps.cargo.outputs.present == 'true'
+        run: cargo build --workspace --release --target wasm32-unknown-unknown
+      - name: Check bundle size
+        if: steps.cargo.outputs.present == 'true' && hashFiles('scripts/check-size.mjs') != ''
+        run: node scripts/check-size.mjs
