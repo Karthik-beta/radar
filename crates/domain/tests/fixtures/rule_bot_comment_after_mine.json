@@ -1,0 +1,65 @@
+{
+  "me": "karthik-beta",
+  "item": {
+    "item_ref": {
+      "repo": "karthik-beta/radar",
+      "number": 42,
+      "kind": "pr"
+    },
+    "author": {
+      "login": "karthik-beta",
+      "kind": "user"
+    },
+    "state": "open",
+    "created_at": "2026-11-02T09:00:00Z",
+    "updated_at": "2026-11-02T11:00:00Z",
+    "closed_at": null,
+    "review_decision": "review_required",
+    "review_requests": [],
+    "assignees": [],
+    "ci": {
+      "state": "passing",
+      "at": "2026-11-02T09:30:00Z"
+    },
+    "activity": [
+      {
+        "at": "2026-11-02T10:00:00Z",
+        "actor": {
+          "login": "bob",
+          "kind": "user"
+        },
+        "kind": {
+          "type": "comment",
+          "mentions_me": false
+        }
+      },
+      {
+        "at": "2026-11-02T10:30:00Z",
+        "actor": {
+          "login": "karthik-beta",
+          "kind": "user"
+        },
+        "kind": {
+          "type": "comment",
+          "mentions_me": false
+        }
+      },
+      {
+        "at": "2026-11-02T11:00:00Z",
+        "actor": {
+          "login": "github-actions",
+          "kind": "bot"
+        },
+        "kind": {
+          "type": "comment",
+          "mentions_me": false
+        }
+      }
+    ]
+  },
+  "expect": {
+    "turn": "them",
+    "stage": "awaiting_review",
+    "since": "2026-11-02T10:30:00Z"
+  }
+}
