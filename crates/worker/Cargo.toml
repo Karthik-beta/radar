@@ -9,11 +9,20 @@ name = "radar_worker"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+base64 = { version = "0.22", default-features = false, features = ["alloc"] }
 domain.workspace = true
+getrandom = "0.3"
+hmac = "0.12"
 serde.workspace = true
 serde_json.workspace = true
+sha2 = { version = "0.10", default-features = false }
+subtle = { version = "2.6", default-features = false }
 wasm-bindgen.workspace = true
 worker = { workspace = true, features = ["d1"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [features]
 default = []

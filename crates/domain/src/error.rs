@@ -11,6 +11,8 @@ pub struct ErrorBody {
 pub enum ErrorCode {
     NotFound,
     Internal,
+    Unauthorized,
+    Forbidden,
 }
 
 #[cfg(test)]
@@ -33,5 +35,16 @@ mod tests {
             serde_json::to_string(&internal).unwrap(),
             r#"{"error":"internal"}"#
         );
+    }
+
+    #[test]
+    fn auth_codes_serialize_as_words() {
+        for (code, word) in [
+            (ErrorCode::Unauthorized, r#"{"error":"unauthorized"}"#),
+            (ErrorCode::Forbidden, r#"{"error":"forbidden"}"#),
+        ] {
+            let body = ErrorBody { error: code };
+            assert_eq!(serde_json::to_string(&body).unwrap(), word);
+        }
     }
 }
