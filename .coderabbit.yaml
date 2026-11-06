@@ -23,7 +23,7 @@ reviews:
     drafts: false
   path_filters:
     - "!**/Cargo.lock"
-    - "!public/fonts/**"
+    - "!public/fonts/*.woff2"
     - "!public/*.png"
     - "!public/favicon.ico"
     - "!design/brand/*.png"
