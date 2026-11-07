@@ -1,7 +1,8 @@
 //! The Syncer Durable Object: the only code that calls GitHub. Each alarm runs
 //! one unit from the `work` table, and `scheduler` decides which.
 
-mod config;
+pub(crate) mod config;
+mod enrich;
 mod gate;
 mod handlers;
 mod poll;
@@ -123,7 +124,7 @@ impl Syncer {
         let Handled {
             outcome,
             finished_from,
-        } = handlers::run(&kind, &self.env, &mut observed).await;
+        } = handlers::run(&kind, &self.env, &mut observed, now()).await;
         let done_at = now();
         // Kicks run while the unit awaits GitHub, so write onto a fresh read.
         let (rows, mut sync) = self.load()?;

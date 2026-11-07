@@ -440,7 +440,10 @@ mod tests {
         };
         exec(&conn, &upsert(&row)).expect("insert");
         let stored = record(&conn, "PR_3");
-        assert_eq!(stored.requested_reviewers, r#"["octocat","dependabot[bot]"]"#);
+        assert_eq!(
+            stored.requested_reviewers,
+            r#"["octocat","dependabot[bot]"]"#
+        );
         assert_eq!(ItemRow::try_from(stored).expect("row"), row);
     }
 

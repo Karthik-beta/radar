@@ -1,10 +1,11 @@
-//! What each kind of unit does. Until R10 and R11 replace them, `Enrich` and
-//! `BackfillPage` only read `GET /rate_limit` and record what it reports.
+//! What each kind of unit does. Until R11 replaces it, `BackfillPage` only reads
+//! `GET /rate_limit` and records what it reports.
 
 use domain::ids::Timestamp;
 use serde::de::IgnoredAny;
 use worker::Env;
 
+use super::enrich;
 use super::poll;
 use super::scheduler::UnitOutcome;
 use super::state::SyncState;
@@ -32,11 +33,12 @@ impl From<UnitOutcome> for Handled {
 
 /// Each GitHub call is awaited before the next starts, so no two requests for the
 /// token overlap (P5).
-pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState) -> Handled {
+pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timestamp) -> Handled {
     match kind {
         WorkKind::Rollup => UnitOutcome::Done { follow_ups: vec![] }.into(),
         WorkKind::PollNotifications => poll::run(env, state).await,
-        WorkKind::Enrich(_) | WorkKind::BackfillPage(_) => check_rate(env, state).await.into(),
+        WorkKind::Enrich(batch) => enrich::run(batch, env, state, now).await.into(),
+        WorkKind::BackfillPage(_) => check_rate(env, state).await.into(),
     }
 }
 
