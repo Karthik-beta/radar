@@ -6,4 +6,5 @@ pub mod ids;
 pub mod item;
 pub mod me;
 pub mod stage;
+pub mod sync_status;
 pub mod turn;

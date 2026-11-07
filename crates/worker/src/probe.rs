@@ -4,6 +4,7 @@ use serde_json::{json, Map, Value};
 use worker::{Env, Method, Request, Response, Result};
 
 use crate::github::{query, ApiPath, Client, Conditional, Fetched, GithubError, Queried, Token};
+use crate::sync::{self, KickReason};
 
 pub const PREFIX: &str = "/__probe/";
 
@@ -24,8 +25,23 @@ pub async fn handle(req: &Request, env: &Env) -> Result<Response> {
     match url.path() {
         "/__probe/get" => get(env, &params).await,
         "/__probe/query" => run_query(env, &params).await,
+        "/__probe/syncer/status" => sync::status(env).await,
+        "/__probe/syncer/kick" => kick(env, &params).await,
+        "/__probe/syncer/enqueue" => {
+            let param = |name| params.get(name).map(String::as_str).unwrap_or_default();
+            sync::enqueue(env, param("kind"), param("key")).await
+        }
         _ => reply(404, json!({"error": "not_found"})),
     }
+}
+
+async fn kick(env: &Env, params: &HashMap<String, String>) -> Result<Response> {
+    let raw = params.get("reason").map(String::as_str).unwrap_or_default();
+    let Some(reason) = KickReason::parse(raw) else {
+        return reply(400, json!({"error": "unknown_reason"}));
+    };
+    sync::kick(env, reason).await?;
+    reply(200, json!({"kicked": reason.as_str()}))
 }
 
 async fn get(env: &Env, params: &HashMap<String, String>) -> Result<Response> {
@@ -108,7 +124,7 @@ fn setting(env: &Env, name: &str) -> Option<String> {
 // `Client::new` accepts only api.github.com over https or a loopback stub over http,
 // so an http base is a local stub lane and needs no secret.
 fn authorized(base: &str, secret: Option<&str>, presented: Option<&str>) -> bool {
-    if base.starts_with("http://") {
+    if is_loopback_http(base) {
         return true;
     }
     match (secret, presented) {
@@ -117,6 +133,21 @@ fn authorized(base: &str, secret: Option<&str>, presented: Option<&str>) -> bool
         }
         _ => false,
     }
+}
+
+fn is_loopback_http(base: &str) -> bool {
+    let Some(rest) = base.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    if authority.contains('@') {
+        return false;
+    }
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or_default(),
+        None => authority.split(':').next().unwrap_or_default(),
+    };
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
 }
 
 fn constant_time_eq(a: &str, b: &str) -> bool {
@@ -164,6 +195,16 @@ mod tests {
     fn loopback_stub_lanes_need_no_secret() {
         assert!(authorized("http://127.0.0.1:8906", None, None));
         assert!(authorized("http://localhost:8906", Some("short"), None));
+        assert!(authorized("http://[::1]:8906", None, None));
+        assert!(!authorized("http://example.com", None, None));
+        assert!(!authorized("http://127.0.0.1.example.com:8906", None, None));
+        assert!(!authorized("http://localhost@evil.example", None, None));
+        assert!(!authorized(
+            "http://localhost:password@evil.example",
+            None,
+            None
+        ));
+        assert!(!authorized("http://[::1]@evil.example", None, None));
     }
 
     #[test]

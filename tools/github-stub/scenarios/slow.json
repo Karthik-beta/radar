@@ -1,0 +1,4 @@
+{
+  "extends": "fast-poll",
+  "delay_ms": 1500
+}

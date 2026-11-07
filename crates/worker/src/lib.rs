@@ -35,9 +35,14 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 }
 
 #[event(scheduled)]
-async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
-    console_log!("scheduled reconcile");
-    if let Err(err) = sync::kick(&env, "reconcile").await {
+async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    let cron = event.cron();
+    let Some(reason) = sync::reason_for_cron(&cron) else {
+        console_error!("scheduled cron={cron} matches no kick");
+        return;
+    };
+    console_log!("scheduled {}", reason.as_str());
+    if let Err(err) = sync::kick(&env, reason).await {
         console_error!("syncer kick failed: {err}");
     }
 }
