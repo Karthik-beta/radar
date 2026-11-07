@@ -1,0 +1,4 @@
+{
+  "extends": "poll-basic",
+  "notifications": { "ignore_conditional": true }
+}

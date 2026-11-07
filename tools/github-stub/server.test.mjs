@@ -222,6 +222,22 @@ describe("notification pages", () => {
   });
 });
 
+describe("ignored conditional requests", () => {
+  it("poll_ignores_ims_answers_200_to_a_matching_if_modified_since", async () => {
+    const stub = await start("poll-ignores-ims");
+    try {
+      const first = await stub.authed("/notifications");
+      const lastModified = first.headers.get("last-modified");
+      assert.ok(lastModified);
+      const second = await stub.authed("/notifications", { headers: { "if-modified-since": lastModified } });
+      assert.equal(second.status, 200);
+      assert.equal((await second.json()).length, 3);
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
 describe("read-only defence", () => {
   let s;
   before(async () => {

@@ -286,7 +286,7 @@ export function createStub({ scenario: initial = "basic" } = {}) {
       if (notifications.last_modified) headers["last-modified"] = new Date(notifications.last_modified).toUTCString();
       if (notifications.etag) headers.etag = notifications.etag;
       if (state.scenario.poll_interval !== undefined) headers["x-poll-interval"] = String(state.scenario.poll_interval);
-      if (notModified(req.headers, notifications)) return reply(res, entry, 304, undefined, headers);
+      if (!notifications.ignore_conditional && notModified(req.headers, notifications)) return reply(res, entry, 304, undefined, headers);
       const { items, link } = notificationPage(notifications, url.searchParams, `http://${req.headers.host}`);
       if (link) headers.link = link;
       reply(res, entry, 200, items, headers);
