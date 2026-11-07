@@ -11,11 +11,13 @@ mod work;
 
 use domain::ids::Timestamp;
 use domain::sync_status::SyncStatus;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use worker::js_sys::{Date as JsDate, Number};
+use worker::wasm_bindgen::JsValue;
 use worker::{
-    console_error, console_log, durable_object, Date, DurableObject, Env, Request, Response,
-    Result, ScheduledTime, SqlStorageValue, State, Url,
+    console_error, console_log, durable_object, Date, DurableObject, Env, Method, Request,
+    RequestInit, Response, Result, ScheduledTime, SqlStorageValue, State,
 };
 
 pub use config::reason_for_cron;
@@ -33,6 +35,20 @@ const BINDING: &str = "SYNCER";
 const INSTANCE: &str = "syncer";
 const ORIGIN: &str = "https://syncer";
 
+/// Calls go through `req.path()` and a JSON body rather than a query string, so the
+/// default build does not link the `url` parser.
+#[derive(Serialize, Deserialize)]
+struct KickCall {
+    reason: KickReason,
+}
+
+#[cfg(feature = "probe")]
+#[derive(Serialize, Deserialize)]
+struct EnqueueCall {
+    kind: String,
+    key: String,
+}
+
 #[durable_object]
 pub struct Syncer {
     state: State,
@@ -48,31 +64,27 @@ impl DurableObject for Syncer {
         syncer
     }
 
-    async fn fetch(&self, req: Request) -> Result<Response> {
-        let url = req.url()?;
-        let param = |name: &str| {
-            url.query_pairs()
-                .find(|(k, _)| k == name)
-                .map(|(_, v)| v.into_owned())
-                .unwrap_or_default()
-        };
-        match url.path() {
+    async fn fetch(&self, mut req: Request) -> Result<Response> {
+        match req.path().as_str() {
             "/status" => Response::from_json(&self.status().await?),
-            "/kick" => match KickReason::parse(&param("reason")) {
-                Some(reason) => {
+            "/kick" => match req.json::<KickCall>().await {
+                Ok(KickCall { reason }) => {
                     self.kick(reason).await?;
                     Response::from_json(&json!({ "kicked": reason.as_str() }))
                 }
-                None => error(400, "unknown_reason"),
+                Err(_) => error(400, "unknown_reason"),
             },
             #[cfg(feature = "probe")]
-            "/enqueue" => match WorkKind::from_request(&param("kind"), &param("key")) {
-                Ok(kind) => {
-                    let queued = self.enqueue(kind).await?;
-                    Response::from_json(&json!({ "queued": queued }))
+            "/enqueue" => {
+                let call = req.json::<EnqueueCall>().await?;
+                match WorkKind::from_request(&call.kind, &call.key) {
+                    Ok(kind) => {
+                        let queued = self.enqueue(kind).await?;
+                        Response::from_json(&json!({ "queued": queued }))
+                    }
+                    Err(err) => error(400, &err.to_string()),
                 }
-                Err(err) => error(400, &err.to_string()),
-            },
+            }
             _ => error(404, "not_found"),
         }
     }
@@ -267,18 +279,23 @@ fn error(status: u16, code: &str) -> Result<Response> {
     Ok(Response::from_json(&json!({ "error": code }))?.with_status(status))
 }
 
-async fn call(env: &Env, path: &str, query: &[(&str, &str)]) -> Result<Response> {
-    let url = Url::parse_with_params(&format!("{ORIGIN}{path}"), query)
-        .map_err(|err| worker::Error::RustError(err.to_string()))?;
+async fn call(env: &Env, path: &str, body: Option<String>) -> Result<Response> {
+    let mut init = RequestInit::new();
+    if let Some(body) = body {
+        init.with_method(Method::Post)
+            .with_body(Some(JsValue::from_str(&body)));
+    }
+    let req = Request::new_with_init(&format!("{ORIGIN}{path}"), &init)?;
     let stub = env
         .durable_object(BINDING)?
         .id_from_name(INSTANCE)?
         .get_stub()?;
-    stub.fetch_with_str(url.as_str()).await
+    stub.fetch_with_request(req).await
 }
 
 pub async fn kick(env: &Env, reason: KickReason) -> Result<()> {
-    let response = call(env, "/kick", &[("reason", reason.as_str())]).await?;
+    let body = serde_json::to_string(&KickCall { reason })?;
+    let response = call(env, "/kick", Some(body)).await?;
     match response.status_code() {
         200 => Ok(()),
         status => Err(worker::Error::RustError(format!(
@@ -290,10 +307,14 @@ pub async fn kick(env: &Env, reason: KickReason) -> Result<()> {
 /// The Syncer's status, reachable only through the `SYNCER` binding.
 #[cfg(feature = "probe")]
 pub async fn status(env: &Env) -> Result<Response> {
-    call(env, "/status", &[]).await
+    call(env, "/status", None).await
 }
 
 #[cfg(feature = "probe")]
 pub async fn enqueue(env: &Env, kind: &str, key: &str) -> Result<Response> {
-    call(env, "/enqueue", &[("kind", kind), ("key", key)]).await
+    let call_body = EnqueueCall {
+        kind: kind.to_owned(),
+        key: key.to_owned(),
+    };
+    call(env, "/enqueue", Some(serde_json::to_string(&call_body)?)).await
 }

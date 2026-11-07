@@ -4,6 +4,7 @@ use std::fmt;
 
 use domain::ids::Timestamp;
 use domain::sync_status::SyncKind;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::config::ENRICH_BATCH;
@@ -237,7 +238,8 @@ impl WorkRow {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum KickReason {
     Reconcile,
     Email,
@@ -248,6 +250,7 @@ pub enum KickReason {
 }
 
 impl KickReason {
+    #[cfg(any(test, feature = "probe"))]
     const ALL: [KickReason; 6] = [
         KickReason::Reconcile,
         KickReason::Email,
@@ -268,6 +271,7 @@ impl KickReason {
         }
     }
 
+    #[cfg(any(test, feature = "probe"))]
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|reason| reason.as_str() == s)
     }
@@ -373,6 +377,8 @@ mod tests {
     fn kick_reasons_round_trip() {
         for reason in KickReason::ALL {
             assert_eq!(KickReason::parse(reason.as_str()), Some(reason));
+            let json = serde_json::to_string(&reason).unwrap();
+            assert_eq!(json, format!("\"{}\"", reason.as_str()));
         }
         assert_eq!(KickReason::parse("nightly"), None);
     }
