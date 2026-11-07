@@ -140,6 +140,9 @@ fn is_loopback_http(base: &str) -> bool {
         return false;
     };
     let authority = rest.split('/').next().unwrap_or_default();
+    if authority.contains('@') {
+        return false;
+    }
     let host = match authority.strip_prefix('[') {
         Some(v6) => v6.split(']').next().unwrap_or_default(),
         None => authority.split(':').next().unwrap_or_default(),
@@ -196,6 +199,12 @@ mod tests {
         assert!(!authorized("http://example.com", None, None));
         assert!(!authorized("http://127.0.0.1.example.com:8906", None, None));
         assert!(!authorized("http://localhost@evil.example", None, None));
+        assert!(!authorized(
+            "http://localhost:password@evil.example",
+            None,
+            None
+        ));
+        assert!(!authorized("http://[::1]@evil.example", None, None));
     }
 
     #[test]
