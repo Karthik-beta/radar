@@ -118,3 +118,7 @@ The first entry that still has requests left and matches wins. Faults run after 
 ## Tests
 
 `node --test "tools/**/*.test.mjs"`
+
+## Email fixtures
+
+`emails/` holds raw messages for `wrangler dev`'s email endpoint. Post one with `curl -sS -w "%{http_code}\n" -X POST "http://127.0.0.1:<port>/cdn-cgi/handler/email?from=notifications@github.com&to=radar@karthik.nz" -H "Content-Type: application/octet-stream" --data-binary @tools/github-stub/emails/mention.eml`. `forged-mention.eml` carries GitHub's headers but comes from another sender, and pairs with the `email-forged` scenario. `node tools/github-stub/emails/generate.mjs` writes `hostile-headers.eml` and the 2 MB `big-body.eml`, which git ignores.

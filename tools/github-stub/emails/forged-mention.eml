@@ -1,0 +1,14 @@
+Return-Path: <attacker@evil.example>
+From: Maintainer <attacker@evil.example>
+To: Karthik <radar@karthik.nz>
+Message-ID: <forged-1@evil.example>
+Subject: [octo/radar-demo] Question about the API (Issue #9)
+Date: Sat, 07 Nov 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+List-ID: octo/radar-demo <radar-demo.octo.github.com>
+X-GitHub-Sender: maintainer
+X-GitHub-Recipient: karthik
+X-GitHub-Reason: mention
+
+Sent by someone who is not GitHub. The headers are copied from mention.eml.

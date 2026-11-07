@@ -1,6 +1,7 @@
 mod api;
 pub mod auth;
 pub mod db;
+mod email;
 pub mod github;
 #[cfg(feature = "probe")]
 mod probe;

@@ -1,0 +1,15 @@
+Return-Path: <notifications@github.com>
+From: Maintainer <notifications@github.com>
+To: octo/radar-demo <radar-demo@noreply.github.com>
+Cc: Karthik <radar@karthik.nz>
+Message-ID: <octo/radar-demo/issues/11@github.com>
+Subject: [octo/radar-demo] Something new (Issue #11)
+Date: Sat, 07 Nov 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+List-ID: octo/radar-demo <radar-demo.octo.github.com>
+X-GitHub-Sender: maintainer
+X-GitHub-Recipient: karthik
+X-GitHub-Reason: brand_new_reason
+
+Fixture body. Radar never reads this.
