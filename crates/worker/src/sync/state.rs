@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use domain::ids::Timestamp;
-use domain::sync_status::{DeferCause, Rate, SyncKind, SyncStatus};
+use domain::sync_status::{DeadWork, DeferCause, Rate, SyncKind, SyncStatus};
 
 use super::gate::{gate, Gate};
 use super::work::WorkRow;
@@ -80,10 +80,17 @@ pub fn status(
         rate: state.rate,
         last_ok_by_kind: state.last_ok.clone(),
         blocked: blocked(state, now),
+        scopes: state.scopes.clone(),
         ..SyncStatus::default()
     };
     for row in rows {
         let counts = if row.is_dead() {
+            out.dead.push(DeadWork {
+                kind: row.kind.kind(),
+                key: row.kind.key(),
+                attempts: row.attempts,
+                since: row.due_at,
+            });
             &mut out.dead_by_kind
         } else {
             &mut out.pending_by_kind
@@ -153,11 +160,23 @@ mod tests {
         let poll = WorkRow::pending(WorkKind::PollNotifications, now);
         let rollup = WorkRow {
             state: RowState::Dead,
-            ..WorkRow::pending(WorkKind::Rollup, now)
+            attempts: 3,
+            ..WorkRow::pending(WorkKind::Rollup, Timestamp(999_000))
         };
         let mut state = SyncState::default();
         state.throttle.no_token = true;
+        state.scopes = Some("read:user".into());
         let out = status(&[poll, rollup], &state, Some(now), now);
+        assert_eq!(
+            out.dead,
+            [DeadWork {
+                kind: SyncKind::Rollup,
+                key: WorkKind::Rollup.key(),
+                attempts: 3,
+                since: Timestamp(999_000),
+            }]
+        );
+        assert_eq!(out.scopes.as_deref(), Some("read:user"));
         assert_eq!(
             out.pending_by_kind,
             BTreeMap::from([(SyncKind::PollNotifications, 1)])

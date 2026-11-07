@@ -7,7 +7,7 @@
 //!     [--synced-at <epoch>] --synthetic <n>
 //!   cargo run -p radar-worker --features sql-dump --example emit_sql -- --queries <now-epoch>
 //!
-//! `--queries` prints the four dashboard reads with `now` filled in.
+//! `--queries` prints the dashboard reads with `now` filled in.
 //!
 //! An item fixture is the `domain` classify fixture (`me`, `item`, `expect`)
 //! plus an optional `row` object that overrides the generated node id, title,
@@ -21,7 +21,7 @@ use domain::ids::{Login, Timestamp};
 use domain::item::Item;
 use radar_worker::db::events::{self, EventRow};
 use radar_worker::db::items::{self, ItemMeta, ItemRow};
-use radar_worker::db::{queries, synthetic, Statement};
+use radar_worker::db::{dashboard, synthetic, Statement};
 use serde::de::IgnoredAny;
 use serde::Deserialize;
 
@@ -156,13 +156,8 @@ fn dashboard_queries(now: &str) -> Result<Vec<String>, String> {
         .parse::<i64>()
         .map(Timestamp)
         .map_err(|_| format!("--queries needs an epoch, got `{now}`"))?;
-    [
-        queries::your_turn(now),
-        queries::their_turn(),
-        queries::pipeline(),
-        queries::merged_closed(now),
-    ]
-    .iter()
-    .map(|s| s.to_literal_sql().map_err(|e| e.to_string()))
-    .collect()
+    dashboard::statements(now)
+        .iter()
+        .map(|s| s.to_literal_sql().map_err(|e| e.to_string()))
+        .collect()
 }

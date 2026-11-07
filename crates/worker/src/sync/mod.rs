@@ -296,9 +296,14 @@ pub async fn kick(env: &Env, reason: KickReason) -> Result<()> {
 }
 
 /// The Syncer's status, reachable only through the `SYNCER` binding.
-#[cfg(feature = "probe")]
-pub async fn status(env: &Env) -> Result<Response> {
-    call(env, "/status").await
+pub async fn status(env: &Env) -> Result<SyncStatus> {
+    let mut response = call(env, "/status").await?;
+    match response.status_code() {
+        200 => response.json().await,
+        status => Err(worker::Error::RustError(format!(
+            "syncer status answered {status}"
+        ))),
+    }
 }
 
 #[cfg(feature = "probe")]

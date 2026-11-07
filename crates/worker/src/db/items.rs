@@ -18,7 +18,6 @@ macro_rules! item_columns {
          last_human_url, synced_at"
     };
 }
-pub(crate) use item_columns;
 
 /// The update leaves out `repo`, `number`, `kind`, the author columns, and
 /// `created_at`. SQLite rewrites every index that mentions an assigned column,

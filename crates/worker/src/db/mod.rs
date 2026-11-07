@@ -2,10 +2,10 @@
 //! against SQLite natively and `run` is the only function that touches D1.
 
 pub mod auth;
+pub mod dashboard;
 pub mod events;
 pub mod items;
 pub mod local_state;
-pub mod queries;
 pub mod repos;
 pub mod rollups;
 pub mod rows;
@@ -32,11 +32,16 @@ pub(crate) mod testing {
     use super::items::ItemRow;
     use super::sql::{Param, Statement};
 
-    const MIGRATION: &str = include_str!("../../../../migrations/0001_init.sql");
+    const MIGRATIONS: &[&str] = &[
+        include_str!("../../../../migrations/0001_init.sql"),
+        include_str!("../../../../migrations/0003_item_extras.sql"),
+    ];
 
     pub fn memory_db() -> Connection {
         let conn = Connection::open_in_memory().expect("open");
-        conn.execute_batch(MIGRATION).expect("migration applies");
+        for migration in MIGRATIONS {
+            conn.execute_batch(migration).expect("migration applies");
+        }
         conn
     }
 

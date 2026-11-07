@@ -1,57 +1,35 @@
+//! Writes to `local_state`, what I did to an item inside Radar. Radar never
+//! writes it back to GitHub. `domain::local_state::visible` reads it.
+
 use domain::ids::Timestamp;
 
-use super::items::ItemRow;
-use super::rows::RowError;
 use super::sql::{Param, Statement};
 
-const SET: &str = "INSERT INTO local_state (item_id, kind, value) VALUES (?1, ?2, ?3) \
+/// Writes one row for an item that exists and none for an unknown id, so the
+/// change count tells the caller which. `WHERE true` lets SQLite parse the
+/// upsert after a `SELECT`.
+const DISMISS: &str = "INSERT INTO local_state (item_id, kind, value) \
+     SELECT node_id, 'dismissed', COALESCE(last_human_at, 0) FROM items \
+     WHERE node_id = ?1 AND true \
      ON CONFLICT (item_id) DO UPDATE SET kind = excluded.kind, value = excluded.value";
 
-/// What I did to an item inside Radar. Radar never writes it back to GitHub.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LocalState {
-    /// Hidden until a human acts after `seen_human_at`. It is `Timestamp(0)`
-    /// when the item had no human activity.
-    Dismissed { seen_human_at: Timestamp },
-    /// Hidden until `until`.
-    Snoozed { until: Timestamp },
-}
+const SNOOZE: &str = "INSERT INTO local_state (item_id, kind, value) \
+     SELECT node_id, 'snoozed', ?2 FROM items WHERE node_id = ?1 AND true \
+     ON CONFLICT (item_id) DO UPDATE SET kind = excluded.kind, value = excluded.value";
 
-impl LocalState {
-    pub fn dismiss(item: &ItemRow) -> Self {
-        Self::Dismissed {
-            seen_human_at: item.last_human.as_ref().map_or(Timestamp(0), |h| h.at),
-        }
-    }
-
-    pub fn from_columns(kind: &str, value: i64) -> Result<Self, RowError> {
-        match kind {
-            "dismissed" => Ok(Self::Dismissed {
-                seen_human_at: Timestamp(value),
-            }),
-            "snoozed" => Ok(Self::Snoozed {
-                until: Timestamp(value),
-            }),
-            _ => Err(RowError::UnknownTag {
-                column: "kind",
-                value: kind.to_owned(),
-            }),
-        }
-    }
-
-    fn columns(self) -> (&'static str, i64) {
-        match self {
-            Self::Dismissed { seen_human_at } => ("dismissed", seen_human_at.0),
-            Self::Snoozed { until } => ("snoozed", until.0),
-        }
-    }
-}
-
-pub fn set(item_id: &str, state: LocalState) -> Statement {
-    let (kind, value) = state.columns();
+/// Hides the item until a human acts after its current `last_human_at`.
+pub fn dismiss(item_id: &str) -> Statement {
     Statement {
-        sql: SET,
-        params: vec![Param::text(item_id), Param::text(kind), Param::Int(value)],
+        sql: DISMISS,
+        params: vec![Param::text(item_id)],
+    }
+}
+
+/// Hides the item until `until`.
+pub fn snooze(item_id: &str, until: Timestamp) -> Statement {
+    Statement {
+        sql: SNOOZE,
+        params: vec![Param::text(item_id), Param::ts(until)],
     }
 }
 
@@ -60,16 +38,15 @@ mod tests {
     use rusqlite::Connection;
 
     use super::*;
-    use crate::db::items::{self, LastHuman};
-    use crate::db::queries;
+    use crate::db::items::{self, ItemRow, LastHuman};
     use crate::db::testing::{exec, item_row, memory_db, query_json};
     use domain::ids::Login;
+    use domain::local_state::LocalState;
     use domain::turn::{Reason, Turn};
 
-    fn waiting(n: u32, since: i64, human_at: Option<i64>) -> ItemRow {
+    fn waiting(n: u32, human_at: Option<i64>) -> ItemRow {
         ItemRow {
             turn: Turn::Me(Reason::Mentioned),
-            since: Timestamp(since),
             last_human: human_at.map(|at| LastHuman {
                 at: Timestamp(at),
                 login: Login::parse("octocat").expect("login"),
@@ -80,98 +57,67 @@ mod tests {
         }
     }
 
-    fn your_turn(conn: &Connection, now: i64) -> Vec<String> {
-        let stmt = queries::your_turn(Timestamp(now));
-        let params = stmt.params;
-        query_json(conn, stmt.sql, &params)
+    fn stored(conn: &Connection) -> Vec<Option<LocalState>> {
+        query_json(conn, "SELECT kind, value FROM local_state", &[])
             .iter()
-            .map(|r| r["node_id"].as_str().unwrap_or_default().to_owned())
+            .map(|r| {
+                let kind = r["kind"].as_str().unwrap_or_default();
+                LocalState::from_columns(kind, r["value"].as_i64().unwrap_or(-1))
+            })
             .collect()
     }
 
     #[test]
-    fn dismissed_item_hidden_until_newer_human_activity() {
+    fn dismiss_stores_the_current_last_human_at_once() {
         let conn = memory_db();
-        let item = waiting(1, 100, Some(500));
-        exec(&conn, &items::upsert(&item)).expect("item");
+        exec(&conn, &items::upsert(&waiting(1, Some(500)))).expect("item");
+        assert_eq!(exec(&conn, &dismiss("PR_1")).expect("dismiss"), 1);
+        assert_eq!(exec(&conn, &dismiss("PR_1")).expect("again"), 1);
         assert_eq!(
-            your_turn(&conn, 10_000),
-            std::slice::from_ref(&item.node_id)
+            stored(&conn),
+            [Some(LocalState::Dismissed {
+                seen_human_at: Timestamp(500)
+            })]
         );
-
-        exec(&conn, &set(&item.node_id, LocalState::dismiss(&item))).expect("dismiss");
-        assert!(your_turn(&conn, 10_000).is_empty());
-
-        let bumped = ItemRow {
-            updated_at: Timestamp(item.updated_at.0 + 1),
-            ..waiting(1, 100, Some(501))
-        };
-        exec(&conn, &items::upsert(&bumped)).expect("bump");
-        assert_eq!(your_turn(&conn, 10_000), [item.node_id]);
     }
 
     #[test]
-    fn dismissing_an_item_with_no_human_activity_hides_it_until_one_arrives() {
+    fn dismissing_an_item_with_no_human_activity_stores_zero() {
         let conn = memory_db();
-        let item = waiting(1, 100, None);
-        exec(&conn, &items::upsert(&item)).expect("item");
-        exec(&conn, &set(&item.node_id, LocalState::dismiss(&item))).expect("dismiss");
-        assert!(your_turn(&conn, 10_000).is_empty());
-        let reply = ItemRow {
-            updated_at: Timestamp(item.updated_at.0 + 1),
-            ..waiting(1, 100, Some(900))
-        };
-        exec(&conn, &items::upsert(&reply)).expect("reply");
-        assert_eq!(your_turn(&conn, 10_000).len(), 1);
+        exec(&conn, &items::upsert(&waiting(1, None))).expect("item");
+        exec(&conn, &dismiss("PR_1")).expect("dismiss");
+        assert_eq!(
+            stored(&conn),
+            [Some(LocalState::Dismissed {
+                seen_human_at: Timestamp(0)
+            })]
+        );
     }
 
     #[test]
-    fn snoozed_item_returns_at_wake_time() {
+    fn snooze_replaces_a_dismissal_and_a_resnooze_moves_the_wake_time() {
         let conn = memory_db();
-        let item = waiting(1, 100, None);
-        exec(&conn, &items::upsert(&item)).expect("item");
-        let until = Timestamp(1000);
-        exec(&conn, &set(&item.node_id, LocalState::Snoozed { until })).expect("snooze");
-        assert!(your_turn(&conn, 999).is_empty());
-        assert_eq!(your_turn(&conn, 1000).len(), 1);
-        assert_eq!(your_turn(&conn, 5000).len(), 1);
-
-        exec(
-            &conn,
-            &set(
-                &item.node_id,
-                LocalState::Snoozed {
-                    until: Timestamp(2000),
-                },
-            ),
-        )
-        .expect("resnooze");
-        assert!(your_turn(&conn, 1500).is_empty());
+        exec(&conn, &items::upsert(&waiting(1, Some(500)))).expect("item");
+        exec(&conn, &dismiss("PR_1")).expect("dismiss");
+        exec(&conn, &snooze("PR_1", Timestamp(1000))).expect("snooze");
+        exec(&conn, &snooze("PR_1", Timestamp(2000))).expect("resnooze");
+        assert_eq!(
+            stored(&conn),
+            [Some(LocalState::Snoozed {
+                until: Timestamp(2000)
+            })]
+        );
     }
 
     #[test]
-    fn your_turn_query_orders_oldest_first() {
+    fn an_unknown_id_writes_nothing() {
         let conn = memory_db();
-        for (n, since) in [(1, 300), (2, 100), (3, 200)] {
-            exec(&conn, &items::upsert(&waiting(n, since, None))).expect("item");
-        }
-        let order = your_turn(&conn, 10_000);
-        assert_eq!(order, ["PR_2", "PR_3", "PR_1"]);
-    }
-
-    #[test]
-    fn a_state_round_trips_through_its_columns() {
-        for state in [
-            LocalState::Dismissed {
-                seen_human_at: Timestamp(7),
-            },
-            LocalState::Snoozed {
-                until: Timestamp(9),
-            },
-        ] {
-            let (kind, value) = state.columns();
-            assert_eq!(LocalState::from_columns(kind, value), Ok(state));
-        }
-        assert!(LocalState::from_columns("archived", 1).is_err());
+        exec(&conn, &items::upsert(&waiting(1, None))).expect("item");
+        assert_eq!(exec(&conn, &dismiss("PR_404")).expect("dismiss"), 0);
+        assert_eq!(
+            exec(&conn, &snooze("PR_404", Timestamp(1))).expect("snooze"),
+            0
+        );
+        assert!(stored(&conn).is_empty());
     }
 }

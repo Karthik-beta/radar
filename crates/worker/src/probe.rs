@@ -25,7 +25,7 @@ pub async fn handle(req: &Request, env: &Env) -> Result<Response> {
     match url.path() {
         "/__probe/get" => get(env, &params).await,
         "/__probe/query" => run_query(env, &params).await,
-        "/__probe/syncer/status" => sync::status(env).await,
+        "/__probe/syncer/status" => Response::from_json(&sync::status(env).await?),
         "/__probe/syncer/kick" => kick(env, &params).await,
         "/__probe/syncer/enqueue" => {
             let param = |name| params.get(name).map(String::as_str).unwrap_or_default();
