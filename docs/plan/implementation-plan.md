@@ -13,11 +13,29 @@ The program runs `playbooks/autopilot-full.md` from the pstack plugin (`~/.claud
 
 Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
+## Status
+
+Updated 2026-11-06. The operator paused the program here. `HANDOFF.md`, a local file that git ignores, holds the session notes for resuming.
+
+| R | State | Evidence |
+| --- | --- | --- |
+| R01 | Merged | `e3c9504`, Karthik-beta/radar#5 |
+| R02 | Waiting on the operator | Karthik-beta/radar#8 is open. The Free-plan spike run, its `results/tail-*.jsonl`, and the ADR 0002 and ADR 0005 `## Spike result` sections are still to do. R08 cannot start before R02 merges |
+| R03 | Merged | `2fa9e60`, Karthik-beta/radar#7 |
+| R04 | Merged | `8380043`, Karthik-beta/radar#11 |
+| R05 | Merged | `beb4c93`, Karthik-beta/radar#10 |
+| R06 | Merged | `6db186f`, Karthik-beta/radar#9 |
+| R07 | Merged | `d625d15`, Karthik-beta/radar#12. The `cpuTime` perf box and real GitHub OAuth wait on O2, O3, and O3b. The Worker grew 83.4 KB gzipped over trunk, above the 60 KB rule, and the root accepted it because most of it is R04 and R06 code that R07 first reaches |
+| R08 to R24 | Not started | Each depends on the one before. R08 depends on R02 |
+| R25 | Merged | `ef8f55b`, Karthik-beta/radar#13 |
+
+Open operator items: O1 to O6. R07 needs O2, O3, and O3b before sign-in works on Cloudflare.
+
 ## Program checklist
 
 ### Arm the program
 
-- [ ] State the protocol and this plan to the operator, then stop. Start execution only on the operator's explicit go.
+- [x] State the protocol and this plan to the operator, then stop. Start execution only on the operator's explicit go.
 - [ ] Finish the operator's setup items before R02 and R07 need them. Each is done by the operator, not an agent.
   - [ ] O1. The `karthik.nz` zone is active on the operator's Cloudflare account. Evidence is the zone listed by `npx wrangler whoami` and the Cloudflare dashboard.
   - [ ] O2. Two GitHub OAuth Apps exist. "Radar" has callback `https://radar.karthik.nz/auth/callback`. "Radar dev" has callback `http://localhost:8787/auth/callback`. Evidence is both client IDs recorded in `.dev.vars` and in Wrangler secrets.
@@ -168,7 +186,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R01 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R01 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R01 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `e3c9504` in Karthik-beta/radar#5.
 
 ## Prove Durable Object alarms and CPU on Workers Free (R02)
 
@@ -311,7 +329,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R03 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R03 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R03 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `2fa9e60` in Karthik-beta/radar#7.
 
 ## Create the D1 schema and row access (R04)
 
@@ -382,7 +400,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R04 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R04 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R04 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `8380043` in Karthik-beta/radar#11.
 
 ## Build the web shell with tokens, fonts, icons, and CSP (R05)
 
@@ -460,7 +478,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R05 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R05 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R05 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `beb4c93` in Karthik-beta/radar#10.
 
 ## Build the read-only GitHub client and the GitHub stub (R06)
 
@@ -537,7 +555,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R06 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R06 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R06 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `6db186f` in Karthik-beta/radar#9.
 
 ## Sign in with GitHub as the one allowed user (R07)
 
@@ -619,7 +637,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Root's clean swarm verdict at the exact head SHA. If R07 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R07 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R07 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `d625d15` in Karthik-beta/radar#12.
 
 ## Run the Syncer Durable Object with a work table and alarms (R08)
 
@@ -642,7 +660,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 - [ ] Retry rules (N9). A failed unit increments `attempts`. After the first failure the row is due 10 s later, after the second 60 s later, and after the third it is `Dead` with `last_error` set. A success deletes the row. `plan` never runs a dead row and a dead row never blocks other rows. Only a kick brings one back, as the `kick` box below says, so a GitHub outage cannot stop polling for good.
 - [ ] Rate-limit rules (P4). `gate.rs` returns `WaitUntil(reset)` for `Enrich` and `BackfillPage` when `remaining` is below 20% of `limit`. `PollNotifications` still runs, because a 304 costs nothing. A `RateLimited { retry_after_secs }` outcome does not add an attempt. It sets `WaitUntil` to the larger of `Retry-After` and `60 s * 2^strikes` (at most 1 hour), raises `strikes`, and the next success resets `strikes` to 0.
 - [ ] `state.rs` is the single-row `sync_state` table in the Durable Object's SQLite (`CHECK (id = 1)`). It holds `last_modified`, `next_poll_at`, `rl_limit`, `rl_remaining`, `rl_reset`, `scopes`, `strikes`, and `last_ok_at` for each `WorkKind`. R09 to R11 use these columns and add none to the shape.
-- [ ] `kick(reason)` follows ADR 0002, deferred, not dropped. `Reconcile`, `Email`, `Webhook`, `SignedIn`, and `Manual` insert the `main` poll row if absent, due at the later of now and `state.next_poll_at`. When the `main` row is dead, they reset it to `Pending` with zero attempts and that due time. They set the alarm to the earlier of the current alarm and that time, so many kicks make one alarm. `Rollup`, the nightly kick, inserts the `nightly` row due now and re-arms every dead `BackfillPage` row as `Pending` with zero attempts, due now, so a backfill resumes from its stored cursor.
+- [ ] `kick(reason)` follows ADR 0002, deferred, not dropped. `Reconcile`, `Email`, `Webhook`, `SignedIn`, and `Manual` insert the `main` poll row if absent, due at the later of now and `state.next_poll_at`. When the `main` row is dead, they reset it to `Pending` with zero attempts and that due time. They set the alarm to the earlier of the current alarm and that time, so many kicks make one alarm. Every kick also writes `state.last_kick_at = now`, which R09 reads at the end of a scan. `Rollup`, the nightly kick, inserts the `nightly` row due now and re-arms every dead `BackfillPage` row as `Pending` with zero attempts, due now, so a backfill resumes from its stored cursor.
 - [ ] P5. GitHub requests run one at a time per token, never in parallel. There is one `Syncer` instance, `alarm()` runs one unit, and each handler awaits its GitHub calls in sequence and never joins futures over the client, so no two requests overlap.
 - [ ] `alarm()` loads the small `work` table, calls `plan`, runs exactly one unit through `handlers.rs`, applies the outcome, writes the results, and sets the next alarm from `plan`. It catches every error and records it in the row, so it never returns `Err` to the platform. It logs `unit start kind=<kind> key=<key>` and `unit done kind=<kind> ms=<n>`.
 - [ ] `handlers.rs` holds the `UnitHandler` trait and the placeholder handlers R09 to R11 replace. Each GitHub kind loads the token with `auth::load_token`, makes one `GET /rate_limit` through the R06 client, and records `RateMeta` in `sync_state`. With no token the unit returns `Deferred { cause: NoToken }`, sets no alarm, and waits for a kick. `Rollup` returns `Done`.
@@ -711,7 +729,7 @@ Each live lane runs in its own git worktree at the PR head, on the operator's ma
 
 **Build.**
 
-- [ ] Name the data shape first. In `sync/poll.rs` define `enum PollPhase { Idle { last_modified: Option<String> }, Scanning { committed: Option<String>, incoming: String, next_page: u32 } }`, stored in the Syncer's storage under `poll_phase`. A scan only commits its new `Last-Modified` when the last page succeeds, so a failed page 2 can never hide the threads on it behind a later 304.
+- [ ] Name the data shape first. In `sync/poll.rs` define `enum PollPhase { Idle { last_modified: Option<String> }, Scanning { committed: Option<String>, incoming: String, next_page: u32, started_at: Timestamp } }`, stored in the Syncer's storage under `poll_phase`. A scan only commits its new `Last-Modified` when the last page succeeds, so a failed page 2 can never hide the threads on it behind a later 304. `started_at` is the time page 1 was requested. A Durable Object takes other requests while it awaits GitHub, so a kick can land while the `main` row is in flight and coalesce into it. When a poll finishes, with a 304, a single page, or the last page of a scan, and `state.last_kick_at` is after the page-1 request time, it enqueues a page-1 poll due at `next_poll_at` (P2). Tests `kick_during_page_one_304_polls_again`, `kick_during_single_page_poll_polls_again`, and `kick_during_scan_polls_page_one_after_the_scan` cover it.
 - [ ] Define the boundary struct `NotificationThread { id, unread, reason, updated_at, subject: Subject { title, url, kind }, repository: Repo { full_name } }` and `enum SubjectKind { PullRequest, Issue, Other }` parsed from `subject.type`. A page that lacks a required field fails as a whole and plans nothing. Unknown fields are ignored (N5, store metadata only).
 - [ ] Write the pure `plan_poll(phase, page, known, now) -> PollPlan`. `PollPlan` holds `upserts`, `enrich_batches` (thread ids, at most `ENRICH_BATCH` from `crates/worker/src/sync/config.rs` per batch, only `PullRequest` and `Issue` subjects whose `updated_at` differs from `known` or is new, P3), `next_phase`, `next_poll_at`, and `follow_up: FollowUp { None, NextPage(u32) }`.
 - [ ] Request `Client::get("/notifications?all=true&per_page=50&page=N")`. Send `If-Modified-Since` only on page 1 of an `Idle` phase. `all=true` keeps read threads, because reading does not clear an item (ADR 0002).
@@ -1936,7 +1954,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] Root's clean swarm verdict at the exact head SHA. If R25 is review-gated, the operator has approved in chat.
 - [ ] Rebased onto `main` after the verdict, patch-id unchanged.
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
-- [ ] The Opus owner squash-merged R25 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+- [x] The Opus owner squash-merged R25 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `ef8f55b` in Karthik-beta/radar#13.
 
 ## Close the program
 
