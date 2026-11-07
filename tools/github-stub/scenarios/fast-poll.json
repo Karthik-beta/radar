@@ -1,4 +1,5 @@
 {
   "extends": "basic",
-  "poll_interval": 5
+  "poll_interval": 5,
+  "rate_limit_poll_interval": true
 }

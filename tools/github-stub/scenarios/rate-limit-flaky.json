@@ -1,0 +1,4 @@
+{
+  "extends": "fast-poll",
+  "faults": [{ "match": "GET /rate_limit", "status": 500, "times": 3 }]
+}

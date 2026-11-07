@@ -65,6 +65,11 @@ describe("endpoints", () => {
     assert.equal(body.rate.remaining, 4990);
   });
 
+  it("rate_limit_sends_no_poll_interval_by_default", async () => {
+    const res = await s.authed("/rate_limit");
+    assert.equal(res.headers.get("x-poll-interval"), null);
+  });
+
   it("notifications_sends_validators_and_poll_interval", async () => {
     const res = await s.authed("/notifications");
     assert.equal(res.status, 200);
@@ -393,6 +398,16 @@ describe("scenarios", () => {
     }
   });
 
+  it("fast_poll_sends_its_poll_interval_on_rate_limit_too", async () => {
+    const stub = await start("fast-poll");
+    try {
+      const res = await stub.authed("/rate_limit");
+      assert.equal(res.headers.get("x-poll-interval"), "5");
+    } finally {
+      await stub.close();
+    }
+  });
+
   it("the_planned_scenarios_exist", () => {
     for (const name of [
       "basic",
@@ -406,6 +421,8 @@ describe("scenarios", () => {
       "oauth-other-user",
       "oauth-deny",
       "oauth-bad-code",
+      "rate-limit-flaky",
+      "retry-after-once",
     ]) {
       assert.ok(loadScenario(name), name);
     }
