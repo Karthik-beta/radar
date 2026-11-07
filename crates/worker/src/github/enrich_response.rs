@@ -1,6 +1,12 @@
 //! The shape of the `Enrich` response. Each struct holds what the query selects
 //! and nothing else, so an unknown field, such as a comment body, is dropped
 //! where it is parsed (N5). A missing required field fails the whole response.
+//!
+//! GitHub tags an item and a timeline node by `__typename`. The wire structs
+//! `RawItem` and `RawTimeline` hold the union of the fields, and a `TryFrom`
+//! turns each into its typed variant. A serde internally tagged enum would
+//! buffer every node and compile each field type twice, which costs about 30 KB
+//! of the Worker bundle.
 
 use std::fmt;
 
@@ -57,6 +63,10 @@ fn alias_index(key: &str) -> Option<usize> {
     digits.parse().ok()
 }
 
+fn need<T>(value: Option<T>, field: &str) -> Result<T, String> {
+    value.ok_or_else(|| format!("missing field `{field}`"))
+}
+
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct RepoNode {
     #[serde(rename = "issueOrPullRequest")]
@@ -69,22 +79,6 @@ pub struct RateLimit {
     pub remaining: u32,
     #[serde(rename = "resetAt")]
     pub reset_at: Timestamp,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-#[serde(tag = "__typename")]
-pub enum ItemNode {
-    PullRequest(PrNode),
-    Issue(IssueNode),
-}
-
-impl ItemNode {
-    pub fn id(&self) -> &str {
-        match self {
-            Self::PullRequest(pr) => &pr.id,
-            Self::Issue(issue) => &issue.id,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -153,71 +147,18 @@ pub enum RollupState {
     Success,
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct IssueNode {
-    pub id: String,
-    pub number: u32,
-    pub title: String,
-    pub url: String,
-    #[serde(rename = "issueState")]
-    pub state: IssueState,
-    #[serde(rename = "createdAt")]
-    pub created_at: Timestamp,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: Timestamp,
-    #[serde(rename = "closedAt")]
-    pub closed_at: Option<Timestamp>,
-    pub author: Option<ActorNode>,
-    pub assignees: Nodes<LoginNode>,
-    #[serde(rename = "timelineItems")]
-    pub timeline: Nodes<TimelineNode>,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct PrNode {
-    pub id: String,
-    pub number: u32,
-    pub title: String,
-    pub url: String,
-    #[serde(rename = "prState")]
-    pub state: PrState,
-    #[serde(rename = "isDraft")]
-    pub is_draft: bool,
-    #[serde(rename = "createdAt")]
-    pub created_at: Timestamp,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: Timestamp,
-    #[serde(rename = "closedAt")]
-    pub closed_at: Option<Timestamp>,
-    #[serde(rename = "mergedAt")]
-    pub merged_at: Option<Timestamp>,
-    #[serde(rename = "headRefName")]
-    pub head_ref: String,
-    #[serde(rename = "reviewDecision")]
-    pub review_decision: Option<Decision>,
-    pub author: Option<ActorNode>,
-    pub assignees: Nodes<LoginNode>,
-    #[serde(rename = "reviewRequests")]
-    pub review_requests: Nodes<ReviewRequestNode>,
-    #[serde(rename = "latestReviews")]
-    pub latest_reviews: Nodes<LatestReview>,
-    pub commits: Nodes<LastCommit>,
-    #[serde(rename = "timelineItems")]
-    pub timeline: Nodes<TimelineNode>,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct ReviewRequestNode {
-    #[serde(rename = "requestedReviewer")]
-    pub reviewer: Option<Reviewer>,
-}
-
 /// A user, or a team that has no login.
 #[derive(Debug, PartialEq, Deserialize)]
 pub struct Reviewer {
     #[serde(rename = "__typename")]
     pub typename: String,
     pub login: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct ReviewRequestNode {
+    #[serde(rename = "requestedReviewer")]
+    pub reviewer: Option<Reviewer>,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -247,62 +188,6 @@ pub struct Rollup {
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
-#[serde(tag = "__typename")]
-pub enum TimelineNode {
-    IssueComment(CommentNode),
-    PullRequestReview(ReviewNode),
-    ReviewRequestedEvent(ReviewRequestedNode),
-    AssignedEvent(AssignedNode),
-    PullRequestCommit(CommitNode),
-    MergedEvent(EventNode),
-    ClosedEvent(EventNode),
-    ReopenedEvent(EventNode),
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct CommentNode {
-    pub id: String,
-    pub at: Timestamp,
-    pub url: String,
-    pub actor: Option<ActorNode>,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct ReviewNode {
-    pub id: String,
-    pub at: Timestamp,
-    pub url: String,
-    pub state: ReviewStateNode,
-    pub actor: Option<ActorNode>,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct ReviewRequestedNode {
-    pub id: String,
-    pub at: Timestamp,
-    pub actor: Option<ActorNode>,
-    #[serde(rename = "requestedReviewer")]
-    pub reviewer: Option<Reviewer>,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct AssignedNode {
-    pub id: String,
-    pub at: Timestamp,
-    pub actor: Option<ActorNode>,
-    pub assignee: Option<Reviewer>,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-pub struct CommitNode {
-    pub id: String,
-    pub url: String,
-    pub commit: TimelineCommit,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
 pub struct TimelineCommit {
     pub oid: String,
     pub at: Timestamp,
@@ -314,11 +199,264 @@ pub struct CommitAuthor {
     pub user: Option<LoginNode>,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct IssueNode {
+    pub id: String,
+    pub number: u32,
+    pub title: String,
+    pub url: String,
+    pub state: IssueState,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+    pub closed_at: Option<Timestamp>,
+    pub author: Option<ActorNode>,
+    pub assignees: Nodes<LoginNode>,
+    pub timeline: Nodes<TimelineNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct PrNode {
+    pub id: String,
+    pub number: u32,
+    pub title: String,
+    pub url: String,
+    pub state: PrState,
+    pub is_draft: bool,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+    pub closed_at: Option<Timestamp>,
+    pub merged_at: Option<Timestamp>,
+    pub head_ref: String,
+    pub review_decision: Option<Decision>,
+    pub author: Option<ActorNode>,
+    pub assignees: Nodes<LoginNode>,
+    pub review_requests: Nodes<ReviewRequestNode>,
+    pub latest_reviews: Nodes<LatestReview>,
+    pub commits: Nodes<LastCommit>,
+    pub timeline: Nodes<TimelineNode>,
+}
+
 #[derive(Debug, PartialEq, Deserialize)]
+#[serde(try_from = "RawItem")]
+pub enum ItemNode {
+    PullRequest(Box<PrNode>),
+    Issue(Box<IssueNode>),
+}
+
+impl ItemNode {
+    pub fn id(&self) -> &str {
+        match self {
+            Self::PullRequest(pr) => &pr.id,
+            Self::Issue(issue) => &issue.id,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct RawItem {
+    #[serde(rename = "__typename")]
+    typename: String,
+    id: String,
+    number: u32,
+    title: String,
+    url: String,
+    #[serde(rename = "issueState")]
+    issue_state: Option<IssueState>,
+    #[serde(rename = "prState")]
+    pr_state: Option<PrState>,
+    #[serde(rename = "isDraft")]
+    is_draft: Option<bool>,
+    #[serde(rename = "createdAt")]
+    created_at: Timestamp,
+    #[serde(rename = "updatedAt")]
+    updated_at: Timestamp,
+    #[serde(rename = "closedAt")]
+    closed_at: Option<Timestamp>,
+    #[serde(rename = "mergedAt")]
+    merged_at: Option<Timestamp>,
+    #[serde(rename = "headRefName")]
+    head_ref: Option<String>,
+    #[serde(rename = "reviewDecision")]
+    review_decision: Option<Decision>,
+    author: Option<ActorNode>,
+    assignees: Nodes<LoginNode>,
+    #[serde(rename = "reviewRequests")]
+    review_requests: Option<Nodes<ReviewRequestNode>>,
+    #[serde(rename = "latestReviews")]
+    latest_reviews: Option<Nodes<LatestReview>>,
+    commits: Option<Nodes<LastCommit>>,
+    #[serde(rename = "timelineItems")]
+    timeline: Nodes<TimelineNode>,
+}
+
+impl TryFrom<RawItem> for ItemNode {
+    type Error = String;
+
+    fn try_from(raw: RawItem) -> Result<Self, String> {
+        match raw.typename.as_str() {
+            "PullRequest" => Ok(Self::PullRequest(Box::new(PrNode {
+                state: need(raw.pr_state, "prState")?,
+                is_draft: need(raw.is_draft, "isDraft")?,
+                head_ref: need(raw.head_ref, "headRefName")?,
+                review_requests: need(raw.review_requests, "reviewRequests")?,
+                latest_reviews: need(raw.latest_reviews, "latestReviews")?,
+                commits: need(raw.commits, "commits")?,
+                id: raw.id,
+                number: raw.number,
+                title: raw.title,
+                url: raw.url,
+                created_at: raw.created_at,
+                updated_at: raw.updated_at,
+                closed_at: raw.closed_at,
+                merged_at: raw.merged_at,
+                review_decision: raw.review_decision,
+                author: raw.author,
+                assignees: raw.assignees,
+                timeline: raw.timeline,
+            }))),
+            "Issue" => Ok(Self::Issue(Box::new(IssueNode {
+                state: need(raw.issue_state, "issueState")?,
+                id: raw.id,
+                number: raw.number,
+                title: raw.title,
+                url: raw.url,
+                created_at: raw.created_at,
+                updated_at: raw.updated_at,
+                closed_at: raw.closed_at,
+                author: raw.author,
+                assignees: raw.assignees,
+                timeline: raw.timeline,
+            }))),
+            other => Err(format!("unexpected item type `{other}`")),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CommentNode {
+    pub id: String,
+    pub at: Timestamp,
+    pub url: String,
+    pub actor: Option<ActorNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ReviewNode {
+    pub id: String,
+    pub at: Timestamp,
+    pub url: String,
+    pub state: ReviewStateNode,
+    pub actor: Option<ActorNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ReviewRequestedNode {
+    pub id: String,
+    pub at: Timestamp,
+    pub actor: Option<ActorNode>,
+    pub reviewer: Option<Reviewer>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AssignedNode {
+    pub id: String,
+    pub at: Timestamp,
+    pub actor: Option<ActorNode>,
+    pub assignee: Option<Reviewer>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CommitNode {
+    pub id: String,
+    pub url: String,
+    pub commit: TimelineCommit,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct EventNode {
     pub id: String,
     pub at: Timestamp,
     pub actor: Option<ActorNode>,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+#[serde(try_from = "RawTimeline")]
+pub enum TimelineNode {
+    IssueComment(CommentNode),
+    PullRequestReview(ReviewNode),
+    ReviewRequestedEvent(ReviewRequestedNode),
+    AssignedEvent(AssignedNode),
+    PullRequestCommit(CommitNode),
+    MergedEvent(EventNode),
+    ClosedEvent(EventNode),
+    ReopenedEvent(EventNode),
+    /// A type the query did not ask for. It is skipped.
+    Other,
+}
+
+#[derive(Deserialize)]
+struct RawTimeline {
+    #[serde(rename = "__typename")]
+    typename: String,
+    id: Option<String>,
+    at: Option<Timestamp>,
+    url: Option<String>,
+    state: Option<ReviewStateNode>,
+    actor: Option<ActorNode>,
+    #[serde(rename = "requestedReviewer")]
+    requested_reviewer: Option<Reviewer>,
+    assignee: Option<Reviewer>,
+    commit: Option<TimelineCommit>,
+}
+
+impl TryFrom<RawTimeline> for TimelineNode {
+    type Error = String;
+
+    fn try_from(raw: RawTimeline) -> Result<Self, String> {
+        let event = |raw: RawTimeline| -> Result<EventNode, String> {
+            Ok(EventNode {
+                id: need(raw.id, "id")?,
+                at: need(raw.at, "at")?,
+                actor: raw.actor,
+            })
+        };
+        Ok(match raw.typename.as_str() {
+            "IssueComment" => Self::IssueComment(CommentNode {
+                id: need(raw.id, "id")?,
+                at: need(raw.at, "at")?,
+                url: need(raw.url, "url")?,
+                actor: raw.actor,
+            }),
+            "PullRequestReview" => Self::PullRequestReview(ReviewNode {
+                id: need(raw.id, "id")?,
+                at: need(raw.at, "at")?,
+                url: need(raw.url, "url")?,
+                state: need(raw.state, "state")?,
+                actor: raw.actor,
+            }),
+            "ReviewRequestedEvent" => Self::ReviewRequestedEvent(ReviewRequestedNode {
+                id: need(raw.id, "id")?,
+                at: need(raw.at, "at")?,
+                actor: raw.actor,
+                reviewer: raw.requested_reviewer,
+            }),
+            "AssignedEvent" => Self::AssignedEvent(AssignedNode {
+                id: need(raw.id, "id")?,
+                at: need(raw.at, "at")?,
+                actor: raw.actor,
+                assignee: raw.assignee,
+            }),
+            "PullRequestCommit" => Self::PullRequestCommit(CommitNode {
+                id: need(raw.id, "id")?,
+                url: need(raw.url, "url")?,
+                commit: need(raw.commit, "commit")?,
+            }),
+            "MergedEvent" => Self::MergedEvent(event(raw)?),
+            "ClosedEvent" => Self::ClosedEvent(event(raw)?),
+            "ReopenedEvent" => Self::ReopenedEvent(event(raw)?),
+            _ => Self::Other,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -408,31 +546,68 @@ mod tests {
         assert_eq!(bot_comments, 1);
     }
 
+    fn without(field: &str) -> GithubError {
+        let mut value: serde_json::Value = serde_json::from_str(ENRICH_20).expect("json");
+        let object = value["data"]["a0"]["issueOrPullRequest"]
+            .as_object_mut()
+            .expect("object");
+        assert!(object.remove(field).is_some(), "{field} is in the fixture");
+        parse(&value.to_string())
+            .map(|q| q.data)
+            .expect_err("must fail")
+    }
+
     #[test]
     fn a_missing_required_field_is_an_error() {
-        let mut value: serde_json::Value = serde_json::from_str(ENRICH_20).expect("json");
-        let node = &mut value["data"]["a0"]["issueOrPullRequest"];
-        let object = node.as_object_mut().expect("object");
-        let field = if object.contains_key("prState") {
-            "prState"
-        } else {
-            "issueState"
+        let parse_error = GithubError::Parse {
+            path: "/graphql".into(),
         };
-        object.remove(field);
-        let err = parse(&value.to_string())
-            .map(|q| q.data)
-            .expect_err("must fail");
-        assert_eq!(
-            err,
-            GithubError::Parse {
-                path: "/graphql".into()
-            }
-        );
+        // a0 is a pull request in the fixture, so these are its required fields.
+        for field in [
+            "prState",
+            "isDraft",
+            "headRefName",
+            "reviewRequests",
+            "latestReviews",
+            "commits",
+            "timelineItems",
+            "id",
+            "updatedAt",
+        ] {
+            assert_eq!(without(field), parse_error, "{field}");
+        }
+    }
+
+    #[test]
+    fn a_timeline_node_missing_a_required_field_is_an_error() {
+        let mut value: serde_json::Value = serde_json::from_str(ENRICH_20).expect("json");
+        let nodes = value["data"]["a4"]["issueOrPullRequest"]["timelineItems"]["nodes"]
+            .as_array_mut()
+            .expect("timeline");
+        let comment = nodes
+            .iter_mut()
+            .find(|n| n["__typename"] == "IssueComment")
+            .expect("a comment");
+        comment.as_object_mut().expect("object").remove("url");
+        assert!(parse(&value.to_string()).is_err());
     }
 
     #[test]
     fn a_response_without_rate_limit_is_an_error() {
         let body = json!({"data": {"a0": null}}).to_string();
+        assert!(parse(&body).is_err());
+    }
+
+    #[test]
+    fn an_unknown_item_type_is_an_error() {
+        let body = json!({"data": {
+            "a0": {"issueOrPullRequest": {"__typename": "Discussion", "id": "D_1", "number": 1,
+                "title": "t", "url": "u", "createdAt": "2026-11-01T00:00:00Z",
+                "updatedAt": "2026-11-01T00:00:00Z", "assignees": {"nodes": []},
+                "timelineItems": {"nodes": []}}},
+            "rateLimit": {"cost": 1, "remaining": 4999, "resetAt": "2026-11-07T10:00:00Z"}
+        }})
+        .to_string();
         assert!(parse(&body).is_err());
     }
 
