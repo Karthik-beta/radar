@@ -84,3 +84,17 @@ migrations/
 - N9: dead work rows replace the dead-letter queue.
 - F1 and F4: both are derived from `turn`, and F1 gains `replied`.
 - F9: moves from P1 to P0.
+
+## Spike result, 2026-11-07
+
+R02 ran `spikes/do-alarm` on the Workers Free account.
+
+- Deploy. `npm run deploy` succeeded on the Free plan. A Durable Object with SQLite storage (`new_sqlite_classes = ["Probe"]`) is available on Free.
+- Alarms fired. 35 of 35 scheduled alarms ran, by the Durable Object's own `runs` table. Every first attempt started at most 27 ms after its due time, and every row parsed 20 PRs with 5 failing and 3 drafts, matching `expected.json`.
+- Tail coverage. `wrangler tail` delivered 31 of the 36 alarm invocations, so `summarize.mjs` counts 31. The `runs` table shows the other 5 ran. The gap is in the tail, not the platform.
+- CPU. Cold `cpuTime` was 9 ms (1 sample). Warm `cpuTime` had a median of 1 ms, a p99 of 2 ms, and a max of 2 ms (30 samples). Only one fresh instance appeared. The instance stayed warm across 15-minute idles and across four alarms 10 minutes apart, so later rounds measured warm alarms.
+- Retry. With `fixture=throw`, the first attempt ended with outcome `exception`, and the platform retried the alarm 2.4 s later. Attempt 2 succeeded.
+- Decision: Syncer { batch: 10 }
+- Enrich batch size for R08: 10. The cold maximum, 9 ms, is over 7 ms and at or under 10 ms.
+
+The reduced tail is `spikes/do-alarm/results/tail-2026-11-07.jsonl`.
