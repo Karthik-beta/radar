@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod classify;
+pub mod email;
 pub mod error;
 pub mod health;
 pub mod ids;
