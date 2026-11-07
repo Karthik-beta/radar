@@ -32,10 +32,10 @@ impl From<UnitOutcome> for Handled {
 
 /// Each GitHub call is awaited before the next starts, so no two requests for the
 /// token overlap (P5).
-pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timestamp) -> Handled {
+pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState) -> Handled {
     match kind {
         WorkKind::Rollup => UnitOutcome::Done { follow_ups: vec![] }.into(),
-        WorkKind::PollNotifications => poll::run(env, state, now).await,
+        WorkKind::PollNotifications => poll::run(env, state).await,
         WorkKind::Enrich(_) | WorkKind::BackfillPage(_) => check_rate(env, state).await.into(),
     }
 }

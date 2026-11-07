@@ -123,7 +123,7 @@ impl Syncer {
         let Handled {
             outcome,
             finished_from,
-        } = handlers::run(&kind, &self.env, &mut observed, now()).await;
+        } = handlers::run(&kind, &self.env, &mut observed).await;
         let done_at = now();
         // Kicks run while the unit awaits GitHub, so write onto a fresh read.
         let (rows, mut sync) = self.load()?;

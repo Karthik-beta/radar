@@ -16,6 +16,10 @@ use crate::github::{ApiPath, Client, Conditional, Fetched, GithubError};
 
 const PAGE_SIZE: u32 = 50;
 
+/// Timestamps count whole seconds, so a request made late in a second would otherwise
+/// be followed by the next one less than `X-Poll-Interval` later.
+const CLOCK_MARGIN_SECS: i64 = 1;
+
 /// Where the poll is. A scan commits its new `Last-Modified` only when its last
 /// page succeeds, so a failed page 2 can never hide the threads on it behind a
 /// later 304.
@@ -230,7 +234,11 @@ pub fn plan_poll(
     now: Timestamp,
 ) -> PollPlan {
     let interval = received.poll_interval.unwrap_or(DEFAULT_POLL_INTERVAL_SECS);
-    let poll_at = Timestamp(now.0.saturating_add(i64::from(interval)));
+    let poll_at = Timestamp(
+        now.0
+            .saturating_add(i64::from(interval))
+            .saturating_add(CLOCK_MARGIN_SECS),
+    );
     let (threads, last_modified, next) = match &received.body {
         Body::NotModified => {
             return PollPlan {
@@ -341,8 +349,8 @@ pub fn next_page(link: Option<&str>) -> Option<u32> {
     })
 }
 
-pub async fn run(env: &Env, state: &mut SyncState, now: Timestamp) -> Handled {
-    poll(env, state, now).await.unwrap_or_else(Handled::from)
+pub async fn run(env: &Env, state: &mut SyncState) -> Handled {
+    poll(env, state).await.unwrap_or_else(Handled::from)
 }
 
 fn retry(err: impl ToString) -> UnitOutcome {
@@ -351,7 +359,7 @@ fn retry(err: impl ToString) -> UnitOutcome {
     }
 }
 
-async fn poll(env: &Env, state: &mut SyncState, now: Timestamp) -> Result<Handled, UnitOutcome> {
+async fn poll(env: &Env, state: &mut SyncState) -> Result<Handled, UnitOutcome> {
     let token = auth::load_token(env).await.ok_or(UnitOutcome::NoToken)?;
     let base = env
         .var("GITHUB_API_BASE")
@@ -370,6 +378,8 @@ async fn poll(env: &Env, state: &mut SyncState, now: Timestamp) -> Result<Handle
         "/notifications?all=true&per_page={PAGE_SIZE}&page={page}"
     ))
     .map_err(retry)?;
+    // Taken after the token read, so a kick that landed while it ran is covered by this request.
+    let requested_at = auth::now();
     let received = match client.get::<Vec<NotificationThread>>(path, cond).await {
         Ok(Fetched::NotModified { meta }) if sent_condition => {
             state.record_rate(&meta);
@@ -398,7 +408,7 @@ async fn poll(env: &Env, state: &mut SyncState, now: Timestamp) -> Result<Handle
             }
         }
         Err(GithubError::RateLimited { retry_after_secs }) => {
-            let retry_at = rate_limit_until(state.throttle.strikes, retry_after_secs, now);
+            let retry_at = rate_limit_until(state.throttle.strikes, retry_after_secs, auth::now());
             console_log!("sync.poll status=429 retry_at={retry_at}");
             return Err(UnitOutcome::RateLimited { retry_after_secs });
         }
@@ -408,7 +418,7 @@ async fn poll(env: &Env, state: &mut SyncState, now: Timestamp) -> Result<Handle
         Body::Page { threads, .. } => known_updated_at(env, threads).await.map_err(retry)?,
         Body::NotModified => Vec::new(),
     };
-    let plan = plan_poll(&state.poll_phase, &received, &known, now);
+    let plan = plan_poll(&state.poll_phase, &received, &known, requested_at);
     let db = env.d1("DB").map_err(retry)?;
     let writes = plan.upserts.iter().map(threads::upsert).collect();
     crate::db::run(&db, writes).await.map_err(retry)?;
@@ -625,7 +635,7 @@ mod tests {
             }
         );
         assert_eq!(plan.follow_up, FollowUp::None);
-        assert_eq!(plan.next_poll_at, Some(at(60)));
+        assert_eq!(plan.next_poll_at, Some(at(61)));
         assert_eq!(plan.finished_from, Some(at(-30)));
     }
 
@@ -677,7 +687,7 @@ mod tests {
     fn a_304_keeps_the_phase_and_waits_the_interval() {
         let plan = plan_poll(&idle(), &not_modified(Some(60)), &[], NOW);
         assert_eq!(plan.next_phase, idle());
-        assert_eq!(plan.next_poll_at, Some(at(60)));
+        assert_eq!(plan.next_poll_at, Some(at(61)));
         assert!(plan.upserts.is_empty() && plan.enrich_batches.is_empty());
         assert_eq!(plan.follow_up, FollowUp::None);
     }
@@ -685,15 +695,15 @@ mod tests {
     #[test]
     fn a_missing_poll_interval_is_60_seconds_and_a_header_value_is_obeyed() {
         let missing = plan_poll(&idle(), &not_modified(None), &[], NOW);
-        assert_eq!(missing.next_poll_at, Some(at(60)));
+        assert_eq!(missing.next_poll_at, Some(at(61)));
         let slow = plan_poll(&idle(), &not_modified(Some(120)), &[], NOW);
-        assert_eq!(slow.next_poll_at, Some(at(120)));
+        assert_eq!(slow.next_poll_at, Some(at(121)));
         let mut no_header = page(1, parse(PAGE1), None);
         no_header.poll_interval = None;
         let page_plan = plan_poll(&idle(), &no_header, &[], NOW);
         assert_eq!(
             page_plan.next_poll_at,
-            Some(at(DEFAULT_POLL_INTERVAL_SECS.into()))
+            Some(at(i64::from(DEFAULT_POLL_INTERVAL_SECS) + 1))
         );
     }
 
@@ -770,7 +780,7 @@ mod tests {
     fn a_kick_during_a_page_one_304_polls_again() {
         let plan = plan_poll(&idle(), &not_modified(Some(60)), &[], NOW);
         let again = replay_poll(plan.finished_from, Some(at(1)), plan.next_poll_at, at(2));
-        assert_eq!(again, Some((WorkKind::PollNotifications, at(60))));
+        assert_eq!(again, Some((WorkKind::PollNotifications, at(61))));
         let quiet = replay_poll(plan.finished_from, Some(at(-5)), plan.next_poll_at, at(2));
         assert_eq!(quiet, None);
         assert_eq!(
@@ -788,7 +798,7 @@ mod tests {
             NOW,
         );
         let again = replay_poll(plan.finished_from, Some(at(1)), plan.next_poll_at, at(2));
-        assert_eq!(again, Some((WorkKind::PollNotifications, at(60))));
+        assert_eq!(again, Some((WorkKind::PollNotifications, at(61))));
         assert_eq!(
             replay_poll(plan.finished_from, Some(NOW), plan.next_poll_at, at(2)),
             None,
@@ -828,7 +838,7 @@ mod tests {
         );
         let last = plan_poll(&scanning, &page(3, parse(PAGE2), None), &[], NOW);
         let again = replay_poll(last.finished_from, Some(at(-30)), last.next_poll_at, NOW);
-        assert_eq!(again, Some((WorkKind::PollNotifications, at(60))));
+        assert_eq!(again, Some((WorkKind::PollNotifications, at(61))));
         let before_page_one =
             replay_poll(last.finished_from, Some(at(-41)), last.next_poll_at, NOW);
         assert_eq!(before_page_one, None);
