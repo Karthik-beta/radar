@@ -168,6 +168,12 @@ pub struct Timestamp(pub i64);
 const SECONDS_PER_DAY: i64 = 86_400;
 
 impl Timestamp {
+    /// 00:00:00 UTC on the first day of this timestamp's calendar month.
+    pub fn month_start(self) -> Self {
+        let (year, month, _) = civil_from_days(self.0.div_euclid(SECONDS_PER_DAY));
+        Self(days_from_civil(year, month, 1) * SECONDS_PER_DAY)
+    }
+
     pub fn parse_rfc3339(s: &str) -> Result<Self, IdError> {
         let bad = || IdError::BadTimestamp(s.to_owned());
         let b = s.as_bytes();
@@ -318,6 +324,20 @@ mod tests {
             r#"{"repo":"karthik-beta/radar","number":123,"kind":"pr"}"#
         );
         assert_eq!(serde_json::from_str::<ItemRef>(&json).unwrap(), item_ref);
+    }
+
+    #[test]
+    fn month_start_is_midnight_on_the_first_utc() {
+        let at = |s: &str| Timestamp::parse_rfc3339(s).unwrap();
+        for (inside, first) in [
+            ("2026-11-07T13:45:00Z", "2026-11-01T00:00:00Z"),
+            ("2026-11-01T00:00:00Z", "2026-11-01T00:00:00Z"),
+            ("2026-10-31T23:59:59Z", "2026-10-01T00:00:00Z"),
+            ("2024-03-01T00:00:01Z", "2024-03-01T00:00:00Z"),
+            ("2024-02-29T12:00:00Z", "2024-02-01T00:00:00Z"),
+        ] {
+            assert_eq!(at(inside).month_start(), at(first), "{inside}");
+        }
     }
 
     #[test]

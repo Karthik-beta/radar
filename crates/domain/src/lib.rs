@@ -1,10 +1,13 @@
 pub mod activity;
+pub mod api;
 pub mod classify;
 pub mod error;
 pub mod health;
 pub mod ids;
 pub mod item;
+pub mod local_state;
 pub mod me;
+pub mod settings;
 pub mod stage;
 pub mod sync_status;
 pub mod turn;
