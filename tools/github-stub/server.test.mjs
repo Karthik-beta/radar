@@ -308,6 +308,15 @@ describe("faults", () => {
     assert.equal((await s.swap("../package")).status, 404);
   });
 
+  it("a_fault_with_a_query_fails_only_that_page_and_only_once", async () => {
+    await s.swap("poll-pages-fail-once");
+    const page = (n) => s.authed(`/notifications?all=true&per_page=50&page=${n}`);
+    assert.equal((await page(1)).status, 200);
+    assert.equal((await page(2)).status, 500);
+    assert.equal((await page(2)).status, 200);
+    assert.equal((await page(3)).status, 200);
+  });
+
   it("raw_faults_send_a_body_that_is_not_json", async () => {
     await s.swap("bad-body");
     const res = await s.authed("/user");

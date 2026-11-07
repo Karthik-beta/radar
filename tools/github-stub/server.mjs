@@ -232,9 +232,11 @@ function parseForm(body, contentType) {
   return Object.fromEntries(new URLSearchParams(body));
 }
 
-function faultMatches(fault, method, path) {
+function faultMatches(fault, method, path, searchParams) {
   const [m, p] = fault.match.split(" ");
-  return (m === "*" || m === method) && (p === "*" || p === path);
+  const [name, value] = (fault.query ?? "").split("=");
+  const queryOk = fault.query === undefined || searchParams.get(name) === value;
+  return (m === "*" || m === method) && (p === "*" || p === path) && queryOk;
 }
 
 export function createStub({ scenario: initial = "basic" } = {}) {
@@ -255,8 +257,8 @@ export function createStub({ scenario: initial = "basic" } = {}) {
     res.end(body === undefined || status === 204 || status === 304 ? undefined : isRaw ? body : JSON.stringify(body));
   }
 
-  function applyFault(res, entry, method, path) {
-    const fault = state.faults.find((f) => f.left > 0 && faultMatches(f, method, path));
+  function applyFault(res, entry, method, path, searchParams) {
+    const fault = state.faults.find((f) => f.left > 0 && faultMatches(f, method, path, searchParams));
     if (!fault) return false;
     fault.left -= 1;
     const headers = rateHeaders(state.scenario, fault.rate);
@@ -414,7 +416,7 @@ export function createStub({ scenario: initial = "basic" } = {}) {
         if (token !== state.scenario.token) return reply(res, entry, 401, { message: "Bad credentials" });
       }
       if (route.auth && state.scenario.delay_ms) await new Promise((r) => setTimeout(r, state.scenario.delay_ms));
-      if (applyFault(res, entry, req.method, url.pathname)) return;
+      if (applyFault(res, entry, req.method, url.pathname, url.searchParams)) return;
       await handlers[`${req.method} ${url.pathname}`](req, res, entry, body, url);
     } catch {
       if (!res.headersSent) reply(res, entry, 500, { message: "stub error" });
