@@ -1,4 +1,5 @@
 use domain::activity::ReviewState;
+pub use domain::event::{CiOutcome, Event, EventId, EventKind};
 use domain::ids::{Login, RepoName, Timestamp};
 use serde::{Deserialize, Serialize};
 
@@ -9,84 +10,6 @@ const INSERT: &str = "INSERT INTO events (id, item_node_id, repo, kind, review_s
      actor_login, actor_is_me, actor_is_bot, occurred_at, source, ingested_at) \
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
      ON CONFLICT (id) DO NOTHING";
-
-/// The primary key of an event. A re-read of the same timeline item builds the
-/// same id, so it writes nothing (N8).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct EventId(String);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CiOutcome {
-    Passed,
-    Failed,
-}
-
-impl EventId {
-    /// A timeline item already has a GitHub node id.
-    pub fn for_node(node_id: &str) -> Self {
-        Self(node_id.to_owned())
-    }
-
-    /// A CI transition has no node of its own, so its id names the item, the
-    /// commit, and the outcome. The `ci:` prefix cannot collide with a node id.
-    pub fn for_ci(item_node_id: &str, commit_oid: &str, outcome: CiOutcome) -> Self {
-        let word = match outcome {
-            CiOutcome::Passed => "passed",
-            CiOutcome::Failed => "failed",
-        };
-        Self(format!("ci:{item_node_id}:{commit_oid}:{word}"))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// `Reviewed` carries its state, so `review_state` cannot be set on any other kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EventKind {
-    Opened,
-    Commented,
-    Reviewed(ReviewState),
-    ReviewRequested,
-    Assigned,
-    Mentioned,
-    Committed,
-    Merged,
-    Closed,
-    Reopened,
-    CiFailed,
-    CiPassed,
-}
-
-impl EventKind {
-    pub fn tag(self) -> &'static str {
-        match self {
-            Self::Opened => "opened",
-            Self::Commented => "commented",
-            Self::Reviewed(_) => "reviewed",
-            Self::ReviewRequested => "review_requested",
-            Self::Assigned => "assigned",
-            Self::Mentioned => "mentioned",
-            Self::Committed => "committed",
-            Self::Merged => "merged",
-            Self::Closed => "closed",
-            Self::Reopened => "reopened",
-            Self::CiFailed => "ci_failed",
-            Self::CiPassed => "ci_passed",
-        }
-    }
-
-    pub fn review_state(self) -> Option<ReviewState> {
-        match self {
-            Self::Reviewed(state) => Some(state),
-            _ => None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -117,6 +40,24 @@ pub struct EventRow {
     pub occurred_at: Timestamp,
     pub source: EventSource,
     pub ingested_at: Timestamp,
+}
+
+impl EventRow {
+    pub fn from_event(event: &Event, source: EventSource, ingested_at: Timestamp) -> Self {
+        let actor = event.actor.as_ref();
+        Self {
+            id: event.id.clone(),
+            item_node_id: event.item.clone(),
+            repo: event.repo.clone(),
+            kind: event.kind,
+            actor_login: actor.map(|a| a.login.clone()),
+            actor_is_me: actor.is_some_and(|a| a.is_me),
+            actor_is_bot: actor.is_some_and(|a| a.is_bot),
+            occurred_at: event.occurred_at,
+            source,
+            ingested_at,
+        }
+    }
 }
 
 pub fn insert(row: &EventRow) -> Statement {

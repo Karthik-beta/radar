@@ -194,6 +194,9 @@ fn item(i: u32) -> Result<ItemRow, IdError> {
                 "https://github.com/{repo}/{path}/{number}#issuecomment-{i}"
             )),
         }),
+        requested_reviewers: Vec::new(),
+        stage_since: since,
+        latest_url: format!("https://github.com/{repo}/{path}/{number}"),
         synced_at: NOW,
     })
 }
