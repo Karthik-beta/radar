@@ -3,7 +3,7 @@ use std::fmt;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use domain::me::GithubUserId;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit};
 use sha2::Sha256;
 use worker::Env;
 
@@ -42,7 +42,7 @@ impl SessionKey {
         if bytes.len() < MIN_SESSION_KEY_LEN {
             return None;
         }
-        <Hmac<Sha256> as Mac>::new_from_slice(bytes).ok().map(Self)
+        Hmac::<Sha256>::new_from_slice(bytes).ok().map(Self)
     }
 }
 
