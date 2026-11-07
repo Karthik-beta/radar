@@ -250,7 +250,6 @@ pub enum KickReason {
 }
 
 impl KickReason {
-    #[cfg(any(test, feature = "probe"))]
     const ALL: [KickReason; 6] = [
         KickReason::Reconcile,
         KickReason::Email,
@@ -271,7 +270,6 @@ impl KickReason {
         }
     }
 
-    #[cfg(any(test, feature = "probe"))]
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|reason| reason.as_str() == s)
     }
