@@ -77,6 +77,10 @@ impl EnrichBatch {
         Ok(Self { nodes })
     }
 
+    pub fn ids(&self) -> Vec<&str> {
+        self.nodes.iter().map(NodeId::as_str).collect()
+    }
+
     fn payload(&self) -> String {
         let ids: Vec<&str> = self.nodes.iter().map(NodeId::as_str).collect();
         ids.join(",")

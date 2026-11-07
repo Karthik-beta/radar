@@ -6,6 +6,7 @@ use serde::de::IgnoredAny;
 use worker::Env;
 
 use super::config::DEFAULT_POLL_INTERVAL_SECS;
+use super::enrich;
 use super::scheduler::UnitOutcome;
 use super::state::SyncState;
 use super::work::WorkKind;
@@ -26,7 +27,8 @@ pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timesta
             }
             Err(outcome) => outcome,
         },
-        WorkKind::Enrich(_) | WorkKind::BackfillPage(_) => match check_rate(env, state).await {
+        WorkKind::Enrich(batch) => enrich::run(batch, env, state, now).await,
+        WorkKind::BackfillPage(_) => match check_rate(env, state).await {
             Ok(_) => done,
             Err(outcome) => outcome,
         },

@@ -2,6 +2,7 @@
 //! against SQLite natively and `run` is the only function that touches D1.
 
 pub mod auth;
+pub mod batch;
 pub mod events;
 pub mod items;
 pub mod local_state;

@@ -1,7 +1,8 @@
 //! The Syncer Durable Object: the only code that calls GitHub. Each alarm runs
 //! one unit from the `work` table, and `scheduler` decides which.
 
-mod config;
+pub(crate) mod config;
+mod enrich;
 mod gate;
 mod handlers;
 mod scheduler;
