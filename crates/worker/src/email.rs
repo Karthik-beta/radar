@@ -58,7 +58,7 @@ fn forward_address(env: &Env) -> Option<String> {
     (!value.is_empty()).then(|| value.to_owned())
 }
 
-// The body is never touched: no `raw()`, no stream. Only three headers are read.
+// Only three headers are read. The message body is never opened.
 #[worker::event(email)]
 async fn email(message: ForwardableEmailMessage, env: Env, _ctx: worker::Context) -> Result<()> {
     let forward = match forward_address(&env) {
