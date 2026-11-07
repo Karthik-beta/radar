@@ -215,18 +215,29 @@ pub(crate) fn interpret_get<T: DeserializeOwned>(
 }
 
 #[derive(Deserialize)]
-struct GraphqlErrors {
+struct Envelope<T> {
+    data: Option<T>,
     errors: Option<Vec<GraphqlError>>,
 }
 
 #[derive(Deserialize)]
 struct GraphqlError {
     message: String,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    path: Option<Vec<serde::de::IgnoredAny>>,
 }
 
-#[derive(Deserialize)]
-struct GraphqlData<T> {
-    data: Option<T>,
+impl GraphqlError {
+    fn is(&self, kind: &str) -> bool {
+        self.kind.as_deref() == Some(kind)
+    }
+
+    /// GitHub answers an alias that points at nothing with `null` data and a
+    /// `NOT_FOUND` error at that alias's path. The other aliases are fine.
+    fn is_missing_item(&self) -> bool {
+        self.is("NOT_FOUND") && self.path.is_some()
+    }
 }
 
 pub(crate) fn interpret_query<T: DeserializeOwned>(
@@ -241,15 +252,19 @@ pub(crate) fn interpret_query<T: DeserializeOwned>(
     let parse_error = || GithubError::Parse {
         path: GRAPHQL_PATH.to_owned(),
     };
-    let envelope: GraphqlErrors = serde_json::from_str(body).map_err(|_| parse_error())?;
+    let envelope: Envelope<T> = serde_json::from_str(body).map_err(|_| parse_error())?;
     if let Some(errors) = envelope.errors.filter(|errors| !errors.is_empty()) {
-        return Err(GithubError::Graphql(
-            errors.into_iter().map(|e| e.message).collect(),
-        ));
+        if errors.iter().any(|e| e.is("RATE_LIMITED")) {
+            return Err(from_status(429, header, now));
+        }
+        if !errors.iter().all(GraphqlError::is_missing_item) {
+            return Err(GithubError::Graphql(
+                errors.into_iter().map(|e| e.message).collect(),
+            ));
+        }
     }
-    let GraphqlData { data } = serde_json::from_str(body).map_err(|_| parse_error())?;
     Ok(Queried {
-        data: data.ok_or_else(parse_error)?,
+        data: envelope.data.ok_or_else(parse_error)?,
         meta: RateMeta::parse(header),
     })
 }
@@ -437,6 +452,54 @@ mod tests {
         assert_eq!(
             got.map(|q| q.data),
             Err(GithubError::Graphql(vec!["boom".into(), "again".into()]))
+        );
+    }
+
+    #[test]
+    fn a_not_found_alias_leaves_the_rest_of_the_data() {
+        let body = r#"{"data":{"a0":{"id":1},"a1":null},
+            "errors":[{"type":"NOT_FOUND","path":["a1"],"message":"Could not resolve"}]}"#;
+        let got = query(200, body).expect("partial data is data");
+        assert_eq!(got.data, json!({"a0": {"id": 1}, "a1": null}));
+    }
+
+    #[test]
+    fn a_not_found_without_a_path_is_still_an_error() {
+        let body = r#"{"data":{"a0":null},"errors":[{"type":"NOT_FOUND","message":"gone"}]}"#;
+        assert_eq!(
+            query(200, body).map(|q| q.data),
+            Err(GithubError::Graphql(vec!["gone".into()]))
+        );
+    }
+
+    #[test]
+    fn a_not_found_next_to_another_error_is_an_error() {
+        let body = r#"{"data":{"a0":null},"errors":[
+            {"type":"NOT_FOUND","path":["a0"],"message":"gone"},
+            {"type":"FORBIDDEN","path":["a1"],"message":"no"}]}"#;
+        assert_eq!(
+            query(200, body).map(|q| q.data),
+            Err(GithubError::Graphql(vec!["gone".into(), "no".into()]))
+        );
+    }
+
+    #[test]
+    fn rate_limited_in_a_200_waits_until_the_reset_header() {
+        let body = r#"{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}"#;
+        let got = interpret_query::<Value>(
+            200,
+            &headers(&[
+                ("x-ratelimit-remaining", "0"),
+                ("x-ratelimit-reset", "1793900090"),
+            ]),
+            body,
+            NOW,
+        );
+        assert_eq!(
+            got.map(|q| q.data),
+            Err(GithubError::RateLimited {
+                retry_after_secs: 90
+            })
         );
     }
 

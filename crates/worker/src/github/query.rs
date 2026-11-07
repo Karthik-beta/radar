@@ -1,22 +1,35 @@
+use std::borrow::Cow;
+
 use super::error::GithubError;
 
 #[derive(Debug)]
 pub struct QueryDoc {
     name: &'static str,
-    text: &'static str,
+    text: Cow<'static, str>,
 }
 
 impl QueryDoc {
     pub(crate) const fn from_file(name: &'static str, text: &'static str) -> Self {
-        Self { name, text }
+        Self {
+            name,
+            text: Cow::Borrowed(text),
+        }
+    }
+
+    /// A document assembled at run time, such as a batch whose size varies.
+    pub(crate) fn built(name: &'static str, text: String) -> Self {
+        Self {
+            name,
+            text: Cow::Owned(text),
+        }
     }
 
     pub fn name(&self) -> &'static str {
         self.name
     }
 
-    pub fn text(&self) -> &'static str {
-        self.text
+    pub fn text(&self) -> &str {
+        &self.text
     }
 }
 
