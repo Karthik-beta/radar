@@ -1,4 +1,4 @@
-# Radar — Product Requirements Document
+# Radar Product Requirements Document
 
 Nov 5, 2026 · @Karthik
 
@@ -67,9 +67,9 @@ V1 ships three views (Your turn, Pipeline, Their turn); repo cards, trends and a
 | --- | --- | --- |
 | F1 | **Your turn** view: every open PR or issue I am part of, mine or someone else's, whose `turn` is `me`, for one of these reasons (mention, team mention, review requested, changes requested on my PR, CI failed on my PR, assigned, replied: a maintainer's plain comment on my PR or issue), sorted by `since`, how long it has waited. F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
 | F2 | Each item shows repo, title, who acted, what happened, age, and a deep link to the exact comment or review | P0 |
-| F3 | **Pipeline** kanban of my open PRs across all repos: Draft, CI running, CI failing, Awaiting review, Changes requested, Approved; plus Merged/Closed in the last 14 days | P0 |
-| F4 | **Their turn**: my PRs and issues whose `turn` is `them`, with days since; flagged amber after 7 days and red after 14 (configurable). F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
-| F5 | Header counters: Your turn, Open PRs, Their turn, Merged this month | P0 |
+| F3 | **Pipeline** board of my open PRs across all repos, one column per stage, always in this order: Draft, CI running, CI failing, Awaiting review, Changes requested, Approved. Below the board, a list of my PRs merged or closed in the last 14 days | P0 |
+| F4 | **Their turn**: my PRs and issues whose `turn` is `them`, with days since. The age turns `warm` after 7 days and `hot` after 14 (configurable), as [ADR 0003](adr/0003-design.md) describes. `red` marks failing CI only. F1 and F4 both come from each item's `turn`, as [ADR 0002](adr/0002-architecture.md) describes | P0 |
+| F5 | Header counters. The header tabs double as the counters, as [ADR 0003](adr/0003-design.md) describes: Your turn, Their turn, Pipeline (my open PRs), and Merged (my PRs merged this month) | P0 |
 | F6 | Activity feed: chronological stream of all ingested events, filterable by repo and event type | P1 |
 | F7 | **Repo cards**: per repo, my open/merged/closed PR counts, merge rate, median time to first maintainer response, last activity | P1 |
 | F8 | **Trends**: PRs opened vs merged per week, distinct repos contributed to, contribution heatmap | P1 |
@@ -170,7 +170,7 @@ Radar must cost ₹0, keep my GitHub token safe, and fail visibly rather than si
 | Cron Triggers | 5 per account | 2 (10-min reconcile, nightly rollup) |
 | Durable Objects | Not listed here. The R02 spike tests the Free-plan fit, see [ADR 0002](adr/0002-architecture.md) | One `Syncer` instance, one unit of GitHub work per alarm |
 | D1 | 5 GB storage; 5M rows read, 100k rows written per day | <50 MB; \~50k reads, \~2k writes/day |
-| Email Routing inbound | Unlimited | \~40–100 emails/day |
+| Email Routing inbound | Unlimited | \~40 to 100 emails/day |
 | Workers requests | 100k/day | <2k/day |
 
 Allowances from [Cloudflare plans](https://www.cloudflare.com/plans.md), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/index.md) and [Email Service pricing](https://developers.cloudflare.com/email-service/platform/pricing/). Free-plan limits reset daily; on overrun, operations fail rather than bill, so overrun = stale data, never cost.
