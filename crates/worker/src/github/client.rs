@@ -25,6 +25,8 @@ pub enum Fetched<T> {
     Modified {
         body: T,
         validators: Validators,
+        /// The raw `Link` header, which carries the `next` page of a list.
+        link: Option<String>,
         meta: RateMeta,
     },
     NotModified {
@@ -207,6 +209,7 @@ pub(crate) fn interpret_get<T: DeserializeOwned>(
             Ok(Fetched::Modified {
                 body,
                 validators: Validators::parse(header),
+                link: header("link"),
                 meta,
             })
         }
@@ -301,6 +304,7 @@ mod tests {
                 ("etag", "\"abc\""),
                 ("last-modified", "Thu, 05 Nov 2026 10:00:00 GMT"),
                 ("x-poll-interval", "60"),
+                ("link", "<https://api.github.com/x?page=2>; rel=\"next\""),
             ],
             r#"{"login":"karthik"}"#,
         );
@@ -308,9 +312,14 @@ mod tests {
             Ok(Fetched::Modified {
                 body,
                 validators,
+                link,
                 meta,
             }) => {
                 assert_eq!(body, json!({"login": "karthik"}));
+                assert_eq!(
+                    link.as_deref(),
+                    Some("<https://api.github.com/x?page=2>; rel=\"next\"")
+                );
                 assert_eq!(validators.etag.as_deref(), Some("\"abc\""));
                 assert_eq!(meta.poll_interval, Some(60));
             }
