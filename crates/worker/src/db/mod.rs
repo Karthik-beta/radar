@@ -32,11 +32,16 @@ pub(crate) mod testing {
     use super::items::ItemRow;
     use super::sql::{Param, Statement};
 
-    const MIGRATION: &str = include_str!("../../../../migrations/0001_init.sql");
+    const MIGRATIONS: [&str; 2] = [
+        include_str!("../../../../migrations/0001_init.sql"),
+        include_str!("../../../../migrations/0003_item_extras.sql"),
+    ];
 
     pub fn memory_db() -> Connection {
         let conn = Connection::open_in_memory().expect("open");
-        conn.execute_batch(MIGRATION).expect("migration applies");
+        for migration in MIGRATIONS {
+            conn.execute_batch(migration).expect("migration applies");
+        }
         conn
     }
 
@@ -138,6 +143,9 @@ pub(crate) mod testing {
             ci_state: Some(CiState::Passing),
             review_decision: Some(ReviewDecision::ReviewRequired),
             last_human: None,
+            requested_reviewers: Vec::new(),
+            stage_since: Timestamp(2000),
+            latest_url: format!("https://github.com/karthik-beta/radar/pull/{n}"),
             synced_at: Timestamp(5000),
         }
     }
