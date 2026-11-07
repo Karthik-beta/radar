@@ -1,4 +1,6 @@
 pub mod client;
+pub mod enrich_query;
+pub mod enrich_response;
 pub mod error;
 pub mod meta;
 pub mod path;

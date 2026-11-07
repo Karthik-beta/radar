@@ -47,6 +47,11 @@ impl Login {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// GitHub's stand-in for an account that no longer exists.
+    pub fn ghost() -> Self {
+        Self("ghost".to_owned())
+    }
 }
 
 impl PartialEq for Login {
