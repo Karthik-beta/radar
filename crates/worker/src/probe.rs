@@ -4,6 +4,7 @@ use serde_json::{json, Map, Value};
 use worker::{Env, Method, Request, Response, Result};
 
 use crate::github::{query, ApiPath, Client, Conditional, Fetched, GithubError, Queried, Token};
+use crate::sync::{self, KickReason};
 
 pub const PREFIX: &str = "/__probe/";
 
@@ -24,8 +25,23 @@ pub async fn handle(req: &Request, env: &Env) -> Result<Response> {
     match url.path() {
         "/__probe/get" => get(env, &params).await,
         "/__probe/query" => run_query(env, &params).await,
+        "/__probe/syncer/status" => sync::status(env).await,
+        "/__probe/syncer/kick" => kick(env, &params).await,
+        "/__probe/syncer/enqueue" => {
+            let param = |name| params.get(name).map(String::as_str).unwrap_or_default();
+            sync::enqueue(env, param("kind"), param("key")).await
+        }
         _ => reply(404, json!({"error": "not_found"})),
     }
+}
+
+async fn kick(env: &Env, params: &HashMap<String, String>) -> Result<Response> {
+    let raw = params.get("reason").map(String::as_str).unwrap_or_default();
+    let Some(reason) = KickReason::parse(raw) else {
+        return reply(400, json!({"error": "unknown_reason"}));
+    };
+    sync::kick(env, reason).await?;
+    reply(200, json!({"kicked": reason.as_str()}))
 }
 
 async fn get(env: &Env, params: &HashMap<String, String>) -> Result<Response> {
