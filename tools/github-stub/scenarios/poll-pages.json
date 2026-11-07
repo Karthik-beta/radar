@@ -1,0 +1,6 @@
+{
+  "extends": "poll-basic",
+  "notifications": {
+    "generate": { "count": 120, "repo": "octo/widgets", "updated_at": "2026-11-07T09:00:00Z" }
+  }
+}

@@ -177,6 +177,51 @@ describe("conditional requests", () => {
   });
 });
 
+describe("notification pages", () => {
+  let s;
+  before(async () => {
+    s = await start();
+    await s.swap("poll-pages");
+  });
+  after(() => s.close());
+
+  it("pages_by_per_page_and_links_the_next_page", async () => {
+    const first = await s.authed("/notifications?all=true&per_page=50&page=1");
+    assert.equal((await first.json()).length, 50);
+    const link = first.headers.get("link");
+    assert.match(link, /page=2>; rel="next"/);
+    assert.match(link, /page=3>; rel="last"/);
+    assert.ok(link.startsWith("<http://127.0.0.1:"));
+  });
+
+  it("the_last_page_has_a_prev_link_and_no_next", async () => {
+    const last = await s.authed("/notifications?all=true&per_page=50&page=3");
+    assert.equal((await last.json()).length, 20);
+    const link = last.headers.get("link");
+    assert.match(link, /page=2>; rel="prev"/);
+    assert.doesNotMatch(link, /rel="next"/);
+  });
+
+  it("a_single_page_sends_no_link", async () => {
+    const stub = await start("basic");
+    try {
+      assert.equal((await stub.authed("/notifications")).headers.get("link"), null);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("timestamps_carry_no_milliseconds_like_github", async () => {
+    const stub = await start("basic");
+    try {
+      const items = await (await stub.authed("/notifications")).json();
+      assert.ok(items.every((item) => /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(item.updated_at)));
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
 describe("read-only defence", () => {
   let s;
   before(async () => {

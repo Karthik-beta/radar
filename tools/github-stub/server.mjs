@@ -170,6 +170,47 @@ function notModified(headers, notifications) {
   return !Number.isNaN(ims) && !Number.isNaN(last) && ims >= Math.floor(last / 1000) * 1000;
 }
 
+const PAGE_SIZE_DEFAULT = 30;
+const PAGE_SIZE_MAX = 50;
+
+function withoutMillis(items) {
+  const trim = (value) => (typeof value === "string" ? value.replace(/\.\d+Z$/, "Z") : value);
+  return items.map((item) => ({ ...item, updated_at: trim(item.updated_at), last_read_at: trim(item.last_read_at) }));
+}
+
+function generatedItems({ count, repo = "octo/widgets", updated_at = "2026-11-01T00:00:00Z", first_id = 8000 }) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: String(first_id + i),
+    unread: i % 2 === 0,
+    reason: "subscribed",
+    updated_at,
+    last_read_at: null,
+    subject: {
+      title: `Generated thread ${i + 1}`,
+      url: `https://api.github.com/repos/${repo}/issues/${i + 1}`,
+      latest_comment_url: null,
+      type: "Issue",
+    },
+    repository: { full_name: repo, owner: { login: repo.split("/")[0] } },
+  }));
+}
+
+export function notificationPage(notifications, searchParams, base) {
+  const all = withoutMillis(notifications.generate ? generatedItems(notifications.generate) : (notifications.items ?? []));
+  const perPage = Math.min(Math.max(Number(searchParams.get("per_page")) || PAGE_SIZE_DEFAULT, 1), PAGE_SIZE_MAX);
+  const page = Math.max(Number(searchParams.get("page")) || 1, 1);
+  const last = Math.max(Math.ceil(all.length / perPage), 1);
+  const link = (n, rel) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("page", String(n));
+    return `<${base}/notifications?${next}>; rel="${rel}"`;
+  };
+  const rels = [];
+  if (page > 1) rels.push(link(page - 1, "prev"));
+  if (page < last) rels.push(link(page + 1, "next"), link(last, "last"));
+  return { items: all.slice((page - 1) * perPage, page * perPage), link: rels.join(", ") };
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -237,14 +278,16 @@ export function createStub({ scenario: initial = "basic" } = {}) {
       reply(res, entry, 200, { resources: { core, graphql: core, search: core }, rate: core }, headers);
     },
 
-    "GET /notifications": (req, res, entry) => {
+    "GET /notifications": (req, res, entry, body, url) => {
       const notifications = state.scenario.notifications ?? { items: [] };
       const headers = rateHeaders(state.scenario);
       if (notifications.last_modified) headers["last-modified"] = new Date(notifications.last_modified).toUTCString();
       if (notifications.etag) headers.etag = notifications.etag;
       if (state.scenario.poll_interval !== undefined) headers["x-poll-interval"] = String(state.scenario.poll_interval);
       if (notModified(req.headers, notifications)) return reply(res, entry, 304, undefined, headers);
-      reply(res, entry, 200, notifications.items ?? [], headers);
+      const { items, link } = notificationPage(notifications, url.searchParams, `http://${req.headers.host}`);
+      if (link) headers.link = link;
+      reply(res, entry, 200, items, headers);
     },
 
     "POST /graphql": async (req, res, entry, body) => {
