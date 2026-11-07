@@ -1,0 +1,17 @@
+{
+  "name": "radar-spike-do-alarm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "worker-build --release",
+    "predeploy": "npm run build",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail radar-spike --format json",
+    "drive": "node drive.mjs",
+    "summarize": "node summarize.mjs",
+    "test": "node --test \"*.test.mjs\""
+  },
+  "devDependencies": {
+    "wrangler": "4.158.0"
+  }
+}

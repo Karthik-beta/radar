@@ -9,6 +9,7 @@ target/
 dist/
 build/
 spikes/*/out/
+spikes/do-alarm/raw.jsonl
 .vite/
 
 # Cloudflare
