@@ -32,6 +32,7 @@ use work::WorkRow;
 const BINDING: &str = "SYNCER";
 const INSTANCE: &str = "syncer";
 const ORIGIN: &str = "https://syncer";
+const SAVE_FAILURE_RETRY_SECS: i64 = 60;
 
 /// Calls carry their arguments in the path and go through `req.path()`. A query string
 /// would link the `url` parser, and a POST body would put a write method outside the
@@ -99,9 +100,14 @@ impl Syncer {
             _ => Ok(()),
         };
         // Re-arm even when the unit failed to save, or the Syncer would sleep until the next cron.
+        // A failed save leaves the row due, so wait before retrying it instead of looping on GitHub.
         let (rows, sync) = self.load()?;
         let at = now();
-        self.set_alarm(plan(&rows, &sync, at).alarm(at)).await?;
+        let next = match &unit {
+            Ok(()) => plan(&rows, &sync, at).alarm(at),
+            Err(_) => Some(Timestamp(at.0.saturating_add(SAVE_FAILURE_RETRY_SECS))),
+        };
+        self.set_alarm(next).await?;
         unit
     }
 
@@ -303,5 +309,11 @@ pub async fn status(env: &Env) -> Result<Response> {
 
 #[cfg(feature = "probe")]
 pub async fn enqueue(env: &Env, kind: &str, key: &str) -> Result<Response> {
+    if [kind, key]
+        .iter()
+        .any(|part| part.contains(['#', '?', '%']) || part.is_empty())
+    {
+        return error(400, "unsafe_path_argument");
+    }
     call(env, &format!("{ENQUEUE}{kind}/{key}")).await
 }

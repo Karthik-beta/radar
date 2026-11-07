@@ -124,7 +124,7 @@ fn setting(env: &Env, name: &str) -> Option<String> {
 // `Client::new` accepts only api.github.com over https or a loopback stub over http,
 // so an http base is a local stub lane and needs no secret.
 fn authorized(base: &str, secret: Option<&str>, presented: Option<&str>) -> bool {
-    if base.starts_with("http://") {
+    if is_loopback_http(base) {
         return true;
     }
     match (secret, presented) {
@@ -133,6 +133,18 @@ fn authorized(base: &str, secret: Option<&str>, presented: Option<&str>) -> bool
         }
         _ => false,
     }
+}
+
+fn is_loopback_http(base: &str) -> bool {
+    let Some(rest) = base.strip_prefix("http://") else {
+        return false;
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    let host = match authority.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or_default(),
+        None => authority.split(':').next().unwrap_or_default(),
+    };
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
 }
 
 fn constant_time_eq(a: &str, b: &str) -> bool {
@@ -180,6 +192,10 @@ mod tests {
     fn loopback_stub_lanes_need_no_secret() {
         assert!(authorized("http://127.0.0.1:8906", None, None));
         assert!(authorized("http://localhost:8906", Some("short"), None));
+        assert!(authorized("http://[::1]:8906", None, None));
+        assert!(!authorized("http://example.com", None, None));
+        assert!(!authorized("http://127.0.0.1.example.com:8906", None, None));
+        assert!(!authorized("http://localhost@evil.example", None, None));
     }
 
     #[test]

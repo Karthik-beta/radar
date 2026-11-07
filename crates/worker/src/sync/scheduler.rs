@@ -107,7 +107,11 @@ pub fn apply(row: WorkRow, outcome: &UnitOutcome, throttle: Throttle, now: Times
     match outcome {
         UnitOutcome::Done { .. } => Applied {
             row: RowEffect::Delete,
-            throttle: Throttle::default(),
+            throttle: if row.kind.kind().calls_github() {
+                Throttle::default()
+            } else {
+                throttle
+            },
         },
         UnitOutcome::Retry { error } => {
             let attempts = row.attempts.saturating_add(1);
@@ -435,6 +439,17 @@ mod tests {
         let done = UnitOutcome::Done { follow_ups: vec![] };
         let reset = apply(row(enrich("PR_a"), 0), &done, throttle, NOW).throttle;
         assert_eq!(reset, Throttle::default());
+    }
+
+    #[test]
+    fn rollup_done_keeps_the_github_backoff() {
+        let limited = UnitOutcome::RateLimited {
+            retry_after_secs: 15,
+        };
+        let backoff = apply(row(enrich("PR_a"), 0), &limited, Throttle::default(), NOW).throttle;
+        let done = UnitOutcome::Done { follow_ups: vec![] };
+        let kept = apply(row(WorkKind::Rollup, 0), &done, backoff, NOW).throttle;
+        assert_eq!(kept, backoff);
     }
 
     #[test]
