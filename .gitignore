@@ -45,3 +45,4 @@ desktop.ini
 
 # Browser automation output
 .playwright-mcp/
+tools/github-stub/emails/big-body.eml
