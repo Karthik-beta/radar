@@ -332,7 +332,7 @@ pub fn replay_poll(
 ) -> Option<(WorkKind, Timestamp)> {
     let started = finished_from?;
     last_kick_at
-        .filter(|kick| *kick > started)
+        .filter(|kick| *kick >= started)
         .map(|_| (WorkKind::PollNotifications, next_poll_at.unwrap_or(now)))
 }
 
@@ -801,8 +801,12 @@ mod tests {
         assert_eq!(again, Some((WorkKind::PollNotifications, at(61))));
         assert_eq!(
             replay_poll(plan.finished_from, Some(NOW), plan.next_poll_at, at(2)),
-            None,
-            "a kick in the second the request started is not after it"
+            Some((WorkKind::PollNotifications, at(61))),
+            "a kick in the second the request started may have missed it"
+        );
+        assert_eq!(
+            replay_poll(plan.finished_from, Some(at(-1)), plan.next_poll_at, at(2)),
+            None
         );
     }
 
