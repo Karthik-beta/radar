@@ -370,6 +370,7 @@ export function createStub({ scenario: initial = "basic" } = {}) {
         const token = header.replace(/^(Bearer|token) /i, "");
         if (token !== state.scenario.token) return reply(res, entry, 401, { message: "Bad credentials" });
       }
+      if (route.auth && state.scenario.delay_ms) await new Promise((r) => setTimeout(r, state.scenario.delay_ms));
       if (applyFault(res, entry, req.method, url.pathname)) return;
       await handlers[`${req.method} ${url.pathname}`](req, res, entry, body, url);
     } catch {

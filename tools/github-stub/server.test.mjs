@@ -408,6 +408,18 @@ describe("scenarios", () => {
     }
   });
 
+  it("slow_waits_before_an_api_response", async () => {
+    const stub = await start("slow");
+    try {
+      const t0 = Date.now();
+      const res = await stub.authed("/rate_limit");
+      assert.equal(res.status, 200);
+      assert.ok(Date.now() - t0 >= 1400, "answered after the delay");
+    } finally {
+      await stub.close();
+    }
+  });
+
   it("the_planned_scenarios_exist", () => {
     for (const name of [
       "basic",
@@ -423,6 +435,7 @@ describe("scenarios", () => {
       "oauth-bad-code",
       "rate-limit-flaky",
       "retry-after-once",
+      "slow",
     ]) {
       assert.ok(loadScenario(name), name);
     }

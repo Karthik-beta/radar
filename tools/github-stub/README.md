@@ -63,6 +63,8 @@ The stub refuses anything Radar must never send. A method other than GET, or oth
 
 **`rate_limit_poll_interval`.** When true, `GET /rate_limit` also sends `X-Poll-Interval`. GitHub sends it only on `/notifications`, but the R08 placeholder poll reads `/rate_limit` until R09 polls notifications.
 
+**`delay_ms`.** Every API endpoint that needs the token waits this long before it answers, so a lane can stop Radar in the middle of a request.
+
 **Faults.** Each entry in `faults` matches a request and replaces its response.
 
 | Field | Meaning |
@@ -88,6 +90,7 @@ The first entry that still has requests left and matches wins. Faults run after 
 | `rate-limited` | `GET /rate_limit` fails four times in order: 403 with `Retry-After`, 429 with `Retry-After`, 403 with zero remaining and a reset only, and a plain 403. |
 | `rate-limit-flaky` | `fast-poll`, and `GET /rate_limit` answers 500 three times, then succeeds. |
 | `retry-after-once` | `fast-poll`, and the first `GET /rate_limit` answers 403 with `Retry-After: 15`. |
+| `slow` | `fast-poll`, and every API response waits 1.5 s. |
 | `server-error` | The four API endpoints answer 500. OAuth still works. |
 | `bad-body` | The four API endpoints answer 200 with a body that is not JSON. |
 | `graphql-errors` | `Viewer` answers a GraphQL `errors` body. |
