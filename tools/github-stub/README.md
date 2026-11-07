@@ -22,7 +22,7 @@ Point Radar at it with `--var GITHUB_API_BASE:http://127.0.0.1:8900 --var GITHUB
 | --- | --- | --- |
 | `GET /user` | token | The scenario `user`. |
 | `GET /rate_limit` | token | `{resources: {core, graphql, search}, rate}` built from the scenario `rate`. |
-| `GET /notifications` | token | The scenario `notifications.items`. Honors `If-None-Match` and `If-Modified-Since` with 304. Sends `Last-Modified`, `ETag`, and `X-Poll-Interval`. |
+| `GET /notifications` | token | The scenario `notifications.items`, or `notifications.generate` (`{count, repo, updated_at, first_id}`), paged by `per_page` (default 30, at most 50) and `page`, with a `Link` header with `next`, `last`, and `prev` relations when there is more than one page. Item timestamps lose their milliseconds, as on GitHub. Honors `If-None-Match` and `If-Modified-Since` with 304, unless `notifications.ignore_conditional` is true. Sends `Last-Modified`, `ETag`, and `X-Poll-Interval`. |
 | `POST /graphql` | token | Reads `{query, variables}`, finds the operation name, and answers from `graphql[<name>]`. |
 | `GET /login/oauth/authorize` | none | Redirects to `redirect_uri` with `code` and the same `state`, or with `error=access_denied` when `oauth.deny` is true. |
 | `POST /login/oauth/access_token` | none | Takes a form or JSON body. Checks `client_id`, `client_secret`, and `code` against `oauth`. Answers `bad_verification_code` otherwise. |
@@ -61,8 +61,6 @@ The stub refuses anything Radar must never send. A method other than GET, or oth
 
 **Relative times.** A string of the form `@now`, `@-2h`, `@+30s`, `@-3d` is replaced with an ISO 8601 timestamp relative to the moment the scenario loads. Units are `s`, `m`, `h`, `d`, and `w`. `rate.reset` and `notifications.last_modified` use this form.
 
-**`rate_limit_poll_interval`.** When true, `GET /rate_limit` also sends `X-Poll-Interval`. GitHub sends it only on `/notifications`, but the R08 placeholder poll reads `/rate_limit` until R09 polls notifications.
-
 **`delay_ms`.** Every API endpoint that needs the token waits this long before it answers, so a lane can stop Radar in the middle of a request.
 
 **Faults.** Each entry in `faults` matches a request and replaces its response.
@@ -70,6 +68,7 @@ The stub refuses anything Radar must never send. A method other than GET, or oth
 | Field | Meaning |
 | --- | --- |
 | `match` | `"METHOD /path"`. Either part may be `*`. |
+| `query` | Optional `"name=value"`. The fault matches only a request whose query string has that parameter, such as `page=2`. |
 | `status` | Response status. Default 500. |
 | `times` | Number of requests to fail. Omit it to fail every matching request. |
 | `retry_after` | Seconds, sent as `Retry-After`. |
@@ -85,12 +84,21 @@ The first entry that still has requests left and matches wins. Faults run after 
 | --- | --- |
 | `basic` | User `karthik` (id 1001), two notification threads, `Viewer` query, OAuth accepted. |
 | `empty` | No notification threads. |
-| `fast-poll` | `X-Poll-Interval` of 5, sent on `GET /rate_limit` too, so the R08 placeholder poll sees it. |
+| `fast-poll` | `X-Poll-Interval` of 5 on `GET /notifications`. |
 | `low-budget` | 400 of 5000 requests left, reset 20 s away. |
 | `rate-limited` | `GET /rate_limit` fails four times in order: 403 with `Retry-After`, 429 with `Retry-After`, 403 with zero remaining and a reset only, and a plain 403. |
 | `rate-limit-flaky` | `fast-poll`, and `GET /rate_limit` answers 500 three times, then succeeds. |
 | `retry-after-once` | `fast-poll`, and the first `GET /rate_limit` answers 403 with `Retry-After: 15`. |
 | `slow` | `fast-poll`, and every API response waits 1.5 s. |
+| `poll-basic` | Three threads for the R09 poll: a pull request, a read issue, and a `CheckSuite` with no `subject.url`. `X-Poll-Interval` of 5. |
+| `poll-basic-changed` | `poll-basic` with newer `updated_at` on the pull request and the `CheckSuite`, and a `Last-Modified` of now. Swap to it for the changed-thread step. |
+| `poll-60` | `poll-basic` with `X-Poll-Interval` of 60. |
+| `poll-slow` | `poll-basic` with `X-Poll-Interval` of 30. |
+| `poll-pages` | 120 generated issue threads, three pages at `per_page=50`. |
+| `poll-pages-fail-once` | `poll-pages`, and page 2 answers 500 once. |
+| `poll-429` | `poll-basic`, and the first `GET /notifications` answers 429 with `Retry-After: 15`. |
+| `poll-ignores-ims` | `poll-basic`, and `If-Modified-Since` never gets a 304. |
+| `poll-500` | `poll-basic`, and every `GET /notifications` answers 500. |
 | `server-error` | The four API endpoints answer 500. OAuth still works. |
 | `bad-body` | The four API endpoints answer 200 with a body that is not JSON. |
 | `graphql-errors` | `Viewer` answers a GraphQL `errors` body. |

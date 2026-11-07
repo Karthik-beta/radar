@@ -468,11 +468,11 @@ describe("scenarios", () => {
     }
   });
 
-  it("fast_poll_sends_its_poll_interval_on_rate_limit_too", async () => {
+  it("fast_poll_sends_its_poll_interval_on_notifications_only", async () => {
     const stub = await start("fast-poll");
     try {
-      const res = await stub.authed("/rate_limit");
-      assert.equal(res.headers.get("x-poll-interval"), "5");
+      assert.equal((await stub.authed("/notifications")).headers.get("x-poll-interval"), "5");
+      assert.equal((await stub.authed("/rate_limit")).headers.get("x-poll-interval"), null);
     } finally {
       await stub.close();
     }
@@ -506,11 +506,22 @@ describe("scenarios", () => {
       "rate-limit-flaky",
       "retry-after-once",
       "slow",
+      "poll-basic",
+      "poll-basic-changed",
+      "poll-60",
+      "poll-slow",
+      "poll-pages",
+      "poll-pages-fail-once",
+      "poll-429",
+      "poll-ignores-ims",
+      "poll-500",
     ]) {
       assert.ok(loadScenario(name), name);
     }
     assert.equal(loadScenario("low-budget").rate.remaining, 400);
     assert.equal(loadScenario("fast-poll").poll_interval, 5);
+    assert.equal(loadScenario("poll-basic").notifications.items.length, 3);
+    assert.equal(loadScenario("poll-slow").poll_interval, 30);
     assert.deepEqual(loadScenario("empty").notifications.items, []);
     assert.deepEqual(loadScenario("no-notifications-scope").scopes, ["read:user"]);
   });

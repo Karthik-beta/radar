@@ -1,0 +1,4 @@
+{
+  "extends": "poll-basic",
+  "faults": [{ "match": "GET /notifications", "status": 429, "retry_after": 15, "times": 1 }]
+}

@@ -1,0 +1,4 @@
+{
+  "extends": "poll-basic",
+  "faults": [{ "match": "GET /notifications", "status": 500 }]
+}

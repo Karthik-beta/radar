@@ -276,7 +276,6 @@ export function createStub({ scenario: initial = "basic" } = {}) {
     "GET /rate_limit": (req, res, entry) => {
       const core = rateResource(state.scenario);
       const headers = rateHeaders(state.scenario);
-      if (state.scenario.rate_limit_poll_interval) headers["x-poll-interval"] = String(state.scenario.poll_interval);
       reply(res, entry, 200, { resources: { core, graphql: core, search: core }, rate: core }, headers);
     },
 
