@@ -2,7 +2,6 @@
 //! call GitHub (N7).
 
 mod dashboard;
-mod freshness;
 mod items;
 mod route;
 
@@ -124,10 +123,10 @@ async fn respond(endpoint: Endpoint, req: &mut Request, env: &Env) -> Result<Rep
             }
             Reply::json(200, &dashboard::assemble(rows, now))
         }
-        Protected::Freshness => {
-            let status = crate::sync::status(env).await?;
-            Reply::json(200, &freshness::freshness(status))
-        }
+        Protected::Freshness => Reply {
+            status: 200,
+            body: Some(crate::sync::freshness_json(env).await?),
+        },
         Protected::Dismiss(id) => written(items::dismiss(env, &id).await?),
         Protected::Snooze(id) => {
             let body = req.text().await?;

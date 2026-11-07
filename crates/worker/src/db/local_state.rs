@@ -5,17 +5,18 @@ use domain::ids::Timestamp;
 
 use super::sql::{Param, Statement};
 
-/// Writes one row for an item that exists and none for an unknown id, so the
-/// change count tells the caller which. `WHERE true` lets SQLite parse the
-/// upsert after a `SELECT`.
+/// Writes and returns one row for an item that exists and none for an unknown
+/// id. `WHERE true` lets SQLite parse the upsert after a `SELECT`.
 const DISMISS: &str = "INSERT INTO local_state (item_id, kind, value) \
      SELECT node_id, 'dismissed', COALESCE(last_human_at, 0) FROM items \
      WHERE node_id = ?1 AND true \
-     ON CONFLICT (item_id) DO UPDATE SET kind = excluded.kind, value = excluded.value";
+     ON CONFLICT (item_id) DO UPDATE SET kind = excluded.kind, value = excluded.value \
+     RETURNING 1 AS n";
 
 const SNOOZE: &str = "INSERT INTO local_state (item_id, kind, value) \
      SELECT node_id, 'snoozed', ?2 FROM items WHERE node_id = ?1 AND true \
-     ON CONFLICT (item_id) DO UPDATE SET kind = excluded.kind, value = excluded.value";
+     ON CONFLICT (item_id) DO UPDATE SET kind = excluded.kind, value = excluded.value \
+     RETURNING 1 AS n";
 
 /// Hides the item until a human acts after its current `last_human_at`.
 pub fn dismiss(item_id: &str) -> Statement {
@@ -39,7 +40,7 @@ mod tests {
 
     use super::*;
     use crate::db::items::{self, ItemRow, LastHuman};
-    use crate::db::testing::{exec, item_row, memory_db, query_json};
+    use crate::db::testing::{exec, item_row, memory_db, query_json, returned};
     use domain::ids::Login;
     use domain::local_state::LocalState;
     use domain::turn::{Reason, Turn};
@@ -71,8 +72,8 @@ mod tests {
     fn dismiss_stores_the_current_last_human_at_once() {
         let conn = memory_db();
         exec(&conn, &items::upsert(&waiting(1, Some(500)))).expect("item");
-        assert_eq!(exec(&conn, &dismiss("PR_1")).expect("dismiss"), 1);
-        assert_eq!(exec(&conn, &dismiss("PR_1")).expect("again"), 1);
+        assert_eq!(returned(&conn, &dismiss("PR_1")), 1);
+        assert_eq!(returned(&conn, &dismiss("PR_1")), 1);
         assert_eq!(
             stored(&conn),
             [Some(LocalState::Dismissed {
@@ -85,7 +86,7 @@ mod tests {
     fn dismissing_an_item_with_no_human_activity_stores_zero() {
         let conn = memory_db();
         exec(&conn, &items::upsert(&waiting(1, None))).expect("item");
-        exec(&conn, &dismiss("PR_1")).expect("dismiss");
+        returned(&conn, &dismiss("PR_1"));
         assert_eq!(
             stored(&conn),
             [Some(LocalState::Dismissed {
@@ -98,9 +99,9 @@ mod tests {
     fn snooze_replaces_a_dismissal_and_a_resnooze_moves_the_wake_time() {
         let conn = memory_db();
         exec(&conn, &items::upsert(&waiting(1, Some(500)))).expect("item");
-        exec(&conn, &dismiss("PR_1")).expect("dismiss");
-        exec(&conn, &snooze("PR_1", Timestamp(1000))).expect("snooze");
-        exec(&conn, &snooze("PR_1", Timestamp(2000))).expect("resnooze");
+        returned(&conn, &dismiss("PR_1"));
+        returned(&conn, &snooze("PR_1", Timestamp(1000)));
+        returned(&conn, &snooze("PR_1", Timestamp(2000)));
         assert_eq!(
             stored(&conn),
             [Some(LocalState::Snoozed {
@@ -113,11 +114,8 @@ mod tests {
     fn an_unknown_id_writes_nothing() {
         let conn = memory_db();
         exec(&conn, &items::upsert(&waiting(1, None))).expect("item");
-        assert_eq!(exec(&conn, &dismiss("PR_404")).expect("dismiss"), 0);
-        assert_eq!(
-            exec(&conn, &snooze("PR_404", Timestamp(1))).expect("snooze"),
-            0
-        );
+        assert_eq!(returned(&conn, &dismiss("PR_404")), 0);
+        assert_eq!(returned(&conn, &snooze("PR_404", Timestamp(1))), 0);
         assert!(stored(&conn).is_empty());
     }
 }

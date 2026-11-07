@@ -27,7 +27,11 @@ macro_rules! columns {
         "items.node_id, items.repo, items.number, items.kind, items.title, items.url, \
          items.latest_url, items.head_ref, items.state, items.reason, items.since, items.stage, \
          items.stage_since, items.closed_at, items.last_human_at, items.last_human_login, \
-         items.last_human_kind, items.requested_reviewers"
+         items.last_human_kind, \
+         CASE WHEN json_valid(items.requested_reviewers) \
+           AND json_type(items.requested_reviewers) = 'array' \
+         THEN COALESCE((SELECT group_concat(value, ',') \
+           FROM json_each(items.requested_reviewers)), '') END AS reviewers"
     };
 }
 
@@ -154,16 +158,20 @@ pub struct RawItem {
     last_human_at: Option<i64>,
     last_human_login: Option<String>,
     last_human_kind: Option<String>,
-    requested_reviewers: String,
+    /// `requested_reviewers` joined with commas, which no login contains, so
+    /// the Worker needs no JSON parser for it. `None` when the column is not
+    /// a JSON array.
+    reviewers: Option<String>,
     #[serde(default)]
     local_kind: Option<String>,
     #[serde(default)]
     local_value: Option<i64>,
 }
 
+/// A row with one integer column `n`, as a count or a `RETURNING 1 AS n`.
 #[derive(Debug, Deserialize)]
 pub struct RawCount {
-    n: i64,
+    pub n: i64,
 }
 
 impl RawItem {
@@ -194,13 +202,13 @@ impl RawItem {
             }),
             _ => return Err(RowError::PartialLastHuman),
         };
-        let reviewers: Vec<String> =
-            serde_json::from_str(&self.requested_reviewers).map_err(|_| RowError::UnknownTag {
-                column: "requested_reviewers",
-                value: self.requested_reviewers.clone(),
-            })?;
+        let reviewers = self.reviewers.ok_or(RowError::UnknownTag {
+            column: "requested_reviewers",
+            value: "not a JSON array".to_owned(),
+        })?;
         let requested_reviewers = reviewers
-            .iter()
+            .split(',')
+            .filter(|r| !r.is_empty())
             .map(|r| Login::parse(r).map_err(|e| bad_id("requested_reviewers", e)))
             .collect::<Result<_, _>>()?;
         let local = match (self.local_kind, self.local_value) {
@@ -304,7 +312,7 @@ pub(crate) mod tests {
     use crate::db::items::{self, ItemRow, LastHuman};
     use crate::db::local_state;
     use crate::db::synthetic;
-    use crate::db::testing::{exec, explain, item_row, memory_db, query_json};
+    use crate::db::testing::{exec, explain, item_row, memory_db, query_json, returned};
     use domain::item::ItemState;
     use domain::turn::Turn;
 
@@ -417,7 +425,7 @@ pub(crate) mod tests {
             [],
         )
         .expect("extras");
-        exec(&conn, &local_state::dismiss("PR_1")).expect("dismiss");
+        returned(&conn, &local_state::dismiss("PR_1"));
         let (rows, errors) = read_native(&conn, Timestamp(10_000)).parse();
         assert!(errors.is_empty(), "{errors:?}");
         let [waiting] = rows.your_turn.as_slice() else {

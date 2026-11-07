@@ -86,6 +86,11 @@ pub(crate) mod testing {
         out
     }
 
+    /// Runs a statement with a `RETURNING` clause and counts the rows it returned.
+    pub fn returned(conn: &Connection, stmt: &Statement) -> usize {
+        query_json(conn, stmt.sql, &stmt.params).len()
+    }
+
     /// `table` may carry a WHERE clause, as in `items WHERE turn = 'me'`.
     pub fn count_rows(conn: &Connection, table: &str) -> usize {
         let sql = format!("SELECT COUNT(*) AS n FROM {table}");

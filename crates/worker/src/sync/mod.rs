@@ -9,6 +9,7 @@ mod state;
 mod store;
 mod work;
 
+use domain::api::Freshness;
 use domain::ids::Timestamp;
 use domain::sync_status::SyncStatus;
 use serde_json::json;
@@ -37,6 +38,7 @@ const ORIGIN: &str = "https://syncer";
 /// would link the `url` parser, and a POST body would put a write method outside the
 /// GitHub client, which `tests/read_only.rs` forbids.
 const KICK: &str = "/kick/";
+const FRESHNESS: &str = "/freshness";
 #[cfg(feature = "probe")]
 const ENQUEUE: &str = "/enqueue/";
 
@@ -59,6 +61,9 @@ impl DurableObject for Syncer {
         let path = req.path();
         if path == "/status" {
             return Response::from_json(&self.status().await?);
+        }
+        if path == FRESHNESS {
+            return Response::from_json(&Freshness::from_status(self.status().await?));
         }
         if let Some(raw) = path.strip_prefix(KICK) {
             return match KickReason::parse(raw) {
@@ -296,12 +301,19 @@ pub async fn kick(env: &Env, reason: KickReason) -> Result<()> {
 }
 
 /// The Syncer's status, reachable only through the `SYNCER` binding.
+#[cfg(feature = "probe")]
 pub async fn status(env: &Env) -> Result<SyncStatus> {
-    let mut response = call(env, "/status").await?;
+    call(env, "/status").await?.json().await
+}
+
+/// The `Freshness` JSON for `GET /api/freshness`. The Syncer builds it, so the
+/// Worker passes the body on without a JSON parser for `SyncStatus`.
+pub async fn freshness_json(env: &Env) -> Result<String> {
+    let mut response = call(env, FRESHNESS).await?;
     match response.status_code() {
-        200 => response.json().await,
+        200 => response.text().await,
         status => Err(worker::Error::RustError(format!(
-            "syncer status answered {status}"
+            "syncer freshness answered {status}"
         ))),
     }
 }

@@ -15,19 +15,23 @@ const AGENT_PREFIX: &str = "agent/";
 /// Builds the response from validated rows. It sorts and filters again, so
 /// the result does not depend on the order or window the SQL used.
 pub fn assemble(rows: DashboardRows, now: Timestamp) -> Dashboard {
-    let mut your_turn: Vec<TurnRow> = rows
+    let mut waiting: Vec<ItemRecord> = rows
         .your_turn
         .into_iter()
         .filter(|w| visible(w.local, w.item.last_human.as_ref().map(|h| h.at), now))
-        .filter_map(|w| turn_row(w.item))
+        .map(|w| w.item)
         .collect();
-    your_turn.sort_by_key(|row| row.since);
+    sort_by(&mut waiting, |item| item.since.0);
+    let your_turn: Vec<TurnRow> = waiting.into_iter().filter_map(turn_row).collect();
 
-    let mut their_turn: Vec<TheirRow> = rows.their_turn.into_iter().map(their_row).collect();
-    their_turn.sort_by_key(|row| row.since);
+    let mut theirs = rows.their_turn;
+    sort_by(&mut theirs, |item| item.since.0);
+    let their_turn: Vec<TheirRow> = theirs.into_iter().map(their_row).collect();
 
+    let mut mine = rows.pipeline;
+    sort_by(&mut mine, |item| item.stage_since.unwrap_or(item.since).0);
     let mut pipeline = Pipeline::empty();
-    for item in rows.pipeline {
+    for item in mine {
         let column = pipeline
             .columns
             .iter_mut()
@@ -36,18 +40,15 @@ pub fn assemble(rows: DashboardRows, now: Timestamp) -> Dashboard {
             column.cards.push(card(item));
         }
     }
-    for column in &mut pipeline.columns {
-        column.cards.sort_by_key(|card| card.stage_since);
-    }
 
     let window_start = now.0.saturating_sub(RECENT_WINDOW_SECS);
-    let mut recent: Vec<RecentRow> = rows
-        .recent
+    let mut ended = rows.recent;
+    sort_by(&mut ended, |item| item.closed_at.map_or(i64::MAX, |t| -t.0));
+    let recent: Vec<RecentRow> = ended
         .into_iter()
         .filter_map(recent_row)
         .filter(|row| row.ended_at.0 >= window_start)
         .collect();
-    recent.sort_by_key(|row| std::cmp::Reverse(row.ended_at));
 
     let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
     Dashboard {
@@ -64,6 +65,12 @@ pub fn assemble(rows: DashboardRows, now: Timestamp) -> Dashboard {
         recent,
         nudge: NudgeThresholds::default(),
     }
+}
+
+/// One stable sort for every list. A key function pointer keeps it to one
+/// copy of the sort in the Worker, where each closure would add its own.
+fn sort_by(items: &mut [ItemRecord], key: fn(&ItemRecord) -> i64) {
+    items.sort_by_key(key);
 }
 
 fn is_agent(item: &ItemRecord) -> bool {
