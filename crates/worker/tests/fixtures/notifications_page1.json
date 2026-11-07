@@ -1,0 +1,95 @@
+[
+  {
+    "id": "18402011001",
+    "repository": {
+      "id": 912345678,
+      "node_id": "R_kgDOA1b2c3",
+      "name": "widgets",
+      "full_name": "octo/widgets",
+      "private": false,
+      "owner": {
+        "login": "octo",
+        "id": 5001,
+        "type": "Organization",
+        "site_admin": false
+      },
+      "html_url": "https://github.com/octo/widgets",
+      "fork": false,
+      "url": "https://api.github.com/repos/octo/widgets"
+    },
+    "subject": {
+      "title": "Cache the widget index",
+      "url": "https://api.github.com/repos/octo/widgets/pulls/412",
+      "latest_comment_url": "https://api.github.com/repos/octo/widgets/issues/comments/2500000001",
+      "type": "PullRequest"
+    },
+    "reason": "review_requested",
+    "unread": true,
+    "updated_at": "2026-11-07T09:50:12Z",
+    "last_read_at": null,
+    "url": "https://api.github.com/notifications/threads/18402011001",
+    "subscription_url": "https://api.github.com/notifications/threads/18402011001/subscription"
+  },
+  {
+    "id": "18402011002",
+    "repository": {
+      "id": 912345678,
+      "node_id": "R_kgDOA1b2c3",
+      "name": "widgets",
+      "full_name": "octo/widgets",
+      "private": false,
+      "owner": {
+        "login": "octo",
+        "id": 5001,
+        "type": "Organization",
+        "site_admin": false
+      },
+      "html_url": "https://github.com/octo/widgets",
+      "fork": false,
+      "url": "https://api.github.com/repos/octo/widgets"
+    },
+    "subject": {
+      "title": "Widget index is stale after a rename",
+      "url": "https://api.github.com/repos/octo/widgets/issues/398",
+      "latest_comment_url": "https://api.github.com/repos/octo/widgets/issues/comments/2500000002",
+      "type": "Issue"
+    },
+    "reason": "mention",
+    "unread": false,
+    "updated_at": "2026-11-07T09:30:45Z",
+    "last_read_at": "2026-11-07T09:41:03Z",
+    "url": "https://api.github.com/notifications/threads/18402011002",
+    "subscription_url": "https://api.github.com/notifications/threads/18402011002/subscription"
+  },
+  {
+    "id": "18402011003",
+    "repository": {
+      "id": 912345678,
+      "node_id": "R_kgDOA1b2c3",
+      "name": "widgets",
+      "full_name": "octo/widgets",
+      "private": false,
+      "owner": {
+        "login": "octo",
+        "id": 5001,
+        "type": "Organization",
+        "site_admin": false
+      },
+      "html_url": "https://github.com/octo/widgets",
+      "fork": false,
+      "url": "https://api.github.com/repos/octo/widgets"
+    },
+    "subject": {
+      "title": "CI workflow run failed for main branch",
+      "url": null,
+      "latest_comment_url": null,
+      "type": "CheckSuite"
+    },
+    "reason": "ci_activity",
+    "unread": true,
+    "updated_at": "2026-11-07T09:20:00Z",
+    "last_read_at": null,
+    "url": "https://api.github.com/notifications/threads/18402011003",
+    "subscription_url": "https://api.github.com/notifications/threads/18402011003/subscription"
+  }
+]

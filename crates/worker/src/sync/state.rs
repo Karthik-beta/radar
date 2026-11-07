@@ -6,6 +6,7 @@ use domain::ids::Timestamp;
 use domain::sync_status::{DeferCause, Rate, SyncKind, SyncStatus};
 
 use super::gate::{gate, Gate};
+use super::poll::PollPhase;
 use super::work::WorkRow;
 use crate::github::RateMeta;
 
@@ -29,12 +30,15 @@ pub struct SyncState {
     pub throttle: Throttle,
     pub last_kick_at: Option<Timestamp>,
     pub last_ok: BTreeMap<SyncKind, Timestamp>,
+    /// Kept in the `kv` table, because it is not a `sync_state` column.
+    pub poll_phase: PollPhase,
 }
 
 impl SyncState {
     /// Takes the fields a unit learns from GitHub and leaves the rest, which kicks own.
     pub fn observe(&mut self, unit: &SyncState) {
         self.last_modified.clone_from(&unit.last_modified);
+        self.poll_phase.clone_from(&unit.poll_phase);
         self.next_poll_at = unit.next_poll_at;
         self.rate = unit.rate;
         self.scopes.clone_from(&unit.scopes);
@@ -138,10 +142,14 @@ mod tests {
                 reset: Some(Timestamp(3600)),
             },
             scopes: Some("notifications".into()),
+            poll_phase: PollPhase::Idle {
+                last_modified: Some("Sat, 07 Nov 2026 09:55:00 GMT".into()),
+            },
             ..SyncState::default()
         };
         fresh.observe(&unit);
         assert_eq!(fresh.last_kick_at, Some(Timestamp(50)));
+        assert_eq!(fresh.poll_phase, unit.poll_phase);
         assert_eq!(fresh.next_poll_at, Some(Timestamp(65)));
         assert_eq!(fresh.rate, unit.rate);
         assert_eq!(fresh.scopes, unit.scopes);

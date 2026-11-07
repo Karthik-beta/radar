@@ -1,0 +1,95 @@
+[
+  {
+    "id": "18402011004",
+    "repository": {
+      "id": 923456789,
+      "node_id": "R_kgDOB4d5e6",
+      "name": "gadgets",
+      "full_name": "octo/gadgets",
+      "private": true,
+      "owner": {
+        "login": "octo",
+        "id": 5001,
+        "type": "Organization",
+        "site_admin": false
+      },
+      "html_url": "https://github.com/octo/gadgets",
+      "fork": false,
+      "url": "https://api.github.com/repos/octo/gadgets"
+    },
+    "subject": {
+      "title": "Drop the legacy gadget loader",
+      "url": "https://api.github.com/repos/octo/gadgets/pulls/77",
+      "latest_comment_url": "https://api.github.com/repos/octo/gadgets/issues/comments/2500000004",
+      "type": "PullRequest"
+    },
+    "reason": "author",
+    "unread": true,
+    "updated_at": "2026-11-06T17:02:31Z",
+    "last_read_at": null,
+    "url": "https://api.github.com/notifications/threads/18402011004",
+    "subscription_url": "https://api.github.com/notifications/threads/18402011004/subscription"
+  },
+  {
+    "id": "18402011005",
+    "repository": {
+      "id": 923456789,
+      "node_id": "R_kgDOB4d5e6",
+      "name": "gadgets",
+      "full_name": "octo/gadgets",
+      "private": true,
+      "owner": {
+        "login": "octo",
+        "id": 5001,
+        "type": "Organization",
+        "site_admin": false
+      },
+      "html_url": "https://github.com/octo/gadgets",
+      "fork": false,
+      "url": "https://api.github.com/repos/octo/gadgets"
+    },
+    "subject": {
+      "title": "Gadget loader leaks a handle",
+      "url": "https://api.github.com/repos/octo/gadgets/issues/70",
+      "latest_comment_url": "https://api.github.com/repos/octo/gadgets/issues/comments/2500000005",
+      "type": "Issue"
+    },
+    "reason": "assign",
+    "unread": false,
+    "updated_at": "2026-11-06T12:15:09Z",
+    "last_read_at": "2026-11-06T12:20:00Z",
+    "url": "https://api.github.com/notifications/threads/18402011005",
+    "subscription_url": "https://api.github.com/notifications/threads/18402011005/subscription"
+  },
+  {
+    "id": "18402011006",
+    "repository": {
+      "id": 923456789,
+      "node_id": "R_kgDOB4d5e6",
+      "name": "gadgets",
+      "full_name": "octo/gadgets",
+      "private": true,
+      "owner": {
+        "login": "octo",
+        "id": 5001,
+        "type": "Organization",
+        "site_admin": false
+      },
+      "html_url": "https://github.com/octo/gadgets",
+      "fork": false,
+      "url": "https://api.github.com/repos/octo/gadgets"
+    },
+    "subject": {
+      "title": "Deploy workflow run failed for release branch",
+      "url": null,
+      "latest_comment_url": null,
+      "type": "CheckSuite"
+    },
+    "reason": "ci_activity",
+    "unread": true,
+    "updated_at": "2026-11-05T22:48:50Z",
+    "last_read_at": null,
+    "url": "https://api.github.com/notifications/threads/18402011006",
+    "subscription_url": "https://api.github.com/notifications/threads/18402011006/subscription"
+  }
+]
