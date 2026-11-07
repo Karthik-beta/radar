@@ -71,11 +71,21 @@ pub struct KnownThread {
 }
 
 /// The stored `updated_at` of each thread in `ids` that Radar already has. The ids
-/// travel as one JSON array so the statement stays a constant.
+/// travel as one JSON array so the statement stays a constant. An id with a character
+/// outside a thread id's alphabet is left out, which also keeps the array valid JSON.
 pub fn known_updated_at(ids: &[&str]) -> Statement {
+    let plain = |id: &&str| {
+        id.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'='))
+    };
+    let quoted: Vec<String> = ids
+        .iter()
+        .filter(|id| plain(id))
+        .map(|id| format!("\"{id}\""))
+        .collect();
     Statement {
         sql: KNOWN_UPDATED_AT,
-        params: vec![Param::text(serde_json::Value::from(ids).to_string())],
+        params: vec![Param::text(format!("[{}]", quoted.join(",")))],
     }
 }
 
@@ -147,6 +157,11 @@ mod tests {
         assert_eq!(hit[0]["updated_at"], 3000);
         assert!(found(&["9999"]).is_empty());
         assert!(found(&[]).is_empty());
+        assert_eq!(
+            found(&["1234", "a\"b", "c,d"]).len(),
+            1,
+            "odd ids are ignored"
+        );
     }
 
     #[test]

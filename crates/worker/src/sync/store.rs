@@ -141,20 +141,17 @@ pub struct RawKv {
 }
 
 impl RawKv {
-    pub fn parse_phase(&self) -> Result<PollPhase, serde_json::Error> {
-        serde_json::from_str(&self.value)
+    pub fn parse_phase(&self) -> Option<PollPhase> {
+        PollPhase::decode(&self.value)
     }
 }
 
-pub fn save_phase(phase: &PollPhase) -> Result<Statement, serde_json::Error> {
-    Ok(Statement {
+pub fn save_phase(phase: &PollPhase) -> Statement {
+    Statement {
         sql: "INSERT INTO kv (key, value) VALUES (?1, ?2) \
               ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        params: vec![
-            Param::text(POLL_PHASE_KEY),
-            Param::text(serde_json::to_string(phase)?),
-        ],
-    })
+        params: vec![Param::text(POLL_PHASE_KEY), Param::text(phase.encode())],
+    }
 }
 
 pub fn upsert(row: &WorkRow) -> Statement {
@@ -374,6 +371,14 @@ mod tests {
     }
 
     #[test]
+    fn a_stored_phase_that_does_not_parse_is_none_not_a_panic() {
+        let bad = RawKv {
+            value: "scan|only|three".into(),
+        };
+        assert_eq!(bad.parse_phase(), None);
+    }
+
+    #[test]
     fn the_poll_phase_is_absent_then_saved_then_replaced() {
         let conn = open();
         assert_eq!(phase(&conn), None);
@@ -383,22 +388,14 @@ mod tests {
             next_page: 2,
             started_at: Timestamp(100),
         };
-        exec(&conn, &save_phase(&scanning).unwrap()).unwrap();
+        exec(&conn, &save_phase(&scanning)).unwrap();
         assert_eq!(phase(&conn), Some(scanning));
         let idle = PollPhase::Idle {
             last_modified: Some("new".into()),
         };
-        exec(&conn, &save_phase(&idle).unwrap()).unwrap();
+        exec(&conn, &save_phase(&idle)).unwrap();
         assert_eq!(phase(&conn), Some(idle));
         assert_eq!(count_rows(&conn, "kv"), 1);
-    }
-
-    #[test]
-    fn a_stored_phase_that_does_not_parse_is_an_error_not_a_panic() {
-        let bad = RawKv {
-            value: "{\"phase\":\"scanning\"}".into(),
-        };
-        assert!(bad.parse_phase().is_err());
     }
 
     #[test]

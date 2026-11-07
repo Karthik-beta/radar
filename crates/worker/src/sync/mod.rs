@@ -153,10 +153,7 @@ impl Syncer {
             );
         }
         if sync.poll_phase != phase_before {
-            writes.push(
-                store::save_phase(&sync.poll_phase)
-                    .map_err(|err| worker::Error::RustError(err.to_string()))?,
-            );
+            writes.push(store::save_phase(&sync.poll_phase));
         }
         writes.push(store::save_state(&sync));
         for write in &writes {
@@ -268,8 +265,8 @@ impl Syncer {
             .to_array::<store::RawKv>()?;
         if let Some(raw) = stored.first() {
             // An unreadable phase restarts at page 1, which only costs one full fetch.
-            sync.poll_phase = raw.parse_phase().unwrap_or_else(|err| {
-                console_error!("syncer poll phase unreadable: {err}");
+            sync.poll_phase = raw.parse_phase().unwrap_or_else(|| {
+                console_error!("syncer poll phase unreadable");
                 PollPhase::default()
             });
         }

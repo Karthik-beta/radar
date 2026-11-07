@@ -1,10 +1,8 @@
 //! The notifications poll. `plan_poll` and `replay_poll` hold the rules as pure
 //! functions, and `run` does the GitHub request and the D1 write around them.
 
-use std::collections::HashMap;
-
 use domain::ids::{RepoName, Timestamp};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use worker::{console_log, Env};
 
 use super::config::{DEFAULT_POLL_INTERVAL_SECS, ENRICH_BATCH};
@@ -21,8 +19,7 @@ const PAGE_SIZE: u32 = 50;
 /// Where the poll is. A scan commits its new `Last-Modified` only when its last
 /// page succeeds, so a failed page 2 can never hide the threads on it behind a
 /// later 304.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "phase", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PollPhase {
     Idle {
         last_modified: Option<String>,
@@ -41,6 +38,45 @@ impl Default for PollPhase {
     fn default() -> Self {
         Self::Idle {
             last_modified: None,
+        }
+    }
+}
+
+impl PollPhase {
+    /// One `|`-separated line, because serde's enum deserializers cost more Worker
+    /// size than this whole module. A `Last-Modified` value never holds `|` or is empty.
+    pub fn encode(&self) -> String {
+        let text = |value: &Option<String>| value.clone().unwrap_or_default();
+        match self {
+            Self::Idle { last_modified } => format!("idle|{}", text(last_modified)),
+            Self::Scanning {
+                committed,
+                incoming,
+                next_page,
+                started_at,
+            } => format!(
+                "scan|{}|{}|{next_page}|{}",
+                text(committed),
+                text(incoming),
+                started_at.0
+            ),
+        }
+    }
+
+    pub fn decode(raw: &str) -> Option<Self> {
+        let value = |s: &str| (!s.is_empty()).then(|| s.to_owned());
+        let parts: Vec<&str> = raw.split('|').collect();
+        match parts.as_slice() {
+            ["idle", last_modified] => Some(Self::Idle {
+                last_modified: value(last_modified),
+            }),
+            ["scan", committed, incoming, next_page, started_at] => Some(Self::Scanning {
+                committed: value(committed),
+                incoming: value(incoming),
+                next_page: next_page.parse().ok()?,
+                started_at: Timestamp(started_at.parse().ok()?),
+            }),
+            _ => None,
         }
     }
 }
@@ -190,7 +226,7 @@ pub struct PollPlan {
 pub fn plan_poll(
     phase: &PollPhase,
     received: &Received,
-    known: &HashMap<String, Timestamp>,
+    known: &[KnownThread],
     now: Timestamp,
 ) -> PollPlan {
     let interval = received.poll_interval.unwrap_or(DEFAULT_POLL_INTERVAL_SECS);
@@ -215,7 +251,10 @@ pub fn plan_poll(
     };
     let changed: Vec<&NotificationThread> = threads
         .iter()
-        .filter(|t| known.get(t.id.as_str()) != Some(&t.updated_at))
+        .filter(|t| {
+            let stored = known.iter().find(|row| row.id == t.id.as_str());
+            stored.map(|row| row.updated_at) != Some(t.updated_at.0)
+        })
         .collect();
     let to_enrich: Vec<NodeId> = changed
         .iter()
@@ -367,7 +406,7 @@ async fn poll(env: &Env, state: &mut SyncState, now: Timestamp) -> Result<Handle
     };
     let known = match &received.body {
         Body::Page { threads, .. } => known_updated_at(env, threads).await.map_err(retry)?,
-        Body::NotModified => HashMap::new(),
+        Body::NotModified => Vec::new(),
     };
     let plan = plan_poll(&state.poll_phase, &received, &known, now);
     let db = env.d1("DB").map_err(retry)?;
@@ -412,18 +451,14 @@ fn display_at(at: Option<Timestamp>) -> String {
 async fn known_updated_at(
     env: &Env,
     page: &[NotificationThread],
-) -> worker::Result<HashMap<String, Timestamp>> {
+) -> worker::Result<Vec<KnownThread>> {
     let ids: Vec<&str> = page.iter().map(|t| t.id.as_str()).collect();
     let db = env.d1("DB")?;
-    let rows = threads::known_updated_at(&ids)
+    threads::known_updated_at(&ids)
         .prepare(&db)?
         .all()
         .await?
-        .results::<KnownThread>()?;
-    Ok(rows
-        .into_iter()
-        .map(|row| (row.id, Timestamp(row.updated_at)))
-        .collect())
+        .results::<KnownThread>()
 }
 
 #[cfg(test)]
@@ -491,7 +526,7 @@ mod tests {
 
     #[test]
     fn a_first_page_of_three_threads_yields_three_upserts_and_one_batch_of_two() {
-        let plan = plan_poll(&idle(), &page(1, parse(PAGE1), None), &HashMap::new(), NOW);
+        let plan = plan_poll(&idle(), &page(1, parse(PAGE1), None), &[], NOW);
         assert_eq!(plan.upserts.len(), 3);
         assert_eq!(plan.changed, 3);
         assert_eq!(plan.enrich_batches.len(), 1);
@@ -510,7 +545,10 @@ mod tests {
     #[test]
     fn a_thread_with_an_unchanged_updated_at_is_stored_and_not_enriched() {
         let threads = parse(PAGE1);
-        let known = HashMap::from([(threads[0].id.as_str().to_owned(), threads[0].updated_at)]);
+        let known = [KnownThread {
+            id: threads[0].id.as_str().to_owned(),
+            updated_at: threads[0].updated_at.0,
+        }];
         let plan = plan_poll(&idle(), &page(1, threads, None), &known, NOW);
         assert_eq!(plan.upserts.len(), 3);
         assert_eq!(plan.changed, 2);
@@ -520,19 +558,17 @@ mod tests {
     #[test]
     fn a_stored_thread_with_a_different_updated_at_is_enriched_again() {
         let threads = parse(PAGE1);
-        let known = HashMap::from([(threads[0].id.as_str().to_owned(), at(-99_999))]);
+        let known = [KnownThread {
+            id: threads[0].id.as_str().to_owned(),
+            updated_at: at(-99_999).0,
+        }];
         let plan = plan_poll(&idle(), &page(1, threads, None), &known, NOW);
         assert_eq!(plan.enrich_batches[0].len(), 2);
     }
 
     #[test]
     fn forty_five_changed_threads_yield_full_batches_then_the_remainder() {
-        let plan = plan_poll(
-            &idle(),
-            &page(1, item_threads(45), None),
-            &HashMap::new(),
-            NOW,
-        );
+        let plan = plan_poll(&idle(), &page(1, item_threads(45), None), &[], NOW);
         let sizes: Vec<usize> = plan.enrich_batches.iter().map(Vec::len).collect();
         let (last, full) = sizes.split_last().unwrap();
         assert!(full.iter().all(|n| *n == ENRICH_BATCH), "{sizes:?}");
@@ -543,12 +579,7 @@ mod tests {
 
     #[test]
     fn enrich_batches_hold_each_changed_id_once_in_page_order() {
-        let plan = plan_poll(
-            &idle(),
-            &page(1, item_threads(45), None),
-            &HashMap::new(),
-            NOW,
-        );
+        let plan = plan_poll(&idle(), &page(1, item_threads(45), None), &[], NOW);
         let flat: Vec<&str> = plan.enrich_batches.iter().flat_map(|b| ids(b)).collect();
         let expected: Vec<String> = (0..45).map(|i| (9000 + i).to_string()).collect();
         assert_eq!(
@@ -559,12 +590,7 @@ mod tests {
 
     #[test]
     fn a_page_with_a_next_link_scans_and_does_not_commit_the_new_last_modified() {
-        let plan = plan_poll(
-            &idle(),
-            &page(1, parse(PAGE1), Some(2)),
-            &HashMap::new(),
-            NOW,
-        );
+        let plan = plan_poll(&idle(), &page(1, parse(PAGE1), Some(2)), &[], NOW);
         assert_eq!(
             plan.next_phase,
             PollPhase::Scanning {
@@ -591,7 +617,7 @@ mod tests {
         if let Body::Page { last_modified, .. } = &mut last.body {
             *last_modified = Some("page three value".into());
         }
-        let plan = plan_poll(&scanning, &last, &HashMap::new(), NOW);
+        let plan = plan_poll(&scanning, &last, &[], NOW);
         assert_eq!(
             plan.next_phase,
             PollPhase::Idle {
@@ -611,12 +637,7 @@ mod tests {
             next_page: 2,
             started_at: at(-10),
         };
-        let plan = plan_poll(
-            &scanning,
-            &page(2, parse(PAGE2), Some(3)),
-            &HashMap::new(),
-            NOW,
-        );
+        let plan = plan_poll(&scanning, &page(2, parse(PAGE2), Some(3)), &[], NOW);
         assert_eq!(
             plan.next_phase,
             PollPhase::Scanning {
@@ -633,7 +654,7 @@ mod tests {
         let plan = plan_poll(
             &PollPhase::default(),
             &page(1, parse(PAGE1), None),
-            &HashMap::new(),
+            &[],
             NOW,
         );
         assert_eq!(
@@ -647,19 +668,14 @@ mod tests {
 
     #[test]
     fn a_next_link_that_does_not_advance_ends_the_scan() {
-        let plan = plan_poll(
-            &idle(),
-            &page(1, parse(PAGE1), Some(1)),
-            &HashMap::new(),
-            NOW,
-        );
+        let plan = plan_poll(&idle(), &page(1, parse(PAGE1), Some(1)), &[], NOW);
         assert_eq!(plan.follow_up, FollowUp::None);
         assert!(matches!(plan.next_phase, PollPhase::Idle { .. }));
     }
 
     #[test]
     fn a_304_keeps_the_phase_and_waits_the_interval() {
-        let plan = plan_poll(&idle(), &not_modified(Some(60)), &HashMap::new(), NOW);
+        let plan = plan_poll(&idle(), &not_modified(Some(60)), &[], NOW);
         assert_eq!(plan.next_phase, idle());
         assert_eq!(plan.next_poll_at, Some(at(60)));
         assert!(plan.upserts.is_empty() && plan.enrich_batches.is_empty());
@@ -668,13 +684,13 @@ mod tests {
 
     #[test]
     fn a_missing_poll_interval_is_60_seconds_and_a_header_value_is_obeyed() {
-        let missing = plan_poll(&idle(), &not_modified(None), &HashMap::new(), NOW);
+        let missing = plan_poll(&idle(), &not_modified(None), &[], NOW);
         assert_eq!(missing.next_poll_at, Some(at(60)));
-        let slow = plan_poll(&idle(), &not_modified(Some(120)), &HashMap::new(), NOW);
+        let slow = plan_poll(&idle(), &not_modified(Some(120)), &[], NOW);
         assert_eq!(slow.next_poll_at, Some(at(120)));
         let mut no_header = page(1, parse(PAGE1), None);
         no_header.poll_interval = None;
-        let page_plan = plan_poll(&idle(), &no_header, &HashMap::new(), NOW);
+        let page_plan = plan_poll(&idle(), &no_header, &[], NOW);
         assert_eq!(
             page_plan.next_poll_at,
             Some(at(DEFAULT_POLL_INTERVAL_SECS.into()))
@@ -752,7 +768,7 @@ mod tests {
 
     #[test]
     fn a_kick_during_a_page_one_304_polls_again() {
-        let plan = plan_poll(&idle(), &not_modified(Some(60)), &HashMap::new(), NOW);
+        let plan = plan_poll(&idle(), &not_modified(Some(60)), &[], NOW);
         let again = replay_poll(plan.finished_from, Some(at(1)), plan.next_poll_at, at(2));
         assert_eq!(again, Some((WorkKind::PollNotifications, at(60))));
         let quiet = replay_poll(plan.finished_from, Some(at(-5)), plan.next_poll_at, at(2));
@@ -768,7 +784,7 @@ mod tests {
         let plan = plan_poll(
             &PollPhase::default(),
             &page(1, parse(PAGE1), None),
-            &HashMap::new(),
+            &[],
             NOW,
         );
         let again = replay_poll(plan.finished_from, Some(at(1)), plan.next_poll_at, at(2));
@@ -797,7 +813,7 @@ mod tests {
                 started_at: started,
             },
             &page(2, parse(PAGE2), Some(3)),
-            &HashMap::new(),
+            &[],
             at(-20),
         );
         assert_eq!(
@@ -810,12 +826,7 @@ mod tests {
             None,
             "the scan is not over, so nothing replays yet"
         );
-        let last = plan_poll(
-            &scanning,
-            &page(3, parse(PAGE2), None),
-            &HashMap::new(),
-            NOW,
-        );
+        let last = plan_poll(&scanning, &page(3, parse(PAGE2), None), &[], NOW);
         let again = replay_poll(last.finished_from, Some(at(-30)), last.next_poll_at, NOW);
         assert_eq!(again, Some((WorkKind::PollNotifications, at(60))));
         let before_page_one =
@@ -824,7 +835,7 @@ mod tests {
     }
 
     #[test]
-    fn the_phase_round_trips_through_json() {
+    fn the_phase_round_trips_through_its_text_form() {
         for phase in [
             PollPhase::default(),
             idle(),
@@ -834,9 +845,29 @@ mod tests {
                 next_page: 4,
                 started_at: NOW,
             },
+            PollPhase::Scanning {
+                committed: None,
+                incoming: Some(LAST_MODIFIED.into()),
+                next_page: 2,
+                started_at: at(-7),
+            },
         ] {
-            let json = serde_json::to_string(&phase).unwrap();
-            assert_eq!(serde_json::from_str::<PollPhase>(&json).unwrap(), phase);
+            assert_eq!(PollPhase::decode(&phase.encode()).as_ref(), Some(&phase));
+        }
+    }
+
+    #[test]
+    fn a_text_that_is_not_a_phase_decodes_to_none() {
+        for bad in [
+            "",
+            "idle",
+            "idle|a|b",
+            "scan|a|b|x|1",
+            "scan|a|b|2",
+            "scan||||",
+            "other|a",
+        ] {
+            assert_eq!(PollPhase::decode(bad), None, "{bad:?}");
         }
     }
 }
