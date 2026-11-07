@@ -115,6 +115,34 @@ The first entry that still has requests left and matches wins. Faults run after 
 | `body`, `variables` | The GraphQL request body and variables, on `POST /graphql` only. |
 | `oauth` | `accepted` or `rejected`, on the token endpoint. The code and secret are never logged. |
 
+## Enrich scenarios
+
+`scenarios/make.mjs <kind>` writes a scenario for the R10 enrich lanes to stdout, with times relative to now. Save it under `scenarios/generated/`, which git ignores, and boot the stub with `--scenario generated/<kind>`.
+
+```
+node tools/github-stub/scenarios/make.mjs enrich-basic > tools/github-stub/scenarios/generated/enrich-basic.json
+node tools/github-stub/server.mjs --port 8900 --scenario generated/enrich-basic
+```
+
+`--sql` prints the `INSERT` statements that seed `notification_threads`, and `--ids` prints the thread ids as a comma-separated list. Together they stand in for the notifications poll: run the SQL with `wrangler d1 execute`, then enqueue `kind=enrich&key=<ids>` through the probe route.
+
+`extends` is `basic`. `items` maps `owner/repo#number` to the `issueOrPullRequest` node the `Enrich` query returns. The stub answers an `Enrich` operation from `items` and reads the variables `$o<i>`, `$n<i>`, `$i<i>`. A key with no entry answers a null alias, and a key set to `null` answers an alias whose item is null. Both come with a `NOT_FOUND` error. Each file carries an `_expect` object the stub ignores: `threads`, `items`, `gone`, `events`, and one `rows` entry per stored item with its `turn`, `reason`, and `stage`.
+
+| Kind | What it holds |
+| --- | --- |
+| `enrich-basic` | Six threads: a review request, changes requested on mine, failing CI on mine, mine waiting with my comment last, an issue a maintainer answered, and my draft. |
+| `enrich-bot` | My comment, then a `dependabot[bot]` comment. |
+| `enrich-read` | A thread with `unread: false` whose newest activity is aimed at me. |
+| `enrich-45` | 45 pull request threads. |
+| `enrich-gone` | 20 threads, one with a null item. |
+| `enrich-limited` | Three threads and a `RATE_LIMITED` error in a 200 for the first `POST /graphql`. |
+| `enrich-502` | Three threads and three 502 answers on `POST /graphql`. |
+| `enrich-body-marker` | Three threads whose comment nodes carry `BODYMARK-7f3a` bodies. |
+| `enrich-ci-step` | `enrich-basic` after pull request 15 moved from passing to failing CI. |
+| `enrich-20`, `enrich-edge` | The shapes of the Rust fixtures. `scenarios/fixtures.mjs` rewrites `crates/worker/tests/fixtures/enrich_20.json` and `enrich_edge.json` from them. |
+
+The stub's `/graphql` log entry carries `aliases`, the number of items the request named.
+
 ## Tests
 
 `node --test "tools/**/*.test.mjs"`

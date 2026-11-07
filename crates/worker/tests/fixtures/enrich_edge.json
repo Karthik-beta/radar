@@ -1,0 +1,109 @@
+{
+  "data": {
+    "a0": {
+      "issueOrPullRequest": {
+        "__typename": "PullRequest",
+        "id": "PR_stub_41",
+        "number": 41,
+        "title": "Pull request 41",
+        "url": "https://github.com/octo/widgets/pull/41",
+        "prState": "OPEN",
+        "isDraft": false,
+        "createdAt": "2026-11-04T12:00:00Z",
+        "updatedAt": "2026-11-07T11:00:00Z",
+        "closedAt": null,
+        "mergedAt": null,
+        "headRefName": "feature/41",
+        "reviewDecision": "REVIEW_REQUIRED",
+        "author": null,
+        "assignees": {
+          "nodes": []
+        },
+        "reviewRequests": {
+          "nodes": []
+        },
+        "latestReviews": {
+          "nodes": []
+        },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "oid": "c0ffee1",
+                "statusCheckRollup": {
+                  "state": "SUCCESS"
+                }
+              }
+            }
+          ]
+        },
+        "timelineItems": {
+          "nodes": [
+            {
+              "__typename": "IssueComment",
+              "id": "IC_41_1",
+              "at": "2026-11-07T09:00:00Z",
+              "url": "https://github.com/octo/widgets/pull/41#issuecomment-IC_41_1",
+              "actor": {
+                "login": "alice",
+                "__typename": "User"
+              }
+            },
+            {
+              "__typename": "IssueComment",
+              "id": "IC_41_2",
+              "at": "2026-11-07T11:00:00Z",
+              "url": "https://github.com/octo/widgets/pull/41#issuecomment-IC_41_2",
+              "actor": {
+                "login": "dependabot[bot]",
+                "__typename": "Bot"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "a1": null,
+    "a2": {
+      "issueOrPullRequest": {
+        "__typename": "Issue",
+        "id": "I_stub_43",
+        "number": 43,
+        "title": "Issue 43",
+        "url": "https://github.com/octo/widgets/issues/43",
+        "issueState": "OPEN",
+        "createdAt": "2026-11-04T12:00:00Z",
+        "updatedAt": "2026-11-07T10:00:00Z",
+        "closedAt": null,
+        "author": {
+          "login": "alice",
+          "__typename": "User"
+        },
+        "assignees": {
+          "nodes": [
+            {
+              "login": "karthik"
+            }
+          ]
+        },
+        "timelineItems": {
+          "nodes": []
+        }
+      }
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4990,
+      "resetAt": "2026-11-07T12:50:00Z"
+    }
+  },
+  "errors": [
+    {
+      "type": "NOT_FOUND",
+      "path": [
+        "a1"
+      ],
+      "message": "Could not resolve to a Repository for octo/widgets#42."
+    }
+  ]
+}
