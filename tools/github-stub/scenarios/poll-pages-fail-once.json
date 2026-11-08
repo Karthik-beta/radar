@@ -1,0 +1,4 @@
+{
+  "extends": "poll-pages",
+  "faults": [{ "match": "GET /notifications", "query": "page=2", "status": 500, "times": 1 }]
+}

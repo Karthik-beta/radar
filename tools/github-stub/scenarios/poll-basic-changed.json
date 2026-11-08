@@ -1,0 +1,50 @@
+{
+  "extends": "poll-basic",
+  "notifications": {
+    "last_modified": "@now",
+    "items": [
+      {
+        "id": "7001",
+        "unread": true,
+        "reason": "review_requested",
+        "updated_at": "2026-11-07T10:05:00Z",
+        "last_read_at": null,
+        "subject": {
+          "title": "Add the stub",
+          "url": "https://api.github.com/repos/octo/widgets/pulls/12",
+          "latest_comment_url": null,
+          "type": "PullRequest"
+        },
+        "repository": { "full_name": "octo/widgets", "owner": { "login": "octo" } }
+      },
+      {
+        "id": "7002",
+        "unread": false,
+        "reason": "mention",
+        "updated_at": "2026-11-07T09:30:00Z",
+        "last_read_at": "2026-11-07T09:35:00Z",
+        "subject": {
+          "title": "Question about the API",
+          "url": "https://api.github.com/repos/octo/widgets/issues/9",
+          "latest_comment_url": null,
+          "type": "Issue"
+        },
+        "repository": { "full_name": "octo/widgets", "owner": { "login": "octo" } }
+      },
+      {
+        "id": "7003",
+        "unread": true,
+        "reason": "ci_activity",
+        "updated_at": "2026-11-07T10:00:00Z",
+        "last_read_at": null,
+        "subject": {
+          "title": "CI failed for main",
+          "url": null,
+          "latest_comment_url": null,
+          "type": "CheckSuite"
+        },
+        "repository": { "full_name": "octo/widgets", "owner": { "login": "octo" } }
+      }
+    ]
+  }
+}

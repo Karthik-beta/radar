@@ -103,6 +103,14 @@ fn after(now: Timestamp, secs: u64) -> Timestamp {
     )
 }
 
+/// The larger of `Retry-After` and `60 s * 2^strikes`, at most an hour (P4).
+pub fn rate_limit_until(strikes: u32, retry_after_secs: u64, now: Timestamp) -> Timestamp {
+    let doubled = 1u64
+        .checked_shl(strikes)
+        .map_or(u64::MAX, |factor| BACKOFF_BASE_SECS.saturating_mul(factor));
+    after(now, doubled.max(retry_after_secs).min(BACKOFF_MAX_SECS))
+}
+
 pub fn apply(row: WorkRow, outcome: &UnitOutcome, throttle: Throttle, now: Timestamp) -> Applied {
     match outcome {
         UnitOutcome::Done { .. } => Applied {
@@ -142,10 +150,7 @@ pub fn apply(row: WorkRow, outcome: &UnitOutcome, throttle: Throttle, now: Times
             }
         }
         UnitOutcome::RateLimited { retry_after_secs } => {
-            let doubled = 1u64
-                .checked_shl(throttle.strikes)
-                .map_or(u64::MAX, |factor| BACKOFF_BASE_SECS.saturating_mul(factor));
-            let until = after(now, doubled.max(*retry_after_secs).min(BACKOFF_MAX_SECS));
+            let until = rate_limit_until(throttle.strikes, *retry_after_secs, now);
             Applied {
                 row: RowEffect::Update(WorkRow {
                     due_at: until,

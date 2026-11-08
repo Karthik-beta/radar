@@ -177,6 +177,67 @@ describe("conditional requests", () => {
   });
 });
 
+describe("notification pages", () => {
+  let s;
+  before(async () => {
+    s = await start();
+    await s.swap("poll-pages");
+  });
+  after(() => s.close());
+
+  it("pages_by_per_page_and_links_the_next_page", async () => {
+    const first = await s.authed("/notifications?all=true&per_page=50&page=1");
+    assert.equal((await first.json()).length, 50);
+    const link = first.headers.get("link");
+    assert.match(link, /page=2>; rel="next"/);
+    assert.match(link, /page=3>; rel="last"/);
+    assert.ok(link.startsWith("<http://127.0.0.1:"));
+  });
+
+  it("the_last_page_has_a_prev_link_and_no_next", async () => {
+    const last = await s.authed("/notifications?all=true&per_page=50&page=3");
+    assert.equal((await last.json()).length, 20);
+    const link = last.headers.get("link");
+    assert.match(link, /page=2>; rel="prev"/);
+    assert.doesNotMatch(link, /rel="next"/);
+  });
+
+  it("a_single_page_sends_no_link", async () => {
+    const stub = await start("basic");
+    try {
+      assert.equal((await stub.authed("/notifications")).headers.get("link"), null);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it("timestamps_carry_no_milliseconds_like_github", async () => {
+    const stub = await start("basic");
+    try {
+      const items = await (await stub.authed("/notifications")).json();
+      assert.ok(items.every((item) => /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(item.updated_at)));
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
+describe("ignored conditional requests", () => {
+  it("poll_ignores_ims_answers_200_to_a_matching_if_modified_since", async () => {
+    const stub = await start("poll-ignores-ims");
+    try {
+      const first = await stub.authed("/notifications");
+      const lastModified = first.headers.get("last-modified");
+      assert.ok(lastModified);
+      const second = await stub.authed("/notifications", { headers: { "if-modified-since": lastModified } });
+      assert.equal(second.status, 200);
+      assert.equal((await second.json()).length, 3);
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
 describe("read-only defence", () => {
   let s;
   before(async () => {
@@ -261,6 +322,15 @@ describe("faults", () => {
     assert.equal((await s.authed("/rate_limit")).status, 200);
     assert.equal((await s.swap("does-not-exist")).status, 404);
     assert.equal((await s.swap("../package")).status, 404);
+  });
+
+  it("a_fault_with_a_query_fails_only_that_page_and_only_once", async () => {
+    await s.swap("poll-pages-fail-once");
+    const page = (n) => s.authed(`/notifications?all=true&per_page=50&page=${n}`);
+    assert.equal((await page(1)).status, 200);
+    assert.equal((await page(2)).status, 500);
+    assert.equal((await page(2)).status, 200);
+    assert.equal((await page(3)).status, 200);
   });
 
   it("raw_faults_send_a_body_that_is_not_json", async () => {
@@ -398,11 +468,11 @@ describe("scenarios", () => {
     }
   });
 
-  it("fast_poll_sends_its_poll_interval_on_rate_limit_too", async () => {
+  it("fast_poll_sends_its_poll_interval_on_notifications_only", async () => {
     const stub = await start("fast-poll");
     try {
-      const res = await stub.authed("/rate_limit");
-      assert.equal(res.headers.get("x-poll-interval"), "5");
+      assert.equal((await stub.authed("/notifications")).headers.get("x-poll-interval"), "5");
+      assert.equal((await stub.authed("/rate_limit")).headers.get("x-poll-interval"), null);
     } finally {
       await stub.close();
     }
@@ -436,11 +506,22 @@ describe("scenarios", () => {
       "rate-limit-flaky",
       "retry-after-once",
       "slow",
+      "poll-basic",
+      "poll-basic-changed",
+      "poll-60",
+      "poll-slow",
+      "poll-pages",
+      "poll-pages-fail-once",
+      "poll-429",
+      "poll-ignores-ims",
+      "poll-500",
     ]) {
       assert.ok(loadScenario(name), name);
     }
     assert.equal(loadScenario("low-budget").rate.remaining, 400);
     assert.equal(loadScenario("fast-poll").poll_interval, 5);
+    assert.equal(loadScenario("poll-basic").notifications.items.length, 3);
+    assert.equal(loadScenario("poll-slow").poll_interval, 30);
     assert.deepEqual(loadScenario("empty").notifications.items, []);
     assert.deepEqual(loadScenario("no-notifications-scope").scopes, ["read:user"]);
   });

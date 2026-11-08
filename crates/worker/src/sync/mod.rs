@@ -4,6 +4,7 @@
 mod config;
 mod gate;
 mod handlers;
+mod poll;
 mod scheduler;
 mod state;
 mod store;
@@ -23,6 +24,8 @@ pub use work::KickReason;
 
 use crate::auth::now;
 use crate::db::{Param, Statement};
+use handlers::Handled;
+use poll::PollPhase;
 use scheduler::{apply, plan, Applied, Decision, RowEffect, UnitOutcome};
 use state::SyncState;
 #[cfg(feature = "probe")]
@@ -116,7 +119,11 @@ impl Syncer {
         let (name, key) = (kind.kind().as_str(), kind.key());
         console_log!("unit start kind={name} key={key}");
         let started = Date::now().as_millis();
-        let outcome = handlers::run(&kind, &self.env, &mut observed, now()).await;
+        let phase_before = observed.poll_phase.clone();
+        let Handled {
+            outcome,
+            finished_from,
+        } = handlers::run(&kind, &self.env, &mut observed).await;
         let done_at = now();
         // Kicks run while the unit awaits GitHub, so write onto a fresh read.
         let (rows, mut sync) = self.load()?;
@@ -134,12 +141,19 @@ impl Syncer {
         if let UnitOutcome::Done { follow_ups } = &outcome {
             sync.last_ok.insert(kind.kind(), done_at);
             let others: Vec<WorkRow> = rows.iter().filter(|r| r.kind != kind).cloned().collect();
+            let replay =
+                poll::replay_poll(finished_from, sync.last_kick_at, sync.next_poll_at, done_at);
             writes.extend(
                 follow_ups
                     .iter()
-                    .filter_map(|next| scheduler::enqueue(&others, next.clone(), done_at))
+                    .map(|next| (next.clone(), done_at))
+                    .chain(replay)
+                    .filter_map(|(next, due)| scheduler::enqueue(&others, next, due))
                     .map(|row| store::upsert(&row)),
             );
+        }
+        if sync.poll_phase != phase_before {
+            writes.push(store::save_phase(&sync.poll_phase));
         }
         writes.push(store::save_state(&sync));
         for write in &writes {
@@ -239,13 +253,23 @@ impl Syncer {
         for err in errors {
             console_error!("syncer skipped a work row: {err}");
         }
-        let sync = sql
+        let mut sync = sql
             .exec(store::SELECT_STATE, None)?
             .to_array::<store::RawState>()?
             .into_iter()
             .next()
             .map(store::RawState::parse)
             .unwrap_or_default();
+        let stored = sql
+            .exec(store::SELECT_PHASE, None)?
+            .to_array::<store::RawKv>()?;
+        if let Some(raw) = stored.first() {
+            // An unreadable phase restarts at page 1, which only costs one full fetch.
+            sync.poll_phase = raw.parse_phase().unwrap_or_else(|| {
+                console_error!("syncer poll phase unreadable");
+                PollPhase::default()
+            });
+        }
         Ok((rows, sync))
     }
 

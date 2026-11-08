@@ -1,40 +1,49 @@
-//! What each kind of unit does. Until R09 to R11 replace them, the GitHub kinds
-//! only read `GET /rate_limit` and record what it reports.
+//! What each kind of unit does. Until R10 and R11 replace them, `Enrich` and
+//! `BackfillPage` only read `GET /rate_limit` and record what it reports.
 
 use domain::ids::Timestamp;
 use serde::de::IgnoredAny;
 use worker::Env;
 
-use super::config::DEFAULT_POLL_INTERVAL_SECS;
+use super::poll;
 use super::scheduler::UnitOutcome;
 use super::state::SyncState;
 use super::work::WorkKind;
 use crate::auth;
-use crate::github::{ApiPath, Client, Conditional, Fetched, GithubError, RateMeta};
+use crate::github::{ApiPath, Client, Conditional, Fetched, GithubError};
 
-/// Each GitHub call is awaited before the next starts, so no two requests for the
-/// token overlap (P5).
-pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timestamp) -> UnitOutcome {
-    let done = UnitOutcome::Done { follow_ups: vec![] };
-    match kind {
-        WorkKind::Rollup => done,
-        WorkKind::PollNotifications => match check_rate(env, state).await {
-            Ok(meta) => {
-                let interval = meta.poll_interval.unwrap_or(DEFAULT_POLL_INTERVAL_SECS);
-                state.next_poll_at = Some(Timestamp(now.0.saturating_add(i64::from(interval))));
-                done
-            }
-            Err(outcome) => outcome,
-        },
-        WorkKind::Enrich(_) | WorkKind::BackfillPage(_) => match check_rate(env, state).await {
-            Ok(_) => done,
-            Err(outcome) => outcome,
-        },
+/// What a unit reports to the Syncer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Handled {
+    pub outcome: UnitOutcome,
+    /// Set by a poll that has seen its last page. The page-1 request time decides
+    /// whether a kick that landed meanwhile needs another poll (P2).
+    pub finished_from: Option<Timestamp>,
+}
+
+impl From<UnitOutcome> for Handled {
+    fn from(outcome: UnitOutcome) -> Self {
+        Self {
+            outcome,
+            finished_from: None,
+        }
     }
 }
 
-async fn check_rate(env: &Env, state: &mut SyncState) -> Result<RateMeta, UnitOutcome> {
-    let token = auth::load_token(env).await.ok_or(UnitOutcome::NoToken)?;
+/// Each GitHub call is awaited before the next starts, so no two requests for the
+/// token overlap (P5).
+pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState) -> Handled {
+    match kind {
+        WorkKind::Rollup => UnitOutcome::Done { follow_ups: vec![] }.into(),
+        WorkKind::PollNotifications => poll::run(env, state).await,
+        WorkKind::Enrich(_) | WorkKind::BackfillPage(_) => check_rate(env, state).await.into(),
+    }
+}
+
+async fn check_rate(env: &Env, state: &mut SyncState) -> UnitOutcome {
+    let Some(token) = auth::load_token(env).await else {
+        return UnitOutcome::NoToken;
+    };
     let base = env
         .var("GITHUB_API_BASE")
         .map(|v| v.to_string())
@@ -46,13 +55,13 @@ async fn check_rate(env: &Env, state: &mut SyncState) -> Result<RateMeta, UnitOu
     match fetched {
         Ok(Fetched::Modified { meta, .. } | Fetched::NotModified { meta }) => {
             state.record_rate(&meta);
-            Ok(meta)
+            UnitOutcome::Done { follow_ups: vec![] }
         }
         Err(GithubError::RateLimited { retry_after_secs }) => {
-            Err(UnitOutcome::RateLimited { retry_after_secs })
+            UnitOutcome::RateLimited { retry_after_secs }
         }
-        Err(err) => Err(UnitOutcome::Retry {
+        Err(err) => UnitOutcome::Retry {
             error: err.to_string(),
-        }),
+        },
     }
 }

@@ -64,11 +64,13 @@ async fn get(env: &Env, params: &HashMap<String, String>) -> Result<Response> {
         Ok(Fetched::Modified {
             body,
             validators,
+            link,
             meta,
         }) => json!({
             "outcome": "modified",
             "status": 200,
             "validators": validators,
+            "link": link,
             "meta": meta,
             "body": body,
         }),

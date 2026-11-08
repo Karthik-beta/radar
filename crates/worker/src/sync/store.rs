@@ -5,6 +5,7 @@ use domain::ids::Timestamp;
 use domain::sync_status::{Rate, SyncKind};
 use serde::Deserialize;
 
+use super::poll::PollPhase;
 use super::state::{SyncState, Throttle};
 use super::work::{RowState, WorkError, WorkKind, WorkRow};
 use crate::db::{Param, Statement};
@@ -38,7 +39,15 @@ CREATE TABLE IF NOT EXISTS sync_state (
   last_ok_rollup INTEGER
 );
 INSERT OR IGNORE INTO sync_state (id) VALUES (1);
+CREATE TABLE IF NOT EXISTS kv (
+  key TEXT PRIMARY KEY NOT NULL,
+  value TEXT NOT NULL
+);
 ";
+
+const POLL_PHASE_KEY: &str = "poll_phase";
+
+pub const SELECT_PHASE: &str = "SELECT value FROM kv WHERE key = 'poll_phase'";
 
 pub const SELECT_ROWS: &str =
     "SELECT kind, key, payload, due_at, attempts, dead, last_error FROM work";
@@ -121,7 +130,27 @@ impl RawState {
                 .into_iter()
                 .filter_map(|(kind, at)| Some((kind, Timestamp(at?))))
                 .collect(),
+            poll_phase: PollPhase::default(),
         }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RawKv {
+    value: String,
+}
+
+impl RawKv {
+    pub fn parse_phase(&self) -> Option<PollPhase> {
+        PollPhase::decode(&self.value)
+    }
+}
+
+pub fn save_phase(phase: &PollPhase) -> Statement {
+    Statement {
+        sql: "INSERT INTO kv (key, value) VALUES (?1, ?2) \
+              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params: vec![Param::text(POLL_PHASE_KEY), Param::text(phase.encode())],
     }
 }
 
@@ -327,9 +356,46 @@ mod tests {
                 (SyncKind::PollNotifications, Timestamp(90)),
                 (SyncKind::Rollup, Timestamp(80)),
             ]),
+            poll_phase: PollPhase::default(),
         };
         exec(&conn, &save_state(&saved)).unwrap();
         assert_eq!(state(&conn), saved);
+    }
+
+    fn phase(conn: &Connection) -> Option<PollPhase> {
+        let found = query_json(conn, SELECT_PHASE, &[]);
+        assert!(found.len() <= 1);
+        let raw =
+            serde_json::from_value::<RawKv>(Value::Object(found.into_iter().next()?)).unwrap();
+        Some(raw.parse_phase().unwrap())
+    }
+
+    #[test]
+    fn a_stored_phase_that_does_not_parse_is_none_not_a_panic() {
+        let bad = RawKv {
+            value: "scan|only|three".into(),
+        };
+        assert_eq!(bad.parse_phase(), None);
+    }
+
+    #[test]
+    fn the_poll_phase_is_absent_then_saved_then_replaced() {
+        let conn = open();
+        assert_eq!(phase(&conn), None);
+        let scanning = PollPhase::Scanning {
+            committed: Some("old".into()),
+            incoming: Some("new".into()),
+            next_page: 2,
+            started_at: Timestamp(100),
+        };
+        exec(&conn, &save_phase(&scanning)).unwrap();
+        assert_eq!(phase(&conn), Some(scanning));
+        let idle = PollPhase::Idle {
+            last_modified: Some("new".into()),
+        };
+        exec(&conn, &save_phase(&idle)).unwrap();
+        assert_eq!(phase(&conn), Some(idle));
+        assert_eq!(count_rows(&conn, "kv"), 1);
     }
 
     #[test]

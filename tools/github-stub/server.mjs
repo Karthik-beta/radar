@@ -170,6 +170,47 @@ function notModified(headers, notifications) {
   return !Number.isNaN(ims) && !Number.isNaN(last) && ims >= Math.floor(last / 1000) * 1000;
 }
 
+const PAGE_SIZE_DEFAULT = 30;
+const PAGE_SIZE_MAX = 50;
+
+function withoutMillis(items) {
+  const trim = (value) => (typeof value === "string" ? value.replace(/\.\d+Z$/, "Z") : value);
+  return items.map((item) => ({ ...item, updated_at: trim(item.updated_at), last_read_at: trim(item.last_read_at) }));
+}
+
+function generatedItems({ count, repo = "octo/widgets", updated_at = "2026-11-01T00:00:00Z", first_id = 8000 }) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: String(first_id + i),
+    unread: i % 2 === 0,
+    reason: "subscribed",
+    updated_at,
+    last_read_at: null,
+    subject: {
+      title: `Generated thread ${i + 1}`,
+      url: `https://api.github.com/repos/${repo}/issues/${i + 1}`,
+      latest_comment_url: null,
+      type: "Issue",
+    },
+    repository: { full_name: repo, owner: { login: repo.split("/")[0] } },
+  }));
+}
+
+export function notificationPage(notifications, searchParams, base) {
+  const all = withoutMillis(notifications.generate ? generatedItems(notifications.generate) : (notifications.items ?? []));
+  const perPage = Math.min(Math.max(Number(searchParams.get("per_page")) || PAGE_SIZE_DEFAULT, 1), PAGE_SIZE_MAX);
+  const page = Math.max(Number(searchParams.get("page")) || 1, 1);
+  const last = Math.max(Math.ceil(all.length / perPage), 1);
+  const link = (n, rel) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("page", String(n));
+    return `<${base}/notifications?${next}>; rel="${rel}"`;
+  };
+  const rels = [];
+  if (page > 1) rels.push(link(page - 1, "prev"));
+  if (page < last) rels.push(link(page + 1, "next"), link(last, "last"));
+  return { items: all.slice((page - 1) * perPage, page * perPage), link: rels.join(", ") };
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -191,9 +232,13 @@ function parseForm(body, contentType) {
   return Object.fromEntries(new URLSearchParams(body));
 }
 
-function faultMatches(fault, method, path) {
+function faultMatches(fault, method, path, searchParams) {
   const [m, p] = fault.match.split(" ");
-  return (m === "*" || m === method) && (p === "*" || p === path);
+  const query = fault.query ?? "";
+  const at = query.indexOf("=");
+  const [name, value] = at < 0 ? [query, ""] : [query.slice(0, at), query.slice(at + 1)];
+  const queryOk = fault.query === undefined || searchParams.get(name) === value;
+  return (m === "*" || m === method) && (p === "*" || p === path) && queryOk;
 }
 
 export function createStub({ scenario: initial = "basic" } = {}) {
@@ -214,8 +259,8 @@ export function createStub({ scenario: initial = "basic" } = {}) {
     res.end(body === undefined || status === 204 || status === 304 ? undefined : isRaw ? body : JSON.stringify(body));
   }
 
-  function applyFault(res, entry, method, path) {
-    const fault = state.faults.find((f) => f.left > 0 && faultMatches(f, method, path));
+  function applyFault(res, entry, method, path, searchParams) {
+    const fault = state.faults.find((f) => f.left > 0 && faultMatches(f, method, path, searchParams));
     if (!fault) return false;
     fault.left -= 1;
     const headers = rateHeaders(state.scenario, fault.rate);
@@ -233,18 +278,19 @@ export function createStub({ scenario: initial = "basic" } = {}) {
     "GET /rate_limit": (req, res, entry) => {
       const core = rateResource(state.scenario);
       const headers = rateHeaders(state.scenario);
-      if (state.scenario.rate_limit_poll_interval) headers["x-poll-interval"] = String(state.scenario.poll_interval);
       reply(res, entry, 200, { resources: { core, graphql: core, search: core }, rate: core }, headers);
     },
 
-    "GET /notifications": (req, res, entry) => {
+    "GET /notifications": (req, res, entry, body, url) => {
       const notifications = state.scenario.notifications ?? { items: [] };
       const headers = rateHeaders(state.scenario);
       if (notifications.last_modified) headers["last-modified"] = new Date(notifications.last_modified).toUTCString();
       if (notifications.etag) headers.etag = notifications.etag;
       if (state.scenario.poll_interval !== undefined) headers["x-poll-interval"] = String(state.scenario.poll_interval);
-      if (notModified(req.headers, notifications)) return reply(res, entry, 304, undefined, headers);
-      reply(res, entry, 200, notifications.items ?? [], headers);
+      if (!notifications.ignore_conditional && notModified(req.headers, notifications)) return reply(res, entry, 304, undefined, headers);
+      const { items, link } = notificationPage(notifications, url.searchParams, `http://${req.headers.host}`);
+      if (link) headers.link = link;
+      reply(res, entry, 200, items, headers);
     },
 
     "POST /graphql": async (req, res, entry, body) => {
@@ -371,7 +417,7 @@ export function createStub({ scenario: initial = "basic" } = {}) {
         if (token !== state.scenario.token) return reply(res, entry, 401, { message: "Bad credentials" });
       }
       if (route.auth && state.scenario.delay_ms) await new Promise((r) => setTimeout(r, state.scenario.delay_ms));
-      if (applyFault(res, entry, req.method, url.pathname)) return;
+      if (applyFault(res, entry, req.method, url.pathname, url.searchParams)) return;
       await handlers[`${req.method} ${url.pathname}`](req, res, entry, body, url);
     } catch {
       if (!res.headersSent) reply(res, entry, 500, { message: "stub error" });

@@ -1,0 +1,4 @@
+{
+  "extends": "poll-basic",
+  "poll_interval": 30
+}
