@@ -5,6 +5,7 @@ use crate::sync::{self, KickReason};
 
 const FORWARD_TO: &str = "FORWARD_TO";
 const NO_FORWARD_REASON: &str = "Radar has no forward address configured";
+const FORWARD_FAILED_REASON: &str = "Radar could not forward this message";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Forward {
@@ -66,6 +67,7 @@ async fn email(message: ForwardableEmailMessage, env: Env, _ctx: worker::Context
             Ok(_) => Forward::Ok,
             Err(err) => {
                 console_error!("email forward failed: {err:?}");
+                message.set_reject(FORWARD_FAILED_REASON);
                 Forward::Failed
             }
         },
