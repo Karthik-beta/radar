@@ -748,6 +748,14 @@ mod tests {
     }
 
     #[test]
+    fn a_managed_user_owner_parses() {
+        let mut value: serde_json::Value = serde_json::from_str(PAGE1).unwrap();
+        value[0]["repository"]["full_name"] = "mona-cat_octo/widgets".into();
+        let threads: Vec<NotificationThread> = serde_json::from_value(value).unwrap();
+        assert_eq!(threads[0].repository.owner(), "mona-cat_octo");
+    }
+
+    #[test]
     fn both_fixture_pages_parse_into_six_distinct_threads() {
         let mut all = parse(PAGE1);
         all.extend(parse(PAGE2));
