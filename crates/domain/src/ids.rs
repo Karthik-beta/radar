@@ -96,8 +96,10 @@ impl RepoName {
     pub fn parse(s: &str) -> Result<Self, IdError> {
         let bad = || IdError::BadRepoName(s.to_owned());
         let (owner, name) = s.split_once('/').ok_or_else(bad)?;
-        let owner_ok =
-            !owner.is_empty() && owner.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        let owner_ok = !owner.is_empty()
+            && owner
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'));
         let name_ok = !name.is_empty()
             && name
                 .chars()
@@ -302,6 +304,12 @@ mod tests {
         let repo = RepoName::parse("Karthik-beta/radar.rs").unwrap();
         assert_eq!(repo.owner(), "Karthik-beta");
         assert_eq!(repo.name(), "radar.rs");
+    }
+
+    #[test]
+    fn repo_name_accepts_a_managed_user_owner() {
+        let repo = RepoName::parse("mona-cat_octo/radar").unwrap();
+        assert_eq!(repo.owner(), "mona-cat_octo");
     }
 
     #[test]

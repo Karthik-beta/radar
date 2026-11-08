@@ -234,7 +234,9 @@ function parseForm(body, contentType) {
 
 function faultMatches(fault, method, path, searchParams) {
   const [m, p] = fault.match.split(" ");
-  const [name, value] = (fault.query ?? "").split("=");
+  const query = fault.query ?? "";
+  const at = query.indexOf("=");
+  const [name, value] = at < 0 ? [query, ""] : [query.slice(0, at), query.slice(at + 1)];
   const queryOk = fault.query === undefined || searchParams.get(name) === value;
   return (m === "*" || m === method) && (p === "*" || p === path) && queryOk;
 }
