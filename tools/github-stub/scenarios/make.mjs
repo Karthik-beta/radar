@@ -238,10 +238,20 @@ function yourTurnHostile() {
   return [img, script, link];
 }
 
+function theirsOnly() {
+  return Array.from({ length: 7 }, (_, i) => {
+    const n = 600 + i;
+    return spec(n, "pr", "comment", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: ok, updated: `@-${i + 1}m`,
+      timeline: [comment(c, `IC_${n}_1`, "@-5h", "bob"), comment(c, `IC_${n}_2`, `@-${i + 1}m`, ME)],
+    }), { turn: "them", reason: null, stage: "awaiting_review" });
+  });
+}
+
 const kinds = {
   "your-turn-edge": { specs: yourTurnEdge },
   "your-turn-hostile": { specs: yourTurnHostile },
-  "your-turn-theirs-only": { specs: () => many(7, 600) },
+  "your-turn-theirs-only": { specs: theirsOnly },
   "enrich-20": { specs: () => [...basic(), ...many(14, 1000)] },
   "enrich-edge": { specs: edge },
   "enrich-basic": { specs: basic },
