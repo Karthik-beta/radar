@@ -155,7 +155,12 @@ mod tests {
 
     #[test]
     fn from_row_keeps_a_valid_pair_and_defaults_otherwise() {
-        let row = |warm_days, hot_days| Some(SettingsRow { warm_days, hot_days });
+        let row = |warm_days, hot_days| {
+            Some(SettingsRow {
+                warm_days,
+                hot_days,
+            })
+        };
         let stored = NudgeThresholds::from_row(row(3, 5));
         assert_eq!((stored.warm_days(), stored.hot_days()), (3, 5));
         assert_eq!(NudgeThresholds::from_row(None), NudgeThresholds::default());

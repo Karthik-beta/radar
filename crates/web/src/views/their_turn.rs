@@ -51,7 +51,11 @@ fn action_words(what: Action) -> &'static str {
 pub fn who_line(last: Option<&LastAction>, reviewers: &[Login]) -> String {
     let on = waiting_on(reviewers);
     match last {
-        Some(last) => format!("{} {}, waiting on {on}", last.actor, action_words(last.what)),
+        Some(last) => format!(
+            "{} {}, waiting on {on}",
+            last.actor,
+            action_words(last.what)
+        ),
         None => format!("Waiting on {on}"),
     }
 }

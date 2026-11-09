@@ -3,8 +3,8 @@ use std::fmt;
 use domain::activity::{ActorKind, ReviewState};
 use domain::ids::{IdError, ItemKind, Timestamp};
 use domain::item::{CiState, ItemState, ReviewDecision};
-use domain::stage::Stage;
 use domain::settings::SettingsFallback;
+use domain::stage::Stage;
 use domain::turn::{Reason, Turn};
 
 #[derive(Debug, Clone, PartialEq)]
