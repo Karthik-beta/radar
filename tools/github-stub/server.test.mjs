@@ -478,6 +478,22 @@ describe("scenarios", () => {
     }
   });
 
+  it("email_silent_serves_one_thread_updated_at_each_response", async () => {
+    const stub = await start("email-silent");
+    try {
+      const before = Math.floor(Date.now() / 1000) * 1000;
+      const first = await (await stub.authed("/notifications")).json();
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      const second = await (await stub.authed("/notifications", { headers: { "if-modified-since": new Date().toUTCString() } })).json();
+      assert.equal(first.length, 1);
+      assert.equal(second.length, 1);
+      assert.ok(Date.parse(first[0].updated_at) >= before);
+      assert.ok(Date.parse(second[0].updated_at) > Date.parse(first[0].updated_at));
+    } finally {
+      await stub.close();
+    }
+  });
+
   it("slow_waits_before_an_api_response", async () => {
     const stub = await start("slow");
     try {
@@ -515,6 +531,7 @@ describe("scenarios", () => {
       "poll-429",
       "poll-ignores-ims",
       "poll-500",
+      "email-silent",
     ]) {
       assert.ok(loadScenario(name), name);
     }

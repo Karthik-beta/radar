@@ -175,9 +175,14 @@ function notModified(headers, notifications) {
 const PAGE_SIZE_DEFAULT = 30;
 const PAGE_SIZE_MAX = 50;
 
-function withoutMillis(items) {
+function withoutMillis(items, now = Date.now()) {
   const trim = (value) => (typeof value === "string" ? value.replace(/\.\d+Z$/, "Z") : value);
-  return items.map((item) => ({ ...item, updated_at: trim(item.updated_at), last_read_at: trim(item.last_read_at) }));
+  const served = (value) => (value === "@serve" ? new Date(now).toISOString() : value);
+  return items.map((item) => ({
+    ...item,
+    updated_at: trim(served(item.updated_at)),
+    last_read_at: trim(item.last_read_at),
+  }));
 }
 
 function generatedItems({ count, repo = "octo/widgets", updated_at = "2026-11-01T00:00:00Z", first_id = 8000 }) {
