@@ -234,7 +234,84 @@ const kinds = {
   },
   "enrich-body-marker": { specs: bodyMarker },
   "enrich-ci-step": { specs: ciStep },
+  "pipeline-all-stages": { specs: pipelineAllStages },
+  "pipeline-two-stages": { specs: pipelineTwoStages },
+  "pipeline-stage-move": { specs: () => pipelineAllStages({ moveToFailing: true }) },
+  "pipeline-recent": { specs: pipelineRecent },
+  "pipeline-hostile": { specs: pipelineHostile },
 };
+
+// My own open pull requests, one per card. `created` sets the days in stage on first sync.
+function mine(number, stage, o = {}) {
+  const at = o.created ?? "@-10m";
+  const changes = stage === "changes_requested";
+  return spec(number, "pr", "author", (c) => ({
+    created: at,
+    updated: at,
+    draft: stage === "draft",
+    decision: stage === "approved" ? "APPROVED" : changes ? "CHANGES_REQUESTED" : "REVIEW_REQUIRED",
+    ci:
+      stage === "draft"
+        ? undefined
+        : stage === "ci_running"
+          ? { oid: "a11ce01", state: "PENDING" }
+          : stage === "ci_failing"
+            ? { oid: "badc0de", state: "FAILURE" }
+            : ok,
+    timeline: changes ? [review(c, `PRR_${number}`, at, "bob", "CHANGES_REQUESTED")] : [],
+    latest: changes
+      ? [{ id: `PRR_${number}`, state: "CHANGES_REQUESTED", at, url: `https://github.com/${c.repo}/pull/${number}#pullrequestreview-${number}`, author: actor("bob") }]
+      : [],
+    title: o.title,
+    head: o.head,
+    state: o.state,
+    extra: o.extra,
+  }), { stage });
+}
+
+function pipelineAllStages({ moveToFailing = false } = {}) {
+  return [
+    mine(60, "draft", { created: "@-8d", title: "Draft for eight days" }),
+    mine(61, moveToFailing ? "ci_failing" : "ci_running", { created: "@-10m", title: "CI running today" }),
+    mine(62, "ci_failing", { created: "@-25h", title: "CI failing for a day" }),
+    mine(63, "awaiting_review", { created: "@-6d", title: "Awaiting review six days" }),
+    mine(64, "awaiting_review", { created: "@-8d", title: "Awaiting review eight days" }),
+    mine(65, "awaiting_review", { created: "@-15d", title: "Awaiting review fifteen days" }),
+    mine(66, "changes_requested", { created: "@-73h", title: "Changes requested three days" }),
+    mine(67, "approved", { created: "@-74h", title: "Approved three days", head: "agent/fix-flake" }),
+  ];
+}
+
+function pipelineTwoStages() {
+  return [
+    mine(70, "draft", { created: "@-1h", title: "Only draft" }),
+    mine(71, "approved", { created: "@-2d", title: "Only approved" }),
+  ];
+}
+
+function pipelineRecent() {
+  const ended = (n, state, days, title) =>
+    mine(n, "approved", {
+      created: `@-${days + 2}d`,
+      title,
+      state,
+      extra: { closedAt: `@-${days}d`, mergedAt: state === "MERGED" ? `@-${days}d` : null },
+    });
+  return [
+    mine(80, "awaiting_review", { created: "@-1d", title: "Still open" }),
+    ended(81, "MERGED", 13, "Merged thirteen days ago"),
+    ended(82, "CLOSED", 3, "Closed three days ago"),
+    ended(83, "MERGED", 15, "Merged fifteen days ago"),
+  ];
+}
+
+function pipelineHostile() {
+  return [
+    mine(90, "awaiting_review", { created: "@-2d", title: "L".repeat(300) }),
+    mine(91, "awaiting_review", { created: "@-2d", title: "<img src=x onerror=alert(1)>" }),
+    mine(92, "awaiting_review", { created: "@-2d", title: "Bad link", extra: { url: "javascript:alert(1)" } }),
+  ];
+}
 
 const REASONS = new Set(["review_requested", "author", "ci_activity", "comment", "mention", "team_mention", "assign"]);
 
