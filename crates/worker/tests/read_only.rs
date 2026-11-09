@@ -11,6 +11,8 @@ const ALLOWED_WRITERS: &[&str] = &[
     "auth/exchange.rs",
     // Names the inbound POST routes /auth/logout and /auth/disconnect. It sends no request.
     "auth/route.rs",
+    // Names the inbound POST routes /api/items/:id/dismiss and /snooze. It sends no request.
+    "api/route.rs",
 ];
 
 const METHOD_PATHS: &[&str] = &[

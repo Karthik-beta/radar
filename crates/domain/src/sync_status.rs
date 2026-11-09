@@ -75,6 +75,19 @@ pub struct SyncStatus {
     pub rate: Rate,
     pub last_ok_by_kind: BTreeMap<SyncKind, Timestamp>,
     pub blocked: Option<DeferCause>,
+    pub dead: Vec<DeadWork>,
+    /// The last `X-OAuth-Scopes` GitHub sent, or `None` before any.
+    pub scopes: Option<String>,
+}
+
+/// A unit the Syncer gave up on. `since` is when its last attempt was due.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct DeadWork {
+    pub kind: SyncKind,
+    pub key: String,
+    pub attempts: u32,
+    pub since: Timestamp,
 }
 
 #[cfg(test)]
@@ -95,6 +108,13 @@ mod tests {
             },
             last_ok_by_kind: BTreeMap::from([(SyncKind::Rollup, Timestamp(1_793_890_000))]),
             blocked: Some(DeferCause::NoToken),
+            dead: vec![DeadWork {
+                kind: SyncKind::PollNotifications,
+                key: "main".into(),
+                attempts: 3,
+                since: Timestamp(1_793_899_000),
+            }],
+            scopes: Some("notifications,read:user".into()),
         };
         let json = serde_json::to_string(&status).unwrap();
         assert!(json.contains(r#""pending_by_kind":{"enrich":2,"rollup":1}"#));
