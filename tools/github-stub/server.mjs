@@ -418,6 +418,7 @@ export function createStub({ scenario: initial = "basic" } = {}) {
     }
     const entry = {
       n: state.log.length + 1,
+      at: new Date().toISOString(),
       method: req.method,
       path: url.pathname,
       query: url.search.slice(1),

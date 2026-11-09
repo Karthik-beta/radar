@@ -5,7 +5,6 @@
 // `--source gh` asks GitHub through `gh search`, which only reads, for the account's items updated in the window.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -63,7 +62,9 @@ export function itemsFromGh(outputs) {
 }
 
 function wranglerBin() {
-  return createRequire(join(ROOT, "package.json")).resolve("wrangler/bin/wrangler.js");
+  const bin = join(ROOT, "node_modules/wrangler/bin/wrangler.js");
+  if (!existsSync(bin)) throw new Error("wrangler is not installed, run npm ci");
+  return bin;
 }
 
 function storedItems(values) {

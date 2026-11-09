@@ -114,6 +114,7 @@ The first entry that still has requests left and matches wins. Faults run after 
 | Field | Meaning |
 | --- | --- |
 | `n` | Request number, from 1. |
+| `at` | When the stub received the request, as an ISO timestamp. |
 | `method`, `path`, `query` | The request line. `query` has no leading `?`. |
 | `ifModifiedSince`, `ifNoneMatch` | The conditional headers, or null. |
 | `hasAuth` | Whether an `Authorization` header was present. The value is never logged. |

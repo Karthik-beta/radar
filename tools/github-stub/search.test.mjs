@@ -127,6 +127,7 @@ test("the stub fails only the page a fault names, then recovers", async () => {
     assert.equal(third.body.data.search.nodes.length, 10);
     const log = stub.state.log.filter((e) => e.path === "/graphql");
     assert.equal(log.at(-1).nodes, 10);
+    assert.ok(Number.isFinite(Date.parse(log.at(-1).at)));
     assert.equal(log.at(-1).variables.after, cursorFor(20));
   } finally {
     await new Promise((resolve) => stub.server.close(resolve));
