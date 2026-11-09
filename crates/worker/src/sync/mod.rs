@@ -2,6 +2,7 @@
 //! one unit from the `work` table, and `scheduler` decides which.
 
 pub(crate) mod config;
+mod email_health;
 mod enrich;
 mod gate;
 mod handlers;
@@ -68,7 +69,8 @@ impl DurableObject for Syncer {
             return Response::from_json(&self.status().await?);
         }
         if path == FRESHNESS {
-            return Response::from_json(&Freshness::from_status(self.status().await?));
+            let email = email_health::current(&self.env, now()).await?;
+            return Response::from_json(&Freshness::from_status(self.status().await?, email));
         }
         if let Some(raw) = path.strip_prefix(KICK) {
             return match KickReason::parse(raw) {

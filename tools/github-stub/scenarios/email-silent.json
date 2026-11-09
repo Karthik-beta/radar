@@ -1,0 +1,23 @@
+{
+  "extends": "basic",
+  "poll_interval": 5,
+  "notifications": {
+    "ignore_conditional": true,
+    "items": [
+      {
+        "id": "7101",
+        "unread": true,
+        "reason": "mention",
+        "updated_at": "@serve",
+        "last_read_at": null,
+        "subject": {
+          "title": "A thread GitHub never emailed about",
+          "url": "https://api.github.com/repos/octo/widgets/issues/21",
+          "latest_comment_url": null,
+          "type": "Issue"
+        },
+        "repository": { "full_name": "octo/widgets", "owner": { "login": "octo" } }
+      }
+    ]
+  }
+}
