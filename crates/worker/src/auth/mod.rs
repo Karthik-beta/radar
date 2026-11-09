@@ -263,7 +263,7 @@ fn config(env: &Env) -> Option<AuthConfig> {
         .ok()
 }
 
-fn origin(req: &Request) -> Result<String> {
+pub(crate) fn origin(req: &Request) -> Result<String> {
     let url = req.inner().url();
     flow::origin_of(&url)
         .map(str::to_owned)

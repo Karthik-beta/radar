@@ -3,10 +3,10 @@
 
 pub mod auth;
 pub mod batch;
+pub mod dashboard;
 pub mod events;
 pub mod items;
 pub mod local_state;
-pub mod queries;
 pub mod repos;
 pub mod rollups;
 pub mod rows;
@@ -85,6 +85,11 @@ pub(crate) mod testing {
             out.push(map);
         }
         out
+    }
+
+    /// Runs a statement with a `RETURNING` clause and counts the rows it returned.
+    pub fn returned(conn: &Connection, stmt: &Statement) -> usize {
+        query_json(conn, stmt.sql, &stmt.params).len()
     }
 
     /// `table` may carry a WHERE clause, as in `items WHERE turn = 'me'`.

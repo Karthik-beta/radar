@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-11-05T17:33:20Z",
+  "counters": {
+    "your_turn": 2,
+    "their_turn": 1,
+    "open_prs": 1,
+    "merged_this_month": 4
+  },
+  "your_turn": [
+    {
+      "id": "PR_review",
+      "kind": "pr",
+      "repo": "rust-lang/rust",
+      "number": 1,
+      "title": "Fix the lexer",
+      "url": "https://github.com/rust-lang/rust/pull/1#issuecomment-9",
+      "reason": "review_requested",
+      "actor": "octocat",
+      "what": "review_requested",
+      "since": "2026-10-27T11:20:00Z",
+      "agent": false
+    },
+    {
+      "id": "PR_ci",
+      "kind": "pr",
+      "repo": "rust-lang/rust",
+      "number": 2,
+      "title": "Add a test",
+      "url": "https://github.com/rust-lang/rust/pull/2/checks",
+      "reason": "ci_failed",
+      "actor": null,
+      "what": null,
+      "since": "2026-10-28T15:06:40Z",
+      "agent": true
+    }
+  ],
+  "their_turn": [
+    {
+      "id": "I_wait",
+      "kind": "issue",
+      "repo": "rust-lang/rust",
+      "number": 4,
+      "title": "Docs are wrong",
+      "url": "https://github.com/rust-lang/rust/issues/4",
+      "since": "2026-10-14T17:46:40Z",
+      "agent": false,
+      "last_action": {
+        "actor": "karthik",
+        "what": "comment",
+        "at": "2026-10-14T17:46:40Z"
+      },
+      "waiting_on": ["alice", "bob"]
+    }
+  ],
+  "pipeline": {
+    "columns": [
+      { "stage": "draft", "cards": [] },
+      { "stage": "ci_running", "cards": [] },
+      { "stage": "ci_failing", "cards": [] },
+      {
+        "stage": "awaiting_review",
+        "cards": [
+          {
+            "id": "PR_mine",
+            "repo": "rust-lang/rust",
+            "number": 3,
+            "title": "Speed up the parser",
+            "url": "https://github.com/rust-lang/rust/pull/3",
+            "agent": true,
+            "stage_since": "2026-10-26T07:33:20Z"
+          }
+        ]
+      },
+      { "stage": "changes_requested", "cards": [] },
+      { "stage": "approved", "cards": [] }
+    ]
+  },
+  "recent": [
+    {
+      "id": "PR_merged",
+      "kind": "pr",
+      "repo": "rust-lang/rust",
+      "number": 5,
+      "title": "Ship it",
+      "url": "https://github.com/rust-lang/rust/pull/5",
+      "state": "merged",
+      "ended_at": "2026-11-04T13:46:40Z"
+    },
+    {
+      "id": "PR_closed",
+      "kind": "pr",
+      "repo": "rust-lang/rust",
+      "number": 6,
+      "title": "Not this one",
+      "url": "https://github.com/rust-lang/rust/pull/6",
+      "state": "closed",
+      "ended_at": "2026-11-03T10:00:00Z"
+    }
+  ],
+  "nudge": { "warm_days": 7, "hot_days": 14 }
+}
