@@ -1,17 +1,11 @@
 use leptos::prelude::*;
-use leptos_router::hooks::use_query_map;
 
 use crate::auth::SignInError;
+use crate::route::query;
 
 #[component]
 pub fn SignIn() -> impl IntoView {
-    let query = use_query_map();
-    let error = move || {
-        query
-            .read()
-            .get("error")
-            .and_then(|code| SignInError::parse(&code))
-    };
+    let error = move || query("error").and_then(|code| SignInError::parse(&code));
     view! {
         <main class="auth">
             <img class="auth-mark" src="/icon.svg" alt="" width="40" height="40"/>

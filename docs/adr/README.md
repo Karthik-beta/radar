@@ -10,6 +10,7 @@ Each record captures one decision: the context, what we chose, and what we rejec
 | [0004](0004-brand-assets.md) | Brand assets and self-hosted fonts | Accepted |
 | [0005](0005-rust.md) | Rust everywhere | Superseded in part by 0006 |
 | [0006](0006-ui-components.md) | UI components and Tailwind | Accepted |
+| [0007](0007-client-routing.md) | Client routing without leptos_router | Proposed |
 
 ## Add a record
 

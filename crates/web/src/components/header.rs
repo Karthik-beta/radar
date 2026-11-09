@@ -1,14 +1,14 @@
 use leptos::prelude::*;
-use leptos_router::hooks::use_location;
 
 use super::sync_status::SyncStatus;
 use super::tabs::Tab;
+use crate::route::use_location;
 use crate::store::use_store;
 
 #[component]
 pub fn Header() -> impl IntoView {
     let store = use_store();
-    let pathname = use_location().pathname;
+    let pathname = use_location().path();
     let current = move || Tab::from_path(&pathname.get());
     let counters = move || store.dashboard().with(|d| d.as_ref().map(|d| d.counters));
     view! {
