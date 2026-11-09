@@ -33,9 +33,10 @@ pub(crate) mod testing {
     use super::items::ItemRow;
     use super::sql::{Param, Statement};
 
-    const MIGRATIONS: [&str; 2] = [
+    const MIGRATIONS: [&str; 3] = [
         include_str!("../../../../migrations/0001_init.sql"),
         include_str!("../../../../migrations/0003_item_extras.sql"),
+        include_str!("../../../../migrations/0005_settings.sql"),
     ];
 
     pub fn memory_db() -> Connection {

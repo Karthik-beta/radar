@@ -6,6 +6,7 @@
 @import "./your-turn.css";
 @import "./pipeline.css";
 @import "./freshness.css";
+@import "./their-turn.css";
 
 @source "../src";
 

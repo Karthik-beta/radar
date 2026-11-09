@@ -6,6 +6,7 @@ use domain::api::{Action, ItemId, LastAction, RECENT_WINDOW_SECS};
 use domain::ids::{ItemKind, Login, RepoName, Timestamp};
 use domain::item::ItemState;
 use domain::local_state::LocalState;
+use domain::settings::{NudgeThresholds, SettingsRow};
 use domain::stage::Stage;
 use domain::turn::Reason;
 use serde::Deserialize;
@@ -45,13 +46,21 @@ pub const YOUR_TURN: &str = concat!(
      ORDER BY items.since ASC"
 );
 
-/// My open items waiting on someone else, longest wait first.
+/// My open items waiting on someone else, longest wait first, with my local
+/// state so a snoozed item stays out of the list.
 pub const THEIR_TURN: &str = concat!(
     "SELECT ",
     columns!(),
-    " FROM items WHERE turn = 'them' AND authored_by_me = 1 AND state IN ('open', 'draft') \
-     ORDER BY since ASC"
+    ", local_state.kind AS local_kind, local_state.value AS local_value \
+     FROM items LEFT JOIN local_state ON local_state.item_id = items.node_id \
+     WHERE items.turn = 'them' AND items.authored_by_me = 1 \
+     AND items.state IN ('open', 'draft') \
+     ORDER BY items.since ASC"
 );
+
+/// The one settings row. A missing row is read as the defaults.
+pub const SETTINGS: &str = "SELECT nudge_warm_days AS warm_days, nudge_hot_days AS hot_days \
+     FROM settings WHERE id = 1";
 
 /// My open pull requests, by stage.
 pub const PIPELINE: &str = concat!(
@@ -99,6 +108,10 @@ pub fn statements(now: Timestamp) -> Vec<Statement> {
             sql: MERGED_SINCE,
             params: vec![Param::ts(now.month_start())],
         },
+        Statement {
+            sql: SETTINGS,
+            params: Vec::new(),
+        },
     ]
 }
 
@@ -133,10 +146,11 @@ pub struct Waiting {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DashboardRows {
     pub your_turn: Vec<Waiting>,
-    pub their_turn: Vec<ItemRecord>,
+    pub their_turn: Vec<Waiting>,
     pub pipeline: Vec<ItemRecord>,
     pub recent: Vec<ItemRecord>,
     pub merged_this_month: u32,
+    pub nudge: NudgeThresholds,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,6 +186,13 @@ pub struct RawItem {
 #[derive(Debug, Deserialize)]
 pub struct RawCount {
     pub n: i64,
+}
+
+/// The `settings` row's two columns.
+#[derive(Debug, Deserialize)]
+pub struct RawSettings {
+    warm_days: i64,
+    hot_days: i64,
 }
 
 impl RawItem {
@@ -250,6 +271,7 @@ pub struct RawResults {
     pub pipeline: Vec<RawItem>,
     pub recent: Vec<RawItem>,
     pub merged: Vec<RawCount>,
+    pub settings: Vec<RawSettings>,
 }
 
 impl RawResults {
@@ -264,7 +286,7 @@ impl RawResults {
         };
         let items = |rows: Vec<Waiting>| rows.into_iter().map(|w| w.item).collect();
         let your_turn = keep(self.your_turn);
-        let their_turn = items(keep(self.their_turn));
+        let their_turn = keep(self.their_turn);
         let pipeline = items(keep(self.pipeline));
         let recent = items(keep(self.recent));
         let merged = self.merged.first().map_or(0, |c| c.n);
@@ -275,12 +297,21 @@ impl RawResults {
                 0
             }
         };
+        let stored = self.settings.first().map(|s| SettingsRow {
+            warm_days: s.warm_days,
+            hot_days: s.hot_days,
+        });
+        let nudge = NudgeThresholds::try_from_row(stored).unwrap_or_else(|fallback| {
+            errors.push(RowError::Settings(fallback));
+            NudgeThresholds::default()
+        });
         let rows = DashboardRows {
             your_turn,
             their_turn,
             pipeline,
             recent,
             merged_this_month,
+            nudge,
         };
         (rows, errors)
     }
@@ -289,9 +320,9 @@ impl RawResults {
 /// Runs the dashboard selects as one D1 batch.
 pub async fn read(db: &D1Database, now: Timestamp) -> Result<RawResults> {
     let results = run(db, statements(now)).await?;
-    let [your_turn, their_turn, pipeline, recent, merged] = results.as_slice() else {
+    let [your_turn, their_turn, pipeline, recent, merged, settings] = results.as_slice() else {
         return Err(worker::Error::RustError(format!(
-            "dashboard batch returned {} results, expected 5",
+            "dashboard batch returned {} results, expected 6",
             results.len()
         )));
     };
@@ -301,6 +332,7 @@ pub async fn read(db: &D1Database, now: Timestamp) -> Result<RawResults> {
         pipeline: pipeline.results()?,
         recent: recent.results()?,
         merged: merged.results()?,
+        settings: settings.results()?,
     })
 }
 
@@ -339,6 +371,10 @@ pub(crate) mod tests {
                 .into_iter()
                 .map(|v| serde_json::from_value(v).expect("count"))
                 .collect(),
+            settings: next()
+                .into_iter()
+                .map(|v| serde_json::from_value(v).expect("settings"))
+                .collect(),
         }
     }
 
@@ -371,10 +407,36 @@ pub(crate) mod tests {
             ("MERGED_SINCE", "idx_items_closed"),
         ];
         let stmts = statements(synthetic::NOW);
-        assert_eq!(stmts.len(), indexes.len());
+        assert_eq!(stmts.len(), indexes.len() + 1, "the settings read is last");
         for (stmt, (name, index)) in stmts.iter().zip(indexes) {
             assert_indexed(name, &explain(&conn, stmt), index);
         }
+    }
+
+    fn nudge_of(conn: &Connection) -> (NudgeThresholds, usize) {
+        let (rows, errors) = read_native(conn, synthetic::NOW).parse();
+        (rows.nudge, errors.len())
+    }
+
+    #[test]
+    fn the_settings_row_starts_at_seven_and_fourteen_and_check_rejects_a_bad_pair() {
+        let conn = memory_db();
+        assert_eq!(nudge_of(&conn), (NudgeThresholds::default(), 0));
+        let update = |sql: &str| conn.execute(sql, []);
+        assert!(update("UPDATE settings SET nudge_warm_days = 9, nudge_hot_days = 9").is_err());
+        assert!(update("UPDATE settings SET nudge_warm_days = 0").is_err());
+        assert!(update("INSERT INTO settings (id) VALUES (2)").is_err());
+        assert_eq!(nudge_of(&conn), (NudgeThresholds::default(), 0));
+        update("UPDATE settings SET nudge_warm_days = 3, nudge_hot_days = 5").expect("update");
+        let (nudge, errors) = nudge_of(&conn);
+        assert_eq!((nudge.warm_days(), nudge.hot_days(), errors), (3, 5, 0));
+    }
+
+    #[test]
+    fn a_missing_settings_row_reads_as_the_default_and_is_reported() {
+        let conn = memory_db();
+        conn.execute("DELETE FROM settings", []).expect("delete");
+        assert_eq!(nudge_of(&conn), (NudgeThresholds::default(), 1));
     }
 
     #[test]

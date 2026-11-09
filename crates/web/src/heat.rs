@@ -1,3 +1,5 @@
+use domain::settings::NudgeThresholds;
+
 const HOUR: i64 = 3_600;
 const DAY: i64 = 86_400;
 
@@ -41,6 +43,26 @@ impl Thresholds {
         warm: DAY,
         hot: 3 * DAY,
     };
+}
+
+impl Thresholds {
+    /// The nudge pair from `Dashboard.nudge`, in seconds.
+    pub fn from_nudge(nudge: NudgeThresholds) -> Self {
+        Self {
+            warm: i64::from(nudge.warm_days()) * DAY,
+            hot: i64::from(nudge.hot_days()) * DAY,
+        }
+    }
+}
+
+/// A day count as a person says it: "a week", "two weeks", "3 days".
+pub fn days_phrase(days: u32) -> String {
+    match days {
+        1 => "1 day".to_owned(),
+        7 => "a week".to_owned(),
+        14 => "two weeks".to_owned(),
+        n => format!("{n} days"),
+    }
 }
 
 pub fn heat(age_secs: i64, thresholds: Thresholds) -> Heat {
@@ -93,6 +115,29 @@ mod tests {
         assert_eq!(at(24, 0), Heat::Warm);
         assert_eq!(at(71, 59), Heat::Warm);
         assert_eq!(at(72, 0), Heat::Hot);
+    }
+
+    #[test]
+    fn heat_days_phrase_names_a_week_and_two_weeks() {
+        assert_eq!(days_phrase(7), "a week");
+        assert_eq!(days_phrase(14), "two weeks");
+        assert_eq!(days_phrase(3), "3 days");
+        assert_eq!(days_phrase(30), "30 days");
+        assert_eq!(days_phrase(1), "1 day");
+    }
+
+    #[test]
+    fn heat_nudge_thresholds_turn_at_the_stored_days() {
+        let at = |t: Thresholds, h: i64| heat(h * HOUR, t);
+        let default = Thresholds::from_nudge(NudgeThresholds::default());
+        assert_eq!(at(default, 6 * 24 + 23), Heat::Fresh);
+        assert_eq!(at(default, 7 * 24), Heat::Warm);
+        assert_eq!(at(default, 13 * 24 + 23), Heat::Warm);
+        assert_eq!(at(default, 14 * 24), Heat::Hot);
+        let custom = Thresholds::from_nudge(NudgeThresholds::new(3, 5).expect("nudge"));
+        assert_eq!(at(custom, 2 * 24 + 23), Heat::Fresh);
+        assert_eq!(at(custom, 3 * 24), Heat::Warm);
+        assert_eq!(at(custom, 5 * 24), Heat::Hot);
     }
 
     #[test]
