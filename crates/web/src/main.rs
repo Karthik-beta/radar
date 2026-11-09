@@ -1,6 +1,11 @@
+mod api;
 mod app;
 mod auth;
 mod components;
+mod heat;
+mod keys;
+mod store;
+mod url;
 mod views;
 
 fn main() {

@@ -208,7 +208,50 @@ function edge() {
   ];
 }
 
+function asked(number, hoursAgo, by, opts = {}) {
+  const at = `@-${hoursAgo}h`;
+  return spec(number, "pr", "review_requested", () => ({
+    by, requests: [ME], decision: "REVIEW_REQUIRED", ci: ok, updated: at,
+    timeline: [requested(`RRE_${number}`, at, by, ME)],
+    ...opts,
+  }), { turn: "me", reason: "review_requested", stage: "awaiting_review" });
+}
+
+function yourTurnEdge() {
+  return [
+    asked(51, 23, "alice"),
+    asked(52, 25, "bob"),
+    asked(53, 71, "carol", { head: "agent/fix-lexer", title: "Fix the lexer" }),
+    asked(54, 73, "dave"),
+    spec(55, "pr", "ci_activity", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: { oid: "badc0de", state: "FAILURE" }, updated: "@-2h",
+      timeline: [commit(c, "PRC_55", "@-2h", ME, "badc0de")],
+    }), { turn: "me", reason: "ci_failed", stage: "ci_failing" }),
+  ];
+}
+
+function yourTurnHostile() {
+  const img = asked(61, 5, "alice", { title: "<img src=x onerror=alert(1)>" });
+  const script = asked(62, 4, "bob", { title: "<script>window.__pwned = 1</script>" });
+  const link = asked(63, 3, "carol", { title: "A javascript: link" });
+  link.node.url = "javascript:alert(1)";
+  return [img, script, link];
+}
+
+function theirsOnly() {
+  return Array.from({ length: 7 }, (_, i) => {
+    const n = 600 + i;
+    return spec(n, "pr", "comment", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: ok, updated: `@-${i + 1}m`,
+      timeline: [comment(c, `IC_${n}_1`, "@-5h", "bob"), comment(c, `IC_${n}_2`, `@-${i + 1}m`, ME)],
+    }), { turn: "them", reason: null, stage: "awaiting_review" });
+  });
+}
+
 const kinds = {
+  "your-turn-edge": { specs: yourTurnEdge },
+  "your-turn-hostile": { specs: yourTurnHostile },
+  "your-turn-theirs-only": { specs: theirsOnly },
   "enrich-20": { specs: () => [...basic(), ...many(14, 1000)] },
   "enrich-edge": { specs: edge },
   "enrich-basic": { specs: basic },

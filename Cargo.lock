@@ -2226,9 +2226,13 @@ version = "0.0.0"
 dependencies = [
  "domain",
  "gloo-net 0.7.0",
+ "js-sys",
  "leptos",
  "leptos_router",
+ "serde",
  "tw_merge",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
