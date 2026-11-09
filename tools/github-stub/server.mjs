@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
+import { answerEnrich } from "./enrich.mjs";
+
 const SCENARIOS_DIR = join(dirname(fileURLToPath(import.meta.url)), "scenarios");
 const MAX_BODY = 1_000_000;
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*$/i;
@@ -309,6 +311,11 @@ export function createStub({ scenario: initial = "basic" } = {}) {
       if (!info.ok) {
         entry.violation = info.kind === "invalid" ? "graphql_invalid_document" : `graphql_${info.kind}`;
         return reply(res, entry, 400, { errors: [{ message: "Radar stub only answers query operations" }] }, headers);
+      }
+      if (info.name === "Enrich" && state.scenario.items) {
+        const { count, body: answer } = answerEnrich(state.scenario, payload?.variables);
+        entry.aliases = count;
+        return reply(res, entry, 200, answer, headers);
       }
       let response = state.scenario.graphql?.[info.name];
       if (response?.$pages) response = response.$pages[payload?.variables?.after ?? ""];

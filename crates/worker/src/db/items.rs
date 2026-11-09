@@ -15,7 +15,7 @@ macro_rules! item_columns {
         "node_id, repo, number, kind, title, url, head_ref, author_login, author_kind, \
          authored_by_me, state, created_at, updated_at, closed_at, turn, reason, since, stage, \
          ci_state, review_decision, last_human_at, last_human_login, last_human_kind, \
-         last_human_url, synced_at"
+         last_human_url, synced_at, requested_reviewers, stage_since, latest_url"
     };
 }
 pub(crate) use item_columns;
@@ -28,7 +28,7 @@ const UPSERT: &str = concat!(
     "INSERT INTO items (",
     item_columns!(),
     ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
-     ?19, ?20, ?21, ?22, ?23, ?24, ?25) \
+     ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28) \
      ON CONFLICT (node_id) DO UPDATE SET \
      title = excluded.title, url = excluded.url, head_ref = excluded.head_ref, \
      state = excluded.state, updated_at = excluded.updated_at, \
@@ -36,7 +36,10 @@ const UPSERT: &str = concat!(
      since = excluded.since, stage = excluded.stage, ci_state = excluded.ci_state, \
      review_decision = excluded.review_decision, last_human_at = excluded.last_human_at, \
      last_human_login = excluded.last_human_login, last_human_kind = excluded.last_human_kind, \
-     last_human_url = excluded.last_human_url, synced_at = excluded.synced_at \
+     last_human_url = excluded.last_human_url, synced_at = excluded.synced_at, \
+     requested_reviewers = excluded.requested_reviewers, latest_url = excluded.latest_url, \
+     stage_since = CASE WHEN items.stage IS excluded.stage \
+       THEN items.stage_since ELSE excluded.stage_since END \
      WHERE excluded.updated_at >= items.updated_at"
 );
 
@@ -48,6 +51,10 @@ pub struct ItemMeta {
     pub url: String,
     pub head_ref: Option<String>,
     pub last_human_url: Option<String>,
+    /// The link to the newest timeline node, or `url` when there is none.
+    pub latest_url: String,
+    /// What the stage clock starts at when the stage differs from the stored one.
+    pub stage_since: Timestamp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,6 +86,10 @@ pub struct ItemRow {
     pub ci_state: Option<CiState>,
     pub review_decision: Option<ReviewDecision>,
     pub last_human: Option<LastHuman>,
+    pub requested_reviewers: Vec<Login>,
+    /// The upsert keeps the stored value while the stage stays the same.
+    pub stage_since: Timestamp,
+    pub latest_url: String,
     pub synced_at: Timestamp,
 }
 
@@ -117,6 +128,9 @@ impl ItemRow {
             ci_state: item.ci.map(|ci| ci.state),
             review_decision: item.review_decision,
             last_human,
+            requested_reviewers: item.review_requests.clone(),
+            stage_since: meta.stage_since,
+            latest_url: meta.latest_url,
             synced_at,
         }
     }
@@ -153,8 +167,15 @@ pub fn upsert(row: &ItemRow) -> Statement {
             Param::opt_text(human.map(|h| h.kind.as_str())),
             Param::opt_text(human.and_then(|h| h.url.as_deref())),
             Param::ts(row.synced_at),
+            Param::text(reviewers_json(&row.requested_reviewers)),
+            Param::ts(row.stage_since),
+            Param::text(&row.latest_url),
         ],
     }
+}
+
+fn reviewers_json(logins: &[Login]) -> String {
+    serde_json::to_string(logins).unwrap_or_else(|_| "[]".to_owned())
 }
 
 /// An `items` row as D1 returns it, before the columns are checked.
@@ -185,6 +206,9 @@ pub struct ItemRecord {
     pub last_human_kind: Option<String>,
     pub last_human_url: Option<String>,
     pub synced_at: i64,
+    pub requested_reviewers: String,
+    pub stage_since: i64,
+    pub latest_url: String,
 }
 
 fn login(column: &'static str, value: &str) -> Result<Login, RowError> {
@@ -237,6 +261,10 @@ impl TryFrom<ItemRecord> for ItemRow {
             ci_state: untag_opt("ci_state", r.ci_state.as_deref())?,
             review_decision: untag_opt("review_decision", r.review_decision.as_deref())?,
             last_human,
+            requested_reviewers: serde_json::from_str(&r.requested_reviewers)
+                .map_err(|_| RowError::BadReviewers)?,
+            stage_since: Timestamp(r.stage_since),
+            latest_url: r.latest_url,
             synced_at: Timestamp(r.synced_at),
         })
     }
@@ -250,15 +278,18 @@ impl ItemMeta {
             domain::ids::ItemKind::Pr => "pull",
             domain::ids::ItemKind::Issue => "issues",
         };
+        let url = format!(
+            "https://github.com/{}/{path}/{}",
+            item_ref.repo, item_ref.number
+        );
         Self {
             node_id: item_ref.to_string(),
             title: format!("Placeholder title for {item_ref}"),
-            url: format!(
-                "https://github.com/{}/{path}/{}",
-                item_ref.repo, item_ref.number
-            ),
+            latest_url: url.clone(),
+            url,
             head_ref: None,
             last_human_url: None,
+            stage_since: Timestamp(0),
         }
     }
 }
@@ -349,6 +380,71 @@ mod tests {
                 "idx_items_them_since"
             ]
         );
+    }
+
+    #[test]
+    fn stage_clock_restarts_only_when_the_stage_changes() {
+        let conn = memory_db();
+        let first = item_row(1);
+        exec(&conn, &upsert(&first)).expect("insert");
+        let same_stage = ItemRow {
+            stage_since: Timestamp(9000),
+            updated_at: Timestamp(3000),
+            ..item_row(1)
+        };
+        exec(&conn, &upsert(&same_stage)).expect("same stage");
+        assert_eq!(record(&conn, "PR_1").stage_since, first.stage_since.0);
+
+        let new_stage = ItemRow {
+            stage: Some(Stage::CiFailing),
+            stage_since: Timestamp(9500),
+            updated_at: Timestamp(4000),
+            ..item_row(1)
+        };
+        exec(&conn, &upsert(&new_stage)).expect("new stage");
+        assert_eq!(record(&conn, "PR_1").stage_since, 9500);
+
+        let later = ItemRow {
+            stage: Some(Stage::CiFailing),
+            stage_since: Timestamp(9900),
+            updated_at: Timestamp(5000),
+            ..item_row(1)
+        };
+        exec(&conn, &upsert(&later)).expect("same stage again");
+        assert_eq!(record(&conn, "PR_1").stage_since, 9500);
+    }
+
+    #[test]
+    fn an_issue_has_no_stage_and_keeps_its_clock() {
+        let conn = memory_db();
+        let issue = |at: i64, updated: i64| ItemRow {
+            stage: None,
+            stage_since: Timestamp(at),
+            updated_at: Timestamp(updated),
+            ..item_row(2)
+        };
+        exec(&conn, &upsert(&issue(100, 2000))).expect("insert");
+        exec(&conn, &upsert(&issue(900, 3000))).expect("update");
+        assert_eq!(record(&conn, "PR_2").stage_since, 100);
+    }
+
+    #[test]
+    fn requested_reviewers_round_trip_as_a_json_array() {
+        let conn = memory_db();
+        let row = ItemRow {
+            requested_reviewers: vec![
+                Login::parse("octocat").expect("login"),
+                Login::parse("dependabot[bot]").expect("login"),
+            ],
+            ..item_row(3)
+        };
+        exec(&conn, &upsert(&row)).expect("insert");
+        let stored = record(&conn, "PR_3");
+        assert_eq!(
+            stored.requested_reviewers,
+            r#"["octocat","dependabot[bot]"]"#
+        );
+        assert_eq!(ItemRow::try_from(stored).expect("row"), row);
     }
 
     #[test]

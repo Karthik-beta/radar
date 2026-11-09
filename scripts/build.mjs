@@ -13,6 +13,7 @@ const steps = [
     cmd: "worker-build",
     args: features ? ["--release", "--", "--features", features] : ["--release"],
   },
+  { cwd: ".", cmd: process.execPath, args: ["scripts/strip-wasm-names.mjs", "crates/worker/build/index_bg.wasm"] },
 ];
 
 for (const { cwd, cmd, args } of steps) {

@@ -1,4 +1,5 @@
 use domain::activity::ReviewState;
+pub use domain::event::{CiOutcome, Event, EventId, EventKind};
 use domain::ids::{Login, RepoName, Timestamp};
 use serde::{Deserialize, Serialize};
 
@@ -10,83 +11,18 @@ const INSERT: &str = "INSERT INTO events (id, item_node_id, repo, kind, review_s
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
      ON CONFLICT (id) DO NOTHING";
 
-/// The primary key of an event. A re-read of the same timeline item builds the
-/// same id, so it writes nothing (N8).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct EventId(String);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CiOutcome {
-    Passed,
-    Failed,
-}
-
-impl EventId {
-    /// A timeline item already has a GitHub node id.
-    pub fn for_node(node_id: &str) -> Self {
-        Self(node_id.to_owned())
-    }
-
-    /// A CI transition has no node of its own, so its id names the item, the
-    /// commit, and the outcome. The `ci:` prefix cannot collide with a node id.
-    pub fn for_ci(item_node_id: &str, commit_oid: &str, outcome: CiOutcome) -> Self {
-        let word = match outcome {
-            CiOutcome::Passed => "passed",
-            CiOutcome::Failed => "failed",
-        };
-        Self(format!("ci:{item_node_id}:{commit_oid}:{word}"))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// `Reviewed` carries its state, so `review_state` cannot be set on any other kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EventKind {
-    Opened,
-    Commented,
-    Reviewed(ReviewState),
-    ReviewRequested,
-    Assigned,
-    Mentioned,
-    Committed,
-    Merged,
-    Closed,
-    Reopened,
-    CiFailed,
-    CiPassed,
-}
-
-impl EventKind {
-    pub fn tag(self) -> &'static str {
-        match self {
-            Self::Opened => "opened",
-            Self::Commented => "commented",
-            Self::Reviewed(_) => "reviewed",
-            Self::ReviewRequested => "review_requested",
-            Self::Assigned => "assigned",
-            Self::Mentioned => "mentioned",
-            Self::Committed => "committed",
-            Self::Merged => "merged",
-            Self::Closed => "closed",
-            Self::Reopened => "reopened",
-            Self::CiFailed => "ci_failed",
-            Self::CiPassed => "ci_passed",
-        }
-    }
-
-    pub fn review_state(self) -> Option<ReviewState> {
-        match self {
-            Self::Reviewed(state) => Some(state),
-            _ => None,
-        }
-    }
-}
+/// One statement for any number of rows, so a batch of enriched items makes one
+/// call into D1 for its events. `?1` is a JSON array of `FlatEvent`. `WHERE true`
+/// keeps SQLite from reading `ON` as a join constraint.
+const INSERT_MANY: &str = "INSERT INTO events (id, item_node_id, repo, kind, review_state, \
+     actor_login, actor_is_me, actor_is_bot, occurred_at, source, ingested_at) \
+     SELECT json_extract(value, '$.id'), json_extract(value, '$.item_node_id'), \
+     json_extract(value, '$.repo'), json_extract(value, '$.kind'), \
+     json_extract(value, '$.review_state'), json_extract(value, '$.actor_login'), \
+     json_extract(value, '$.actor_is_me'), json_extract(value, '$.actor_is_bot'), \
+     json_extract(value, '$.occurred_at'), json_extract(value, '$.source'), \
+     json_extract(value, '$.ingested_at') FROM json_each(?1) WHERE true \
+     ON CONFLICT (id) DO NOTHING";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -117,6 +53,64 @@ pub struct EventRow {
     pub occurred_at: Timestamp,
     pub source: EventSource,
     pub ingested_at: Timestamp,
+}
+
+impl EventRow {
+    pub fn from_event(event: &Event, source: EventSource, ingested_at: Timestamp) -> Self {
+        let actor = event.actor.as_ref();
+        Self {
+            id: event.id.clone(),
+            item_node_id: event.item.clone(),
+            repo: event.repo.clone(),
+            kind: event.kind,
+            actor_login: actor.map(|a| a.login.clone()),
+            actor_is_me: actor.is_some_and(|a| a.is_me),
+            actor_is_bot: actor.is_some_and(|a| a.is_bot),
+            occurred_at: event.occurred_at,
+            source,
+            ingested_at,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct FlatEvent<'a> {
+    id: &'a str,
+    item_node_id: &'a str,
+    repo: String,
+    kind: &'static str,
+    review_state: Option<&'static str>,
+    actor_login: Option<&'a str>,
+    actor_is_me: u8,
+    actor_is_bot: u8,
+    occurred_at: i64,
+    source: &'static str,
+    ingested_at: i64,
+}
+
+pub fn insert_many(rows: &[EventRow]) -> Statement {
+    let flat: Vec<FlatEvent<'_>> = rows
+        .iter()
+        .map(|row| FlatEvent {
+            id: row.id.as_str(),
+            item_node_id: &row.item_node_id,
+            repo: row.repo.to_string(),
+            kind: row.kind.tag(),
+            review_state: row.kind.review_state().map(ReviewState::tag),
+            actor_login: row.actor_login.as_ref().map(Login::as_str),
+            actor_is_me: u8::from(row.actor_is_me),
+            actor_is_bot: u8::from(row.actor_is_bot),
+            occurred_at: row.occurred_at.0,
+            source: row.source.tag(),
+            ingested_at: row.ingested_at.0,
+        })
+        .collect();
+    Statement {
+        sql: INSERT_MANY,
+        params: vec![Param::text(
+            serde_json::to_string(&flat).unwrap_or_else(|_| "[]".to_owned()),
+        )],
+    }
 }
 
 pub fn insert(row: &EventRow) -> Statement {
@@ -170,6 +164,46 @@ mod tests {
         };
         assert_eq!(exec(&conn, &insert(&again)).expect("second"), 0);
         assert_eq!(count_rows(&conn, "events"), 1);
+    }
+
+    #[test]
+    fn insert_many_writes_what_insert_writes_and_skips_known_ids() {
+        let rows = [
+            event(EventId::for_node("IC_1"), EventKind::Commented),
+            event(
+                EventId::for_node("RV_1"),
+                EventKind::Reviewed(ReviewState::ChangesRequested),
+            ),
+            EventRow {
+                actor_login: None,
+                actor_is_me: false,
+                ..event(
+                    EventId::for_ci("PR_1", "abc", CiOutcome::Failed),
+                    EventKind::CiFailed,
+                )
+            },
+        ];
+        let one_by_one = memory_db();
+        for row in &rows {
+            exec(&one_by_one, &insert(row)).expect("insert");
+        }
+        let many = memory_db();
+        assert_eq!(exec(&many, &insert_many(&rows)).expect("many"), 3);
+        assert_eq!(exec(&many, &insert_many(&rows)).expect("again"), 0);
+        let dump = |conn: &rusqlite::Connection| {
+            crate::db::testing::query_json(conn, "SELECT * FROM events ORDER BY id", &[])
+        };
+        assert_eq!(dump(&many), dump(&one_by_one));
+        assert_eq!(exec(&many, &insert_many(&[])).expect("empty"), 0);
+    }
+
+    #[test]
+    fn insert_many_keeps_the_checks() {
+        let conn = memory_db();
+        let mut row = event(EventId::for_node("IC_1"), EventKind::Commented);
+        row.actor_login = None;
+        let err = exec(&conn, &insert_many(&[row])).expect_err("a comment needs an actor");
+        assert!(err.to_string().contains("CHECK"), "{err}");
     }
 
     #[test]
