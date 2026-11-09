@@ -1,4 +1,4 @@
-use domain::api::{Dashboard, ItemId, SnoozeFor, SnoozeRequest};
+use domain::api::{Dashboard, Freshness, ItemId, SnoozeFor, SnoozeRequest};
 use gloo_net::http::{Request, Response};
 use serde::de::DeserializeOwned;
 
@@ -14,6 +14,10 @@ pub enum ApiError {
 
 pub async fn dashboard() -> Result<Dashboard, ApiError> {
     get("/api/dashboard").await
+}
+
+pub async fn freshness() -> Result<Freshness, ApiError> {
+    get("/api/freshness").await
 }
 
 /// The browser adds the same-origin `Origin` header the Worker checks.

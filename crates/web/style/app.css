@@ -4,6 +4,8 @@
 @import "./sign-in.css";
 @import "./components.css";
 @import "./your-turn.css";
+@import "./pipeline.css";
+@import "./freshness.css";
 
 @source "../src";
 
