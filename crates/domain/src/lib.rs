@@ -2,6 +2,7 @@ pub mod activity;
 pub mod api;
 pub mod classify;
 pub mod email;
+pub mod email_health;
 pub mod error;
 pub mod event;
 pub mod health;
