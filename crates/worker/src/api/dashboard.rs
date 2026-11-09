@@ -5,7 +5,6 @@ use domain::api::{
 use domain::ids::Timestamp;
 use domain::item::ItemState;
 use domain::local_state::visible;
-use domain::settings::NudgeThresholds;
 use domain::turn::Reason;
 
 use crate::db::dashboard::{DashboardRows, ItemRecord};
@@ -24,7 +23,12 @@ pub fn assemble(rows: DashboardRows, now: Timestamp) -> Dashboard {
     sort_by(&mut waiting, |item| item.since.0);
     let your_turn: Vec<TurnRow> = waiting.into_iter().filter_map(turn_row).collect();
 
-    let mut theirs = rows.their_turn;
+    let mut theirs: Vec<ItemRecord> = rows
+        .their_turn
+        .into_iter()
+        .filter(|w| visible(w.local, w.item.last_human.as_ref().map(|h| h.at), now))
+        .map(|w| w.item)
+        .collect();
     sort_by(&mut theirs, |item| item.since.0);
     let their_turn: Vec<TheirRow> = theirs.into_iter().map(their_row).collect();
 
@@ -63,7 +67,7 @@ pub fn assemble(rows: DashboardRows, now: Timestamp) -> Dashboard {
         their_turn,
         pipeline,
         recent,
-        nudge: NudgeThresholds::default(),
+        nudge: rows.nudge,
     }
 }
 
@@ -159,6 +163,8 @@ mod tests {
     use domain::local_state::LocalState;
     use domain::stage::Stage;
 
+    use domain::settings::NudgeThresholds;
+
     use super::*;
     use crate::db::dashboard::Waiting;
 
@@ -194,6 +200,10 @@ mod tests {
             },
             local: None,
         }
+    }
+
+    fn waiting(item: ItemRecord) -> Waiting {
+        Waiting { item, local: None }
     }
 
     fn staged(n: u32, stage: Stage, stage_since: i64) -> ItemRecord {
@@ -249,7 +259,7 @@ mod tests {
                 mine(2, 100, Reason::Assigned),
                 mine(3, 200, Reason::Replied),
             ],
-            their_turn: vec![record(4, 50), record(5, 10)],
+            their_turn: vec![waiting(record(4, 50)), waiting(record(5, 10))],
             pipeline: vec![
                 staged(6, Stage::Draft, 30),
                 staged(7, Stage::Approved, 20),
@@ -261,6 +271,7 @@ mod tests {
             ],
             recent: vec![],
             merged_this_month: 7,
+            ..DashboardRows::default()
         };
         let d = assemble(rows, NOW);
         assert_eq!(ids(&d.your_turn, |r| &r.id), ["PR_2", "PR_3", "PR_1"]);
@@ -297,6 +308,26 @@ mod tests {
         assert_eq!(d.recent[0].state, Ended::Closed);
         assert_eq!(d.recent[1].state, Ended::Merged);
         assert_eq!(d.recent[1].ended_at, Timestamp(NOW.0 - 13 * DAY));
+    }
+
+    #[test]
+    fn a_snoozed_item_leaves_their_turn_and_the_stored_nudge_reaches_the_response() {
+        let snoozed = Waiting {
+            local: Some(LocalState::Snoozed {
+                until: Timestamp(NOW.0 + 1),
+            }),
+            ..waiting(record(1, 100))
+        };
+        let nudge = NudgeThresholds::new(3, 5).expect("nudge");
+        let rows = DashboardRows {
+            their_turn: vec![snoozed, waiting(record(2, 200))],
+            nudge,
+            ..DashboardRows::default()
+        };
+        let d = assemble(rows, NOW);
+        assert_eq!(ids(&d.their_turn, |r| &r.id), ["PR_2"]);
+        assert_eq!(d.counters.their_turn, 1);
+        assert_eq!(d.nudge, nudge);
     }
 
     #[test]
@@ -361,11 +392,11 @@ mod tests {
         let plain = mine(3, 300, Reason::Mentioned);
         let rows = DashboardRows {
             your_turn: vec![review, ci, plain],
-            their_turn: vec![ItemRecord {
+            their_turn: vec![waiting(ItemRecord {
                 latest_url: latest.clone(),
                 requested_reviewers: vec![Login::parse("alice").expect("login")],
                 ..record(4, 10)
-            }],
+            })],
             ..DashboardRows::default()
         };
         let d = assemble(rows, NOW);

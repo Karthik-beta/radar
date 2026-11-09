@@ -4,6 +4,7 @@ use domain::activity::{ActorKind, ReviewState};
 use domain::ids::{IdError, ItemKind, Timestamp};
 use domain::item::{CiState, ItemState, ReviewDecision};
 use domain::stage::Stage;
+use domain::settings::SettingsFallback;
 use domain::turn::{Reason, Turn};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +29,7 @@ pub enum RowError {
     NotFinite(&'static str),
     PartialLastHuman,
     BadReviewers,
+    Settings(SettingsFallback),
 }
 
 impl fmt::Display for RowError {
@@ -43,6 +45,7 @@ impl fmt::Display for RowError {
             Self::NotFinite(column) => write!(f, "{column}: not a finite number"),
             Self::PartialLastHuman => f.write_str("last_human columns are only partly set"),
             Self::BadReviewers => f.write_str("requested_reviewers is not a JSON array of logins"),
+            Self::Settings(fallback) => write!(f, "{fallback}"),
         }
     }
 }

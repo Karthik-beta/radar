@@ -238,6 +238,44 @@ function yourTurnHostile() {
   return [img, script, link];
 }
 
+// My own PR where my comment is the last word, `days` days ago, so it waits on others.
+function waitingOn(number, days, opts = {}) {
+  const at = `@-${days}d`;
+  return spec(number, "pr", "comment", (c) => ({
+    decision: "REVIEW_REQUIRED", ci: ok, updated: at,
+    timeline: [comment(c, `IC_${number}_1`, at, ME)],
+    ...opts,
+  }), { turn: "them", reason: null, stage: "awaiting_review" });
+}
+
+function theirTurnMixed() {
+  const issue = spec(77, "issue", "comment", (c) => ({
+    title: "Issue I opened and commented on", updated: "@-3d",
+    timeline: [comment(c, "IC_77_1", "@-3d", ME)],
+  }), { turn: "them", reason: null, stage: null });
+  return [
+    waitingOn(71, 6, { title: "Waiting six days" }),
+    waitingOn(72, 8, { title: "Waiting eight days", head: "agent/fix-parser" }),
+    waitingOn(73, 13, { title: "Waiting thirteen days" }),
+    waitingOn(74, 15, { title: "Waiting fifteen days" }),
+    waitingOn(75, 2, { title: "Two reviewers asked", requests: ["alice", "bob"] }),
+    waitingOn(76, 1, { title: "No reviewer asked" }),
+    issue,
+    asked(78, 5, "erin"),
+  ];
+}
+
+function theirTurnHostile() {
+  return [
+    waitingOn(91, 9, { title: "<script>alert(1)</script>" }),
+    asked(92, 4, "frank"),
+  ];
+}
+
+function theirTurnWaiting(count, first) {
+  return Array.from({ length: count }, (_, i) => waitingOn(first + i, 1 + (i % 30)));
+}
+
 const kinds = {
   "your-turn-edge": { specs: yourTurnEdge },
   "your-turn-hostile": { specs: yourTurnHostile },
@@ -267,6 +305,10 @@ const kinds = {
   },
   "enrich-body-marker": { specs: bodyMarker },
   "enrich-ci-step": { specs: ciStep },
+  "their-turn-mixed": { specs: theirTurnMixed },
+  "their-turn-none": { specs: () => [asked(81, 5, "alice"), asked(82, 6, "bob"), asked(83, 7, "carol"), asked(84, 8, "dave")] },
+  "their-turn-hostile": { specs: theirTurnHostile },
+  "their-turn-large": { specs: () => theirTurnWaiting(200, 700) },
 };
 
 const REASONS = new Set(["review_requested", "author", "ci_activity", "comment", "mention", "team_mention", "assign"]);

@@ -4,6 +4,7 @@
 @import "./sign-in.css";
 @import "./components.css";
 @import "./your-turn.css";
+@import "./their-turn.css";
 
 @source "../src";
 
