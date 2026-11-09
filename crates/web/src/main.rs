@@ -4,6 +4,7 @@ mod auth;
 mod components;
 mod heat;
 mod keys;
+mod stage_label;
 mod store;
 mod url;
 mod views;

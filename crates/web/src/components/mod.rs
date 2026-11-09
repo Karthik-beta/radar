@@ -4,6 +4,8 @@ pub mod count_block;
 pub mod empty_state;
 pub mod header;
 pub mod key_hints;
+pub mod pipeline_card;
+pub mod recent_list;
 pub mod snooze_menu;
 pub mod tabs;
 pub mod triage_row;
