@@ -307,9 +307,9 @@ fn dismiss_duration() -> Duration {
         .document_element()
         .and_then(|root| window().get_computed_style(&root).ok().flatten())
         .and_then(|style| style.get_property_value("--duration-dismiss").ok())
-        .and_then(|value| value.trim().strip_suffix("ms")?.trim().parse::<f64>().ok())
-        .unwrap_or(0.0);
-    Duration::from_millis(ms.max(0.0) as u64)
+        .and_then(|value| value.trim().strip_suffix("ms")?.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    Duration::from_millis(ms)
 }
 
 #[cfg(test)]
