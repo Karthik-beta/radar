@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use domain::api::{Dashboard, ItemId, SnoozeFor};
+use domain::api::{Dashboard, Freshness, ItemId, SnoozeFor};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -63,6 +63,37 @@ impl Load {
                 error,
             },
             (_, Err(error)) => Self::Failed(error),
+        }
+    }
+}
+
+/// What the app holds from `GET /api/freshness`. A failed fetch is
+/// `Unavailable` and keeps the last answer for the panel.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FreshLoad {
+    Loading,
+    Ready(Freshness),
+    Unavailable(Option<Freshness>),
+}
+
+impl FreshLoad {
+    /// The last answer, even when the latest fetch failed.
+    pub fn data(&self) -> Option<&Freshness> {
+        match self {
+            Self::Ready(data) => Some(data),
+            Self::Unavailable(last) => last.as_ref(),
+            Self::Loading => None,
+        }
+    }
+
+    pub fn settle(self, result: Result<Freshness, ApiError>) -> Self {
+        match result {
+            Ok(data) => Self::Ready(data),
+            Err(_) => Self::Unavailable(match self {
+                Self::Ready(data) => Some(data),
+                Self::Unavailable(last) => last,
+                Self::Loading => None,
+            }),
         }
     }
 }
@@ -129,6 +160,8 @@ pub struct Store {
     in_flight: StoredValue<bool>,
     fetches: StoredValue<u64>,
     view: Memo<Option<Dashboard>>,
+    fresh: RwSignal<FreshLoad>,
+    fresh_in_flight: StoredValue<bool>,
 }
 
 pub fn provide_store() -> Store {
@@ -150,6 +183,8 @@ pub fn provide_store() -> Store {
         in_flight: StoredValue::new(false),
         fetches: StoredValue::new(0),
         view,
+        fresh: RwSignal::new(FreshLoad::Loading),
+        fresh_in_flight: StoredValue::new(false),
     };
     provide_context(store);
     store
@@ -184,8 +219,30 @@ impl Store {
         self.leaving.with(|l| l.contains(id))
     }
 
-    /// Fetches the dashboard unless a fetch is already running.
+    /// The last `GET /api/freshness` answer, for the header and the banner.
+    pub fn freshness(&self) -> Signal<FreshLoad> {
+        self.fresh.into()
+    }
+
+    fn refresh_freshness(&self) {
+        if self.fresh_in_flight.get_value() {
+            return;
+        }
+        self.fresh_in_flight.set_value(true);
+        let store = *self;
+        spawn_local(async move {
+            let result = api::freshness().await;
+            store.now.set(now_ms());
+            store.fresh.update(|fresh| {
+                *fresh = std::mem::replace(fresh, FreshLoad::Loading).settle(result);
+            });
+            store.fresh_in_flight.set_value(false);
+        });
+    }
+
+    /// Fetches the dashboard and freshness, each unless one is already running.
     pub fn refresh(&self) {
+        self.refresh_freshness();
         if self.in_flight.get_value() {
             return;
         }
@@ -371,6 +428,33 @@ mod tests {
             stale.settle(Ok(dashboard(&[])), 12.0),
             Load::Ready { fetched_at, .. } if fetched_at == 12.0
         ));
+    }
+
+    fn freshness() -> Freshness {
+        Freshness {
+            sources: Vec::new(),
+            budget: domain::api::Budget {
+                limit: None,
+                remaining: None,
+                reset_at: None,
+            },
+            dead: Vec::new(),
+            scope: domain::api::ScopeState::Ok,
+            next_poll_at: None,
+        }
+    }
+
+    #[test]
+    fn store_a_failed_freshness_fetch_keeps_the_last_answer() {
+        let ready = FreshLoad::Loading.settle(Ok(freshness()));
+        let down = ready.settle(Err(ApiError::Status(500)));
+        assert!(matches!(down, FreshLoad::Unavailable(Some(_))));
+        assert_eq!(down.data(), Some(&freshness()));
+        assert_eq!(
+            FreshLoad::Loading.settle(Err(ApiError::Network)),
+            FreshLoad::Unavailable(None)
+        );
+        assert!(matches!(down.settle(Ok(freshness())), FreshLoad::Ready(_)));
     }
 
     #[test]

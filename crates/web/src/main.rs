@@ -5,6 +5,7 @@ mod components;
 mod heat;
 mod keys;
 mod store;
+mod sync_label;
 mod url;
 mod views;
 

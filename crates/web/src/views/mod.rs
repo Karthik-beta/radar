@@ -1,3 +1,4 @@
+pub mod freshness;
 pub mod merged;
 pub mod not_found;
 pub mod pipeline;

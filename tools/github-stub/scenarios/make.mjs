@@ -234,6 +234,16 @@ const kinds = {
   },
   "enrich-body-marker": { specs: bodyMarker },
   "enrich-ci-step": { specs: ciStep },
+  // R16 freshness lanes. `scenario` merges into the file, so a kind can set scopes, rate, and faults.
+  "fresh-ok": { specs: basic },
+  "fresh-budget": { specs: basic, scenario: { rate: { limit: 5000, remaining: 4750, reset: "@+40m" } } },
+  "scope-fixed-step": { specs: basic, scenario: { scopes: ["notifications", "read:user"] } },
+  "missing-scope": { specs: basic, scenario: { scopes: ["read:user"] } },
+  "no-scope-header": { specs: basic, scenario: { scopes: null } },
+  "dead-work": {
+    specs: basic,
+    faults: [{ match: "POST /graphql", status: 502 }],
+  },
 };
 
 const REASONS = new Set(["review_requested", "author", "ci_activity", "comment", "mention", "team_mention", "assign"]);
@@ -270,6 +280,7 @@ export function build(kind) {
     extends: "basic",
     notifications: { last_modified: "@-1m", etag: `"stub-${kind}"`, items: notifications },
     items,
+    ...(def.scenario ?? {}),
     ...(def.faults ? { faults: def.faults } : {}),
     _expect: {
       threads: specs.length,
