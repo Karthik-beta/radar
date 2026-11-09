@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { answerEnrich } from "./enrich.mjs";
+import { answerSearch } from "./search.mjs";
 
 const SCENARIOS_DIR = join(dirname(fileURLToPath(import.meta.url)), "scenarios");
 const MAX_BODY = 1_000_000;
@@ -234,13 +235,26 @@ function parseForm(body, contentType) {
   return Object.fromEntries(new URLSearchParams(body));
 }
 
-function faultMatches(fault, method, path, searchParams) {
+function graphqlVariables(body) {
+  try {
+    return JSON.parse(body)?.variables ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function faultMatches(fault, method, path, searchParams, body) {
   const [m, p] = fault.match.split(" ");
   const query = fault.query ?? "";
   const at = query.indexOf("=");
   const [name, value] = at < 0 ? [query, ""] : [query.slice(0, at), query.slice(at + 1)];
   const queryOk = fault.query === undefined || searchParams.get(name) === value;
-  return (m === "*" || m === method) && (p === "*" || p === path) && queryOk;
+  const variables = fault.graphql ? graphqlVariables(body) : {};
+  const graphqlOk =
+    !fault.graphql ||
+    ((fault.graphql.after === undefined || variables.after === fault.graphql.after) &&
+      (fault.graphql.q === undefined || String(variables.q ?? "").includes(fault.graphql.q)));
+  return (m === "*" || m === method) && (p === "*" || p === path) && queryOk && graphqlOk;
 }
 
 export function createStub({ scenario: initial = "basic" } = {}) {
@@ -261,8 +275,8 @@ export function createStub({ scenario: initial = "basic" } = {}) {
     res.end(body === undefined || status === 204 || status === 304 ? undefined : isRaw ? body : JSON.stringify(body));
   }
 
-  function applyFault(res, entry, method, path, searchParams) {
-    const fault = state.faults.find((f) => f.left > 0 && faultMatches(f, method, path, searchParams));
+  function applyFault(res, entry, method, path, searchParams, requestBody) {
+    const fault = state.faults.find((f) => f.left > 0 && faultMatches(f, method, path, searchParams, requestBody));
     if (!fault) return false;
     fault.left -= 1;
     const headers = rateHeaders(state.scenario, fault.rate);
@@ -315,6 +329,11 @@ export function createStub({ scenario: initial = "basic" } = {}) {
       if (info.name === "Enrich" && state.scenario.items) {
         const { count, body: answer } = answerEnrich(state.scenario, payload?.variables);
         entry.aliases = count;
+        return reply(res, entry, 200, answer, headers);
+      }
+      if (info.name === "Search" && state.scenario.search) {
+        const { count, body: answer } = answerSearch(state.scenario, payload?.variables);
+        entry.nodes = count;
         return reply(res, entry, 200, answer, headers);
       }
       let response = state.scenario.graphql?.[info.name];
@@ -399,6 +418,7 @@ export function createStub({ scenario: initial = "basic" } = {}) {
     }
     const entry = {
       n: state.log.length + 1,
+      at: new Date().toISOString(),
       method: req.method,
       path: url.pathname,
       query: url.search.slice(1),
@@ -424,7 +444,7 @@ export function createStub({ scenario: initial = "basic" } = {}) {
         if (token !== state.scenario.token) return reply(res, entry, 401, { message: "Bad credentials" });
       }
       if (route.auth && state.scenario.delay_ms) await new Promise((r) => setTimeout(r, state.scenario.delay_ms));
-      if (applyFault(res, entry, req.method, url.pathname, url.searchParams)) return;
+      if (applyFault(res, entry, req.method, url.pathname, url.searchParams, body)) return;
       await handlers[`${req.method} ${url.pathname}`](req, res, entry, body, url);
     } catch {
       if (!res.headersSent) reply(res, entry, 500, { message: "stub error" });

@@ -5,6 +5,7 @@
 // Until R09 polls, the SQL stands in for the poll and the ids name the Enrich unit.
 import { pathToFileURL } from "node:url";
 
+import { cursorFor } from "../search.mjs";
 import { resolveTimes } from "../server.mjs";
 
 const ME = "karthik";
@@ -236,6 +237,100 @@ const kinds = {
   "enrich-ci-step": { specs: ciStep },
 };
 
+// A search entry is one item the Search operation can return. Authored items are mine and `involves` adds items
+// others opened that name me. `ageDays` places `updatedAt` so the window lanes can tell 89 days from 91.
+function found(number, kind, o = {}) {
+  const c = context(REPO, number, kind);
+  const age = o.ageDays === undefined ? null : `@-${o.ageDays}d`;
+  const build = {
+    ci: ok,
+    decision: kind === "pr" ? "REVIEW_REQUIRED" : undefined,
+    ...o,
+    ...(age ? { updated: age, created: `@-${o.ageDays + 1}d` } : {}),
+  };
+  return kind === "pr" ? prNode(c, build) : issueNode(c, build);
+}
+
+function mine(count, first, kind, mark) {
+  return Array.from({ length: count }, (_, i) => {
+    const n = first + i;
+    const at = kind === "pr" ? `@-${i + 1}m` : `@-${i + 1}h`;
+    const comment_ = comment(context(REPO, n, kind), `IC_${n}_1`, at, "bob");
+    if (mark) Object.assign(comment_, { body: "BODYMARK-7f3a", bodyText: "BODYMARK-7f3a" });
+    return found(n, kind, {
+      updated: at,
+      created: "@-5d",
+      timeline: [comment_],
+      extra: mark ? { body: "BODYMARK-7f3a", bodyText: "BODYMARK-7f3a" } : undefined,
+    });
+  });
+}
+
+function theirs(count, first) {
+  return Array.from({ length: count }, (_, i) => {
+    const n = first + i;
+    return found(n, "pr", {
+      by: "alice",
+      requests: [ME],
+      updated: `@-${i + 1}h`,
+      created: "@-6d",
+      timeline: [requested(`RRE_${n}`, `@-${i + 1}h`, "alice", ME)],
+    });
+  });
+}
+
+function backfill(prs, issues, others, sharedWithOthers, extra = {}) {
+  const authoredPrs = mine(prs, 1000, "pr", extra.mark);
+  const authored = [...authoredPrs, ...mine(issues, 2000, "issue", extra.mark)];
+  return {
+    authored,
+    involves: [...authoredPrs.slice(0, sharedWithOthers), ...theirs(others, 3000)],
+  };
+}
+
+const searchKinds = {
+  "backfill-150": { windowDays: 90, search: () => backfill(150, 20, 40, 20) },
+  "backfill-empty": { windowDays: 90, search: () => ({ authored: [], involves: [] }) },
+  "backfill-overlap": {
+    windowDays: 90,
+    specs: () => many(12, 1000),
+    search: () => {
+      const authored = many(12, 1000).map((s) => s.node);
+      return { authored, involves: [...authored.slice(0, 6), ...theirs(5, 3000)] };
+    },
+  },
+  "backfill-old": {
+    windowDays: 90,
+    search: () => ({
+      authored: [20, 89, 91, 400].map((days, i) => found(4100 + i, "pr", { by: ME, ageDays: days })),
+      involves: [],
+    }),
+  },
+  "nightly-new": {
+    windowDays: 7,
+    search: () => ({
+      authored: [found(4000, "pr", { by: ME, ageDays: 1 }), found(4001, "pr", { by: ME, ageDays: 30 })],
+      involves: [],
+    }),
+  },
+  "low-budget": {
+    windowDays: 90,
+    rate: { limit: 5000, remaining: 400, reset: "@+20s" },
+    search: () => backfill(12, 3, 5, 2),
+  },
+  "backfill-150-502": {
+    windowDays: 90,
+    search: () => backfill(150, 20, 40, 20),
+    faults: [{ match: "POST /graphql", status: 502, times: 2, graphql: { after: cursorFor(20), q: "is:pr author" } }],
+  },
+  "backfill-150-dead": {
+    windowDays: 90,
+    search: () => backfill(150, 20, 40, 20),
+    faults: [{ match: "POST /graphql", status: 502, times: 3, graphql: { after: cursorFor(20), q: "is:pr author" } }],
+  },
+  "backfill-marker": { windowDays: 90, search: () => backfill(12, 3, 5, 2, { mark: true }) },
+};
+
 const REASONS = new Set(["review_requested", "author", "ci_activity", "comment", "mention", "team_mention", "assign"]);
 
 function notification(s, index) {
@@ -257,9 +352,45 @@ function notification(s, index) {
   };
 }
 
-export function build(kind) {
+const DAY_MS = 864e5;
+
+function searchExpectation(search, specs, windowDays, now) {
+  const start = Math.floor((now - windowDays * DAY_MS) / DAY_MS) * DAY_MS;
+  const inWindow = (node) => Date.parse(resolveTimes(node.updatedAt, now)) >= start;
+  const keys = new Set(specs.filter((s) => !s.gone).map((s) => `${s.c.repo}#${s.c.number}`));
+  for (const node of [...search.authored, ...search.involves]) {
+    if (inWindow(node)) keys.add(`${REPO}#${node.number}`);
+  }
+  return [...keys].sort();
+}
+
+function buildSearch(kind, def, now) {
+  const specs = def.specs ? def.specs() : [];
+  const search = def.search();
+  const notifications = specs.map(notification).map(({ _order, ...rest }) => rest);
+  return {
+    extends: "basic",
+    ...(def.rate ? { rate: def.rate } : {}),
+    notifications: { last_modified: "@-1m", etag: `"stub-${kind}"`, items: notifications },
+    items: Object.fromEntries(specs.filter((s) => !s.missing).map((s) => [`${s.c.repo}#${s.c.number}`, s.node])),
+    search,
+    ...(def.faults ? { faults: def.faults } : {}),
+    _expect: {
+      windowDays: def.windowDays,
+      items: searchExpectation(search, specs, def.windowDays, now),
+      authored: search.authored.length,
+      involves: search.involves.length,
+    },
+  };
+}
+
+export function build(kind, now = Date.now()) {
+  if (searchKinds[kind]) return buildSearch(kind, searchKinds[kind], now);
   const def = kinds[kind];
-  if (!def) throw new Error(`unknown kind ${JSON.stringify(kind)}; kinds are ${Object.keys(kinds).join(", ")}`);
+  if (!def) {
+    const known = [...Object.keys(kinds), ...Object.keys(searchKinds)].join(", ");
+    throw new Error(`unknown kind ${JSON.stringify(kind)}; kinds are ${known}`);
+  }
   const specs = def.specs();
   for (const s of specs) if (!REASONS.has(s.reason)) throw new Error(`unknown reason ${s.reason}`);
   const items = Object.fromEntries(

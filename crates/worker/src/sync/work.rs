@@ -7,11 +7,11 @@ use domain::sync_status::SyncKind;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use super::backfill::BackfillCursor;
 use super::config::ENRICH_BATCH;
 
 const MAIN_KEY: &str = "main";
 const NIGHTLY_KEY: &str = "nightly";
-const START_KEY: &str = "start";
 const MAX_NODE_ID_LEN: usize = 128;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,38 +100,11 @@ impl EnrichBatch {
     }
 }
 
-/// Where a backfill page starts: the first page, or after a GraphQL cursor.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Cursor {
-    Start,
-    After(String),
-}
-
-impl Cursor {
-    pub fn parse(raw: &str) -> Result<Self, WorkError> {
-        match raw {
-            START_KEY => Ok(Self::Start),
-            "" => Err(WorkError::BadKey {
-                kind: SyncKind::BackfillPage,
-                key: raw.to_owned(),
-            }),
-            cursor => Ok(Self::After(cursor.to_owned())),
-        }
-    }
-
-    fn key(&self) -> &str {
-        match self {
-            Self::Start => START_KEY,
-            Self::After(cursor) => cursor,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkKind {
     PollNotifications,
     Enrich(EnrichBatch),
-    BackfillPage(Cursor),
+    BackfillPage(BackfillCursor),
     Rollup,
 }
 
@@ -158,7 +131,7 @@ impl WorkKind {
         match self {
             Self::PollNotifications => MAIN_KEY.to_owned(),
             Self::Enrich(batch) => batch.key(),
-            Self::BackfillPage(cursor) => cursor.key().to_owned(),
+            Self::BackfillPage(cursor) => cursor.key(),
             Self::Rollup => NIGHTLY_KEY.to_owned(),
         }
     }
@@ -183,7 +156,9 @@ impl WorkKind {
         let work = match kind {
             SyncKind::PollNotifications if key == MAIN_KEY => Self::PollNotifications,
             SyncKind::Rollup if key == NIGHTLY_KEY => Self::Rollup,
-            SyncKind::BackfillPage => Self::BackfillPage(Cursor::parse(key)?),
+            SyncKind::BackfillPage => {
+                Self::BackfillPage(BackfillCursor::parse(key).ok_or_else(bad_key)?)
+            }
             SyncKind::Enrich => {
                 let batch = EnrichBatch::from_payload(payload.ok_or(WorkError::MissingPayload)?)?;
                 if batch.key() != key {
@@ -282,6 +257,7 @@ impl KickReason {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sync::backfill::{SearchKind, SearchWindow};
 
     fn ids(raw: &[&str]) -> Vec<NodeId> {
         raw.iter().map(|id| NodeId::parse(id).unwrap()).collect()
@@ -299,7 +275,10 @@ mod tests {
         );
         assert_eq!(WorkKind::PollNotifications.key(), "main");
         assert_eq!(WorkKind::Rollup.key(), "nightly");
-        assert_eq!(WorkKind::BackfillPage(Cursor::Start).key(), "start");
+        assert_eq!(
+            WorkKind::BackfillPage(BackfillCursor::first(SearchWindow::Backfill90d)).key(),
+            "b90.authored.1.start"
+        );
         assert_ne!(enrich(&["PR_a"]).key(), enrich(&["PR_b"]).key());
     }
 
@@ -317,8 +296,13 @@ mod tests {
         for kind in [
             WorkKind::PollNotifications,
             enrich(&["PR_z", "I_y"]),
-            WorkKind::BackfillPage(Cursor::Start),
-            WorkKind::BackfillPage(Cursor::After("Y3Vyc29yOjI=".into())),
+            WorkKind::BackfillPage(BackfillCursor::first(SearchWindow::Backfill90d)),
+            WorkKind::BackfillPage(BackfillCursor {
+                window: SearchWindow::Nightly7d,
+                kind: SearchKind::Involves,
+                page: 3,
+                after: Some("Y3Vyc29yOjI=".into()),
+            }),
             WorkKind::Rollup,
         ] {
             let c = kind.columns();

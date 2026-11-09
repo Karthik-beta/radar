@@ -250,6 +250,13 @@ impl ItemNode {
             Self::Issue(issue) => &issue.id,
         }
     }
+
+    pub fn url(&self) -> &str {
+        match self {
+            Self::PullRequest(pr) => &pr.url,
+            Self::Issue(issue) => &issue.url,
+        }
+    }
 }
 
 #[derive(Deserialize)]
