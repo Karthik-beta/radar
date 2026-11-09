@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use domain::turn::{Reason, Turn};
 use serde_json::Value;
 
 use super::*;
@@ -210,7 +211,7 @@ fn a_node_url_names_its_repository() {
 #[test]
 fn every_node_of_a_page_becomes_an_item_with_its_events() {
     let page = data(PAGE);
-    let planned = plan_page(&nodes(&page), &[], &me(), NOW);
+    let planned = plan_page(&nodes(&page), &[], &[], &me(), NOW);
     assert_eq!(planned.items.len(), ENRICH_BATCH);
     assert!(planned.skipped.is_empty());
     let ids: HashSet<String> = planned
@@ -225,8 +226,8 @@ fn every_node_of_a_page_becomes_an_item_with_its_events() {
 #[test]
 fn a_node_found_twice_writes_the_same_events() {
     let page = data(PAGE);
-    let first = plan_page(&nodes(&page), &[], &me(), NOW);
-    let second = plan_page(&nodes(&page), &[], &me(), NOW);
+    let first = plan_page(&nodes(&page), &[], &[], &me(), NOW);
+    let second = plan_page(&nodes(&page), &[], &[], &me(), NOW);
     assert_eq!(first.events, second.events);
     assert_eq!(first.items, second.items);
 }
@@ -237,7 +238,7 @@ fn a_node_with_a_foreign_url_is_skipped_and_the_rest_are_kept() {
     body["data"]["search"]["nodes"][0]["url"] =
         Value::from("https://example.com/octo/widgets/pull/1");
     let page = data(&body.to_string());
-    let planned = plan_page(&nodes(&page), &[], &me(), NOW);
+    let planned = plan_page(&nodes(&page), &[], &[], &me(), NOW);
     assert_eq!(planned.items.len(), ENRICH_BATCH - 1);
     assert_eq!(planned.skipped.len(), 1);
 }
@@ -250,4 +251,30 @@ fn an_unknown_item_type_fails_the_whole_page() {
     let now = GithubTimestamp(u64::try_from(NOW.0).expect("positive"));
     let parsed = interpret_query::<SearchData>(200, &|_: &str| None, &body.to_string(), now);
     assert!(parsed.is_err());
+}
+
+#[test]
+fn a_search_keeps_the_mention_its_notification_thread_reported() {
+    let page = data(PAGE);
+    let nodes = nodes(&page);
+    let reasons: Vec<ThreadReason> = nodes
+        .iter()
+        .map(|n| ThreadReason {
+            item_node_id: n.id().to_owned(),
+            reason: "mention".to_owned(),
+        })
+        .collect();
+    let mentioned = |items: &[ItemRow]| {
+        items
+            .iter()
+            .filter(|i| i.turn == Turn::Me(Reason::Mentioned))
+            .count()
+    };
+    let without = plan_page(&nodes, &[], &[], &me(), NOW);
+    let with = plan_page(&nodes, &[], &reasons, &me(), NOW);
+    assert_eq!(mentioned(&without.items), 0);
+    assert!(
+        mentioned(&with.items) > 0,
+        "a stored mention reason survives the search"
+    );
 }

@@ -38,6 +38,7 @@ const STORED_BY_NODE: &str =
      FROM items WHERE node_id IN (SELECT value FROM json_each(?1))";
 
 const ME: &str = "SELECT login FROM auth WHERE id = 1";
+const THREAD_REASONS: &str = "SELECT item_node_id, reason FROM notification_threads WHERE item_node_id IN (SELECT value FROM json_each(?1))";
 
 fn ids_json(ids: &[&str]) -> Param {
     Param::text(serde_json::to_string(ids).unwrap_or_else(|_| "[]".to_owned()))
@@ -62,6 +63,21 @@ pub fn stored_by_node(ids: &[&str]) -> Statement {
         sql: STORED_BY_NODE,
         params: vec![ids_json(ids)],
     }
+}
+
+/// The notification reason stored for each item a search found, so a search does
+/// not forget that a thread mentioned me.
+pub fn thread_reasons(ids: &[&str]) -> Statement {
+    Statement {
+        sql: THREAD_REASONS,
+        params: vec![ids_json(ids)],
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ThreadReason {
+    pub item_node_id: String,
+    pub reason: String,
 }
 
 pub fn me() -> Statement {

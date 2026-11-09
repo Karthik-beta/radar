@@ -15,7 +15,7 @@ use super::scheduler::UnitOutcome;
 use super::state::SyncState;
 use super::work::WorkKind;
 use crate::auth;
-use crate::db::batch::{self, MeRecord, Stored, StoredRecord};
+use crate::db::batch::{self, MeRecord, Stored, StoredRecord, ThreadReason};
 use crate::db::events::EventSource;
 use crate::db::items::ItemRow;
 use crate::github::enrich_response::ItemNode;
@@ -242,7 +242,13 @@ pub struct Page {
 }
 
 /// Classifies every node. `stored` is what `items` already holds for them.
-pub fn plan_page(nodes: &[&ItemNode], stored: &[Stored], me: &Login, now: Timestamp) -> Page {
+pub fn plan_page(
+    nodes: &[&ItemNode],
+    stored: &[Stored],
+    reasons: &[ThreadReason],
+    me: &Login,
+    now: Timestamp,
+) -> Page {
     let mut page = Page::default();
     for node in nodes {
         let Some(repo) = repo_of(node.url()) else {
@@ -250,14 +256,18 @@ pub fn plan_page(nodes: &[&ItemNode], stored: &[Stored], me: &Login, now: Timest
             continue;
         };
         let known = stored.iter().find(|s| s.node_id == node.id());
-        let enriched = classify_node(node, &repo, "", known, me, now);
+        let reason = reasons
+            .iter()
+            .find(|r| r.item_node_id == node.id())
+            .map_or("", |r| r.reason.as_str());
+        let enriched = classify_node(node, &repo, reason, known, me, now);
         page.items.push(enriched.row);
         page.events.extend(enriched.events);
     }
     page
 }
 
-type Loaded = (Vec<Stored>, Login);
+type Loaded = (Vec<Stored>, Login, Vec<ThreadReason>);
 
 fn load(results: &[worker::D1Result]) -> Result<Loaded, String> {
     let read = |index: usize| {
@@ -279,7 +289,10 @@ fn load(results: &[worker::D1Result]) -> Result<Loaded, String> {
         .ok_or_else(|| "no signed-in account".to_owned())?
         .login()
         .map_err(|e| e.to_string())?;
-    Ok((stored, me))
+    let reasons = read(2)?
+        .results::<ThreadReason>()
+        .map_err(|e| e.to_string())?;
+    Ok((stored, me, reasons))
 }
 
 /// One search page. The caller has awaited nothing else, so no other GitHub
@@ -331,16 +344,24 @@ pub async fn run(
     let nodes: Vec<&ItemNode> = page.nodes.iter().flatten().collect();
     if !nodes.is_empty() {
         let ids: Vec<&str> = nodes.iter().map(|n| n.id()).collect();
-        let loaded = match crate::db::run(&db, vec![batch::stored_by_node(&ids), batch::me()]).await
+        let loaded = match crate::db::run(
+            &db,
+            vec![
+                batch::stored_by_node(&ids),
+                batch::me(),
+                batch::thread_reasons(&ids),
+            ],
+        )
+        .await
         {
             Ok(results) => load(&results),
             Err(err) => Err(format!("d1 read: {err}")),
         };
-        let (stored, me) = match loaded {
+        let (stored, me, reasons) = match loaded {
             Ok(loaded) => loaded,
             Err(error) => return retry(error),
         };
-        let planned = plan_page(&nodes, &stored, &me, now);
+        let planned = plan_page(&nodes, &stored, &reasons, &me, now);
         for id in &planned.skipped {
             console_log!("sync.backfill skipped node={id}");
         }
