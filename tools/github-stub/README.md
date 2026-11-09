@@ -151,6 +151,28 @@ node tools/github-stub/server.mjs --port 8900 --scenario generated/enrich-basic
 
 The stub's `/graphql` log entry carries `aliases`, the number of items the request named.
 
+## Search scenarios
+
+The R11 backfill and nightly search read `scenario.search.authored` and `scenario.search.involves`, two lists of `issueOrPullRequest` nodes. The stub answers a `Search` operation from them. The variable `q` picks the list (`involves:@me`, otherwise authored), the type (`is:pr` or `is:issue`), and the `updated:>=DATE` cutoff. `first` and `after` page the filtered list. A cursor is `base64("cursor:<offset>")`, and `endCursor` is null on an empty page. The log entry carries `variables` and `nodes`, the number of nodes the page held.
+
+`node tools/github-stub/scenarios/make.mjs <kind>` writes these kinds. Each file's `_expect.items` lists the `owner/repo#number` keys D1 should hold once the run ends, and `scripts/compare-sync.mjs --expect generated/<kind>` reads it.
+
+| Kind | What it holds |
+| --- | --- |
+| `backfill-150` | 150 authored pull requests, 20 authored issues, and 60 involved items, 20 of them shared with the authored pull requests. 210 distinct items. |
+| `backfill-empty` | No items. |
+| `backfill-overlap` | 12 pull requests that are search results and notification threads, and 5 more that only `involves` finds. |
+| `backfill-old` | Pull requests last updated 20, 89, 91, and 400 days ago. Only the first two are in the 90 day window. |
+| `nightly-new` | One pull request of mine updated a day ago with no notification, and one updated 30 days ago. `_expect.items` holds the first, which is what the 7 day window finds. |
+| `low-budget` | A small backfill whose responses report `remaining: 400` of 5000 and a reset 20 s away. |
+| `backfill-150-502` | `backfill-150`, and the third page of the authored pull request search answers 502 twice. |
+| `backfill-150-dead` | The same, with three 502 answers. |
+| `backfill-marker` | A small backfill whose nodes carry `BODYMARK-7f3a` bodies. |
+
+A fault takes `graphql: { after, q }` to match only the requests whose variables carry that cursor and whose query text contains `q`.
+
+Boot one with `--scenario generated/<kind>` after saving its output under `scenarios/generated/`. The relative times resolve when the stub starts, so start it just before the sign-in.
+
 ## Tests
 
 `node --test "tools/**/*.test.mjs"`
