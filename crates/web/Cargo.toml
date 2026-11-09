@@ -7,6 +7,20 @@ publish.workspace = true
 [dependencies]
 domain.workspace = true
 gloo-net = { version = "0.7", default-features = false, features = ["http", "json"] }
+js-sys = "0.3"
 leptos.workspace = true
 leptos_router.workspace = true
+serde.workspace = true
 tw_merge.workspace = true
+wasm-bindgen.workspace = true
+web-sys = { version = "0.3", features = [
+  "CssStyleDeclaration",
+  "Document",
+  "Element",
+  "EventTarget",
+  "HtmlElement",
+  "KeyboardEvent",
+  "ScrollIntoViewOptions",
+  "ScrollLogicalPosition",
+  "Window",
+] }
