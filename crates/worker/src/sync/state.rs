@@ -32,6 +32,9 @@ pub struct SyncState {
     pub last_ok: BTreeMap<SyncKind, Timestamp>,
     /// Kept in the `kv` table, because it is not a `sync_state` column.
     pub poll_phase: PollPhase,
+    /// When the first sign-in backfill finished all three searches. Set once, and
+    /// kept in the `kv` table. A sign-in starts a backfill only while it is unset.
+    pub backfill_done_at: Option<Timestamp>,
 }
 
 impl SyncState {
@@ -39,6 +42,7 @@ impl SyncState {
     pub fn observe(&mut self, unit: &SyncState) {
         self.last_modified.clone_from(&unit.last_modified);
         self.poll_phase.clone_from(&unit.poll_phase);
+        self.backfill_done_at = unit.backfill_done_at.or(self.backfill_done_at);
         self.next_poll_at = unit.next_poll_at;
         self.rate = unit.rate;
         self.scopes.clone_from(&unit.scopes);
@@ -148,6 +152,14 @@ mod tests {
             ..SyncState::default()
         };
         fresh.observe(&unit);
+        assert_eq!(fresh.backfill_done_at, None);
+        fresh.observe(&SyncState {
+            backfill_done_at: Some(Timestamp(70)),
+            ..unit.clone()
+        });
+        assert_eq!(fresh.backfill_done_at, Some(Timestamp(70)));
+        fresh.observe(&unit);
+        assert_eq!(fresh.backfill_done_at, Some(Timestamp(70)));
         assert_eq!(fresh.last_kick_at, Some(Timestamp(50)));
         assert_eq!(fresh.poll_phase, unit.poll_phase);
         assert_eq!(fresh.next_poll_at, Some(Timestamp(65)));

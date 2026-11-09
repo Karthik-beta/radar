@@ -5,6 +5,7 @@ pub mod error;
 pub mod meta;
 pub mod path;
 pub mod query;
+pub mod search;
 
 pub use client::{Client, Conditional, Fetched, Queried, Token};
 pub use error::GithubError;

@@ -32,6 +32,11 @@ const STORED: &str = concat!(
     wanted!()
 );
 
+/// What a search page found, by the item's node id.
+const STORED_BY_NODE: &str =
+    "SELECT repo, number, node_id, ci_state, stage, stage_since, updated_at \
+     FROM items WHERE node_id IN (SELECT value FROM json_each(?1))";
+
 const ME: &str = "SELECT login FROM auth WHERE id = 1";
 
 fn ids_json(ids: &[&str]) -> Param {
@@ -48,6 +53,13 @@ pub fn threads(ids: &[&str]) -> Statement {
 pub fn stored_items(ids: &[&str]) -> Statement {
     Statement {
         sql: STORED,
+        params: vec![ids_json(ids)],
+    }
+}
+
+pub fn stored_by_node(ids: &[&str]) -> Statement {
+    Statement {
+        sql: STORED_BY_NODE,
         params: vec![ids_json(ids)],
     }
 }
@@ -237,6 +249,26 @@ mod tests {
         assert!(
             plan.iter()
                 .any(|d| d.contains("sqlite_autoindex_items") || d.contains("idx_items")),
+            "{plan:?}"
+        );
+    }
+
+    #[test]
+    fn stored_by_node_finds_an_item_without_a_thread_through_the_node_id_index() {
+        let conn = memory_db();
+        exec(&conn, &items::upsert(&item_row(42))).expect("item");
+        exec(&conn, &items::upsert(&item_row(43))).expect("other item");
+        let stmt = stored_by_node(&["PR_42", "PR_missing"]);
+        let stored: Vec<Stored> =
+            typed::<StoredRecord, Stored>(query_json(&conn, stmt.sql, &stmt.params));
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].node_id, "PR_42");
+        assert_eq!(stored[0].number, 42);
+        let plan = crate::db::testing::explain(&conn, &stmt);
+        assert!(
+            plan.iter().any(|d| d.contains("sqlite_autoindex_items")
+                || d.contains("idx_items")
+                || d.contains("PRIMARY KEY")),
             "{plan:?}"
         );
     }
