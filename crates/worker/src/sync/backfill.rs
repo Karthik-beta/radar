@@ -117,19 +117,23 @@ impl SearchKind {
 }
 
 /// Where a search page starts. It is the whole of a `BackfillPage` row's key, so a
-/// restart resumes from it. `page` counts from 1 within a kind and only labels the log.
+/// restart resumes from it. `since` is fixed when the window starts, because a GitHub
+/// search cursor belongs to one query: a page resumed on a later day must send the
+/// same `updated:>=` date. `page` counts from 1 within a kind and only labels the log.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackfillCursor {
     pub window: SearchWindow,
+    pub since: String,
     pub kind: SearchKind,
     pub page: u32,
     pub after: Option<String>,
 }
 
 impl BackfillCursor {
-    pub fn first(window: SearchWindow) -> Self {
+    pub fn first(window: SearchWindow, now: Timestamp) -> Self {
         Self {
             window,
+            since: window.since(now),
             kind: SearchKind::Authored,
             page: 1,
             after: None,
@@ -137,14 +141,15 @@ impl BackfillCursor {
     }
 
     /// The search string: the kind's terms and the window's date, and nothing else.
-    pub fn query(&self, now: Timestamp) -> String {
-        format!("{} updated:>={}", self.kind.query(), self.window.since(now))
+    pub fn query(&self) -> String {
+        format!("{} updated:>={}", self.kind.query(), self.since)
     }
 
     pub fn key(&self) -> String {
         format!(
-            "{}.{}.{}.{}",
+            "{}.{}.{}.{}.{}",
             self.window.tag(),
+            self.since,
             self.kind.tag(),
             self.page,
             self.after.as_deref().unwrap_or(START)
@@ -152,8 +157,9 @@ impl BackfillCursor {
     }
 
     pub fn parse(key: &str) -> Option<Self> {
-        let mut parts = key.splitn(4, '.');
+        let mut parts = key.splitn(5, '.');
         let window = SearchWindow::from_tag(parts.next()?)?;
+        let since = parts.next().filter(|d| valid_date(d))?.to_owned();
         let kind = SearchKind::from_tag(parts.next()?)?;
         let page = parts.next()?.parse::<u32>().ok().filter(|&p| p >= 1)?;
         let after = match parts.next()? {
@@ -163,11 +169,21 @@ impl BackfillCursor {
         };
         Some(Self {
             window,
+            since,
             kind,
             page,
             after,
         })
     }
+}
+
+/// `YYYY-MM-DD`, the only shape `SearchWindow::since` writes.
+fn valid_date(raw: &str) -> bool {
+    raw.len() == 10
+        && raw.bytes().enumerate().all(|(i, b)| match i {
+            4 | 7 => b == b'-',
+            _ => b.is_ascii_digit(),
+        })
 }
 
 /// A cursor ends up in a row key and the log, so it keeps to the alphabet of a base64 string.
@@ -199,6 +215,7 @@ pub fn next_step(cursor: &BackfillCursor, next_after: Option<String>) -> Step {
     match cursor.kind.next() {
         Some(kind) => Step::Page(BackfillCursor {
             window: cursor.window,
+            since: cursor.since.clone(),
             kind,
             page: 1,
             after: None,
@@ -320,7 +337,7 @@ pub async fn run(
         Err(err) => return retry(err.to_string()),
     };
     let variables = json!({
-        "q": cursor.query(now),
+        "q": cursor.query(),
         "first": ENRICH_BATCH,
         "after": cursor.after,
     });

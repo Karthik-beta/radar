@@ -208,7 +208,7 @@ fn start_window(rows: &[WorkRow], window: SearchWindow, now: Timestamp) -> Vec<W
     let mut queued = rows.iter().filter(|row| window_of(row) == Some(window));
     if queued.next().is_none() {
         return vec![WorkRow::pending(
-            WorkKind::BackfillPage(BackfillCursor::first(window)),
+            WorkKind::BackfillPage(BackfillCursor::first(window, now)),
             now,
         )];
     }
@@ -276,11 +276,12 @@ mod tests {
     const NOW: Timestamp = Timestamp(1_000_000);
 
     fn backfill_start(window: SearchWindow) -> WorkKind {
-        WorkKind::BackfillPage(BackfillCursor::first(window))
+        WorkKind::BackfillPage(BackfillCursor::first(window, NOW))
     }
 
     fn backfill_page(window: SearchWindow, kind: SearchKind, page: u32, after: &str) -> WorkKind {
         WorkKind::BackfillPage(BackfillCursor {
+            since: window.since(NOW),
             window,
             kind,
             page,

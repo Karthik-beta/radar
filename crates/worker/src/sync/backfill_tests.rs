@@ -26,6 +26,7 @@ fn data(body: &str) -> SearchData {
 fn cursor(kind: SearchKind, page: u32, after: Option<&str>) -> BackfillCursor {
     BackfillCursor {
         window: SearchWindow::Backfill90d,
+        since: SearchWindow::Backfill90d.since(NOW),
         kind,
         page,
         after: after.map(str::to_owned),
@@ -74,7 +75,7 @@ fn the_last_page_of_each_kind_starts_the_next_kind_and_involves_ends() {
 
 #[test]
 fn the_nightly_window_runs_the_same_three_searches() {
-    let mut here = BackfillCursor::first(SearchWindow::Nightly7d);
+    let mut here = BackfillCursor::first(SearchWindow::Nightly7d, NOW);
     let mut kinds = vec![here.kind];
     while let Step::Page(next) = next_step(&here, None) {
         assert_eq!(next.window, SearchWindow::Nightly7d);
@@ -105,12 +106,10 @@ fn each_window_reaches_back_its_own_number_of_days() {
 fn a_query_is_the_kind_terms_and_the_date() {
     let query = |kind, window| {
         BackfillCursor {
-            window,
             kind,
-            page: 1,
-            after: None,
+            ..BackfillCursor::first(window, NOW)
         }
-        .query(NOW)
+        .query()
     };
     assert_eq!(
         query(SearchKind::Authored, SearchWindow::Backfill90d),
@@ -129,15 +128,15 @@ fn a_query_is_the_kind_terms_and_the_date() {
 #[test]
 fn a_cursor_round_trips_through_its_row_key() {
     for original in [
-        BackfillCursor::first(SearchWindow::Backfill90d),
-        BackfillCursor::first(SearchWindow::Nightly7d),
+        BackfillCursor::first(SearchWindow::Backfill90d, NOW),
+        BackfillCursor::first(SearchWindow::Nightly7d, NOW),
         cursor(SearchKind::Involves, 12, Some("Y3Vyc29yOjEyMA==")),
     ] {
         assert_eq!(BackfillCursor::parse(&original.key()), Some(original));
     }
     assert_eq!(
-        BackfillCursor::first(SearchWindow::Backfill90d).key(),
-        "b90.authored.1.start"
+        BackfillCursor::first(SearchWindow::Backfill90d, NOW).key(),
+        "b90.2026-08-09.authored.1.start"
     );
 }
 
@@ -277,4 +276,33 @@ fn a_search_keeps_the_mention_its_notification_thread_reported() {
         mentioned(&with.items) > 0,
         "a stored mention reason survives the search"
     );
+}
+
+#[test]
+fn every_later_page_keeps_the_cutoff_its_window_started_with() {
+    let start = BackfillCursor::first(SearchWindow::Backfill90d, NOW);
+    let Step::Page(next) = next_step(&start, Some("Y3I=".into())) else {
+        panic!("a next page");
+    };
+    let Step::Page(issues) = next_step(&next, None) else {
+        panic!("the next kind");
+    };
+    assert_eq!(next.since, start.since);
+    assert_eq!(issues.since, start.since);
+    assert_eq!(
+        BackfillCursor::parse(&issues.key()).map(|c| c.query()),
+        Some("is:issue author:@me updated:>=2026-08-09".to_owned()),
+        "a page resumed on any later day sends the same date"
+    );
+}
+
+#[test]
+fn a_key_with_a_bad_cutoff_is_rejected() {
+    for key in [
+        "b90.2026-8-09.authored.1.start",
+        "b90.20260809xx.authored.1.start",
+        "b90.authored.1.start",
+    ] {
+        assert_eq!(BackfillCursor::parse(key), None, "{key}");
+    }
 }

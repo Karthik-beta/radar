@@ -276,8 +276,12 @@ mod tests {
         assert_eq!(WorkKind::PollNotifications.key(), "main");
         assert_eq!(WorkKind::Rollup.key(), "nightly");
         assert_eq!(
-            WorkKind::BackfillPage(BackfillCursor::first(SearchWindow::Backfill90d)).key(),
-            "b90.authored.1.start"
+            WorkKind::BackfillPage(BackfillCursor::first(
+                SearchWindow::Backfill90d,
+                Timestamp(0)
+            ))
+            .key(),
+            "b90.1969-10-03.authored.1.start"
         );
         assert_ne!(enrich(&["PR_a"]).key(), enrich(&["PR_b"]).key());
     }
@@ -296,9 +300,13 @@ mod tests {
         for kind in [
             WorkKind::PollNotifications,
             enrich(&["PR_z", "I_y"]),
-            WorkKind::BackfillPage(BackfillCursor::first(SearchWindow::Backfill90d)),
+            WorkKind::BackfillPage(BackfillCursor::first(
+                SearchWindow::Backfill90d,
+                Timestamp(0),
+            )),
             WorkKind::BackfillPage(BackfillCursor {
                 window: SearchWindow::Nightly7d,
+                since: "2026-10-31".into(),
                 kind: SearchKind::Involves,
                 page: 3,
                 after: Some("Y3Vyc29yOjI=".into()),

@@ -323,6 +323,7 @@ mod tests {
                 ..WorkRow::pending(
                     WorkKind::BackfillPage(BackfillCursor {
                         window: SearchWindow::Backfill90d,
+                        since: "2026-08-09".into(),
                         kind: SearchKind::AuthoredIssues,
                         page: 2,
                         after: Some("Y3I=".into()),
