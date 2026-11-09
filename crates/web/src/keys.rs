@@ -1,8 +1,9 @@
-use domain::api::{ItemId, SnoozeFor, TheirRow, TurnRow};
+use domain::api::{ItemId, SnoozeFor};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, KeyboardEvent};
 
+use crate::components::triage_row::RowData;
 use crate::url::GithubUrl;
 
 /// A row the keyboard can act on.
@@ -11,21 +12,12 @@ pub trait Triageable {
     fn item_url(&self) -> &str;
 }
 
-impl Triageable for TurnRow {
+impl Triageable for RowData {
     fn item_id(&self) -> &ItemId {
         &self.id
     }
     fn item_url(&self) -> &str {
-        &self.url
-    }
-}
-
-impl Triageable for TheirRow {
-    fn item_id(&self) -> &ItemId {
-        &self.id
-    }
-    fn item_url(&self) -> &str {
-        &self.url
+        self.url.as_ref().map_or("", GithubUrl::as_str)
     }
 }
 

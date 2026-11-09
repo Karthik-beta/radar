@@ -1,14 +1,13 @@
-use domain::api::{Action, ItemId, LastAction, SnoozeFor, TheirRow};
+use domain::api::{Action, LastAction, TheirRow};
 use domain::ids::Login;
 use leptos::prelude::*;
 
 use crate::components::empty_state::EmptyState;
 use crate::components::key_hints::KeyHints;
-use crate::components::snooze_menu::SnoozeMenu;
-use crate::components::triage_row::{RowData, TriageRow};
+use crate::components::triage_list::{triage_list, ListKind, TriageList};
+use crate::components::triage_row::RowData;
 use crate::heat::{days_phrase, heat, Heat, Thresholds};
-use crate::keys::{self, Effect, Key, Mode, State};
-use crate::store::{use_store, Load, Triage};
+use crate::store::{use_store, Load};
 use crate::url::GithubUrl;
 
 /// Whether the tab links here. The header marks the tab `aria-disabled` until
@@ -21,9 +20,6 @@ const HINTS: &[(&str, &str)] = &[
     ("enter", "open"),
     ("s", "snooze"),
 ];
-
-/// Shown until R21 knows how fast each repo replies.
-const USUAL_REPLY: &str = "-";
 
 pub fn waiting_on(reviewers: &[Login]) -> String {
     if reviewers.is_empty() {
@@ -107,9 +103,11 @@ pub fn TheirTurn() -> impl IntoView {
     let store = use_store();
     let now = store.now_secs();
     let rows = Memo::new(move |_| {
-        store
-            .dashboard()
-            .with(|d| d.as_ref().map(|d| d.their_turn.clone()).unwrap_or_default())
+        store.dashboard().with(|d| {
+            d.as_ref()
+                .map(|d| d.their_turn.iter().map(row_data).collect())
+                .unwrap_or_default()
+        })
     });
     let nudge = Memo::new(move |_| {
         store
@@ -117,43 +115,8 @@ pub fn TheirTurn() -> impl IntoView {
             .with(|d| d.as_ref().map(|d| d.nudge).unwrap_or_default())
     });
     let thresholds = Memo::new(move |_| Thresholds::from_nudge(nudge.get()));
-    let active = Memo::new(move |_| {
-        rows.with(|rows| {
-            rows.iter()
-                .filter(|row| !store.is_leaving(&row.id))
-                .cloned()
-                .collect::<Vec<TheirRow>>()
-        })
-    });
-    let keys_state = RwSignal::new(State::default());
-    let selected = Memo::new(move |_| {
-        let selection = keys_state.with(|s| s.selection);
-        active.with(|rows| {
-            selection
-                .clamp(rows.len())
-                .index()
-                .and_then(|i| rows.get(i))
-                .map(|row| row.id.clone())
-        })
-    });
-    let snoozing = Memo::new(move |_| {
-        keys_state.with(|s| match &s.mode {
-            Mode::Snoozing { item } => Some(item.clone()),
-            Mode::Browsing => None,
-        })
-    });
-
-    let press = move |key: Key| {
-        let (next, effect) =
-            active.with_untracked(|rows| keys::step(keys_state.get_untracked(), key, rows));
-        keys_state.set(next);
-        match effect {
-            Some(Effect::Open(url)) => open_tab(&url),
-            Some(Effect::Snooze(id, snooze_for)) => store.triage(id, Triage::Snooze(snooze_for)),
-            Some(Effect::Dismiss(_)) | None => {}
-        }
-    };
-    keys::listen(press);
+    let TriageList { active, view: list } =
+        triage_list(ListKind::TheirTurn, rows, thresholds.into());
 
     let your_turn = move || {
         store
@@ -171,49 +134,7 @@ pub fn TheirTurn() -> impl IntoView {
         summary(stale, nudge.get().warm_days())
     });
     let empty = move || active.with(Vec::is_empty) && rows.with(Vec::is_empty);
-
-    let list = move || {
-        view! {
-            <ul class="rows" aria-label="Waiting on others">
-                <For
-                    each=move || {
-                        let th = thresholds.get();
-                        rows.get().into_iter().map(|row| (row, th)).collect::<Vec<_>>()
-                    }
-                    key=|(row, th)| (row.id.clone(), th.warm, th.hot)
-                    let:entry
-                >
-                    {
-                        let (row, th) = entry;
-                        let id = row.id.clone();
-                        let is = move |other: Option<ItemId>| other.as_ref() == Some(&id);
-                        let (sel_id, snooze_id, leave_id) = (is.clone(), is.clone(), row.id.clone());
-                        let open_menu = Signal::derive(move || snooze_id(snoozing.get()));
-                        view! {
-                            <TriageRow
-                                row=row_data(&row)
-                                thresholds=th
-                                now=now
-                                selected=Signal::derive(move || sel_id(selected.get()))
-                                leaving=Signal::derive(move || store.is_leaving(&leave_id))
-                            >
-                                <span class="row-usual text-faint">{USUAL_REPLY}</span>
-                                <SnoozeMenu
-                                    open=open_menu
-                                    on_pick=move |snooze_for| {
-                                        press(match snooze_for {
-                                            SnoozeFor::Day => Key::Day,
-                                            SnoozeFor::Week => Key::Week,
-                                        })
-                                    }
-                                />
-                            </TriageRow>
-                        }
-                    }
-                </For>
-            </ul>
-        }
-    };
+    let list = StoredValue::new(list);
 
     view! {
         <section class="their-turn">
@@ -235,20 +156,12 @@ pub fn TheirTurn() -> impl IntoView {
                         <p class="summary-line">{move || nudge_line(nudge.get().warm_days())}</p>
                     </div>
                     {move || store.notice().get().map(|text| view! { <p class="notice" role="status">{text}</p> })}
-                    {list}
+                    {move || list.with_value(ViewFn::run)}
                     <KeyHints hints=HINTS/>
                 </Show>
             </Show>
         </section>
     }
-}
-
-fn open_tab(url: &GithubUrl) {
-    let _ = window().open_with_url_and_target_and_features(
-        url.as_str(),
-        "_blank",
-        "noopener,noreferrer",
-    );
 }
 
 #[cfg(test)]

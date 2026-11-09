@@ -10,5 +10,6 @@ pub mod recent_list;
 pub mod snooze_menu;
 pub mod sync_status;
 pub mod tabs;
+pub mod triage_list;
 pub mod triage_row;
 pub mod ui;
