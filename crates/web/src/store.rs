@@ -36,13 +36,6 @@ impl Load {
         }
     }
 
-    pub fn fetched_at(&self) -> Option<f64> {
-        match self {
-            Self::Ready { fetched_at, .. } | Self::Stale { fetched_at, .. } => Some(*fetched_at),
-            _ => None,
-        }
-    }
-
     /// The state after a fetch ends. A failure keeps rows already on screen.
     pub fn settle(self, result: Result<Dashboard, ApiError>, now: f64) -> Self {
         match (self, result) {
@@ -416,7 +409,6 @@ mod tests {
         let ready = Load::Loading.settle(Ok(dashboard(&["A"])), 5.0);
         let stale = ready.clone().settle(Err(ApiError::Status(500)), 9.0);
         assert_eq!(stale.data(), ready.data());
-        assert_eq!(stale.fetched_at(), Some(5.0));
         assert!(matches!(
             stale,
             Load::Stale {
