@@ -152,6 +152,8 @@ pub struct Store {
     leaving: RwSignal<HashSet<ItemId>>,
     in_flight: StoredValue<bool>,
     fetches: StoredValue<u64>,
+    /// Bumped on sign-out, so a fetch that started earlier is ignored.
+    session: StoredValue<u64>,
     view: Memo<Option<Dashboard>>,
     fresh: RwSignal<FreshLoad>,
     fresh_in_flight: StoredValue<bool>,
@@ -175,6 +177,7 @@ pub fn provide_store() -> Store {
         leaving,
         in_flight: StoredValue::new(false),
         fetches: StoredValue::new(0),
+        session: StoredValue::new(0),
         view,
         fresh: RwSignal::new(FreshLoad::Loading),
         fresh_in_flight: StoredValue::new(false),
@@ -242,9 +245,14 @@ impl Store {
         self.in_flight.set_value(true);
         let fetch = self.fetches.get_value() + 1;
         self.fetches.set_value(fetch);
+        let session = self.session.get_value();
         let store = *self;
         spawn_local(async move {
             let result = api::dashboard().await;
+            if store.session.get_value() != session {
+                store.in_flight.set_value(false);
+                return;
+            }
             let now = now_ms();
             if result.is_ok() {
                 store.pending.update(|p| {
@@ -294,7 +302,10 @@ impl Store {
                         p.insert(id, Pending::Sent { after_fetch });
                     });
                 }
-                Err(ApiError::Unauthorized) => store.load.set(Load::SignedOut),
+                Err(ApiError::Unauthorized) => {
+                    store.session.update_value(|s| *s += 1);
+                    store.load.set(Load::SignedOut);
+                }
                 Err(_) => {
                     store.pending.update(|p| {
                         p.remove(&id);

@@ -175,6 +175,28 @@ pub fn step<R: Triageable>(state: State, key: Key, rows: &[R]) -> (State, Option
     }
 }
 
+/// Steps `key` on the row `id`, for a click on that row's own button. The row
+/// becomes the selection and any open menu closes first.
+pub fn step_on<R: Triageable>(
+    state: State,
+    id: &ItemId,
+    key: Key,
+    rows: &[R],
+) -> (State, Option<Effect>) {
+    let selection = rows
+        .iter()
+        .position(|row| row.item_id() == id)
+        .map_or(state.selection, Selection::At);
+    step(
+        State {
+            mode: Mode::Browsing,
+            selection,
+        },
+        key,
+        rows,
+    )
+}
+
 /// Whether Enter on this element does its own job, so the triage keys leave it.
 fn activates_on_enter(tag: &str, role: Option<&str>) -> bool {
     matches!(tag, "A" | "BUTTON") || matches!(role, Some("button" | "menuitem"))
@@ -253,6 +275,34 @@ mod tests {
 
     fn id(i: usize) -> ItemId {
         ItemId::parse(&format!("I_{i}")).expect("id")
+    }
+
+    #[test]
+    fn a_row_button_acts_on_its_own_row_not_the_selection() {
+        let list = rows(3);
+        let (state, effect) = step_on(at(0), &id(2), Key::Dismiss, &list);
+        assert_eq!(effect, Some(Effect::Dismiss(id(2))));
+        assert_eq!(state, at(1));
+    }
+
+    #[test]
+    fn a_row_snooze_button_opens_that_rows_menu_even_when_another_is_open() {
+        let list = rows(3);
+        let open_on_zero = State {
+            mode: Mode::Snoozing { item: id(0) },
+            selection: Selection::At(0),
+        };
+        let (state, effect) = step_on(open_on_zero, &id(1), Key::Snooze, &list);
+        assert_eq!(effect, None);
+        assert_eq!(
+            state,
+            State {
+                mode: Mode::Snoozing { item: id(1) },
+                selection: Selection::At(1),
+            }
+        );
+        let (_, picked) = step(state, Key::Week, &list);
+        assert_eq!(picked, Some(Effect::Snooze(id(1), SnoozeFor::Week)));
     }
 
     #[test]

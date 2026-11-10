@@ -19,8 +19,8 @@
 }
 
 .their-turn .row {
-  grid-template-columns: 20ch minmax(0, 1fr) minmax(0, 32ch) 6ch 4ch;
-  grid-template-areas: "repo title who usual age";
+  grid-template-columns: 20ch minmax(0, 1fr) minmax(0, 32ch) 6ch 4ch auto;
+  grid-template-areas: "repo title who usual age actions";
 }
 
 .row-usual {
@@ -34,7 +34,7 @@
     grid-template-areas:
       "title age"
       "who who"
-      "repo repo";
+      "repo actions";
   }
 
   .row-usual {

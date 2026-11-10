@@ -37,7 +37,9 @@ pub fn RecentList(
                 fallback=|| view! { <p class="empty-state recent-none" data-empty>{NONE}</p> }
             >
                 <ul class="recent-rows">
-                    <For each=move || rows.get() key=|row| row.id.clone() let:row>
+                    <For each=move || rows.get() key=|row| (row.id.clone(), row.title.clone(), row.url.clone(), state_word(row.state), row.ended_at)
+                        let:row
+                    >
                         {
                             let ended = row.ended_at;
                             let age = move || now.get().saturating_sub(ended.0);

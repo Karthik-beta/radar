@@ -77,9 +77,12 @@ pub fn triage_list(
         })
     });
 
-    let press = move |key: Key| {
-        let (next, effect) =
-            active.with_untracked(|rows| keys::step(keys_state.get_untracked(), key, rows));
+    let press_on = move |key: Key, target: Option<ItemId>| {
+        let state = keys_state.get_untracked();
+        let (next, effect) = active.with_untracked(|rows| match &target {
+            Some(id) => keys::step_on(state, id, key, rows),
+            None => keys::step(state, key, rows),
+        });
         if matches!(effect, Some(Effect::Dismiss(_))) && !kind.dismisses() {
             return;
         }
@@ -91,6 +94,7 @@ pub fn triage_list(
             None => {}
         }
     };
+    let press = move |key: Key| press_on(key, None);
     keys::listen(press);
 
     let view = ViewFn::from(move || {
@@ -110,6 +114,11 @@ pub fn triage_list(
                         let is = move |other: Option<ItemId>| other.as_ref() == Some(&id);
                         let (sel_id, snooze_id, leave_id) = (is.clone(), is.clone(), row.id.clone());
                         let open_menu = Signal::derive(move || snooze_id(snoozing.get()));
+                        let (snooze_label, dismiss_label) = (
+                            format!("Snooze {}#{}", row.repo, row.number),
+                            format!("Dismiss {}#{}", row.repo, row.number),
+                        );
+                        let (snooze_target, dismiss_target) = (row.id.clone(), row.id.clone());
                         view! {
                             <TriageRow
                                 row=row
@@ -119,6 +128,31 @@ pub fn triage_list(
                                 leaving=Signal::derive(move || store.is_leaving(&leave_id))
                             >
                                 {kind.usual_reply().then(|| view! { <span class="row-usual text-faint">{USUAL_REPLY}</span> })}
+                                <span class="row-actions">
+                                    <button
+                                        type="button"
+                                        class="row-action"
+                                        aria-label=snooze_label
+                                        aria-haspopup="menu"
+                                        aria-expanded=move || open_menu.get().to_string()
+                                        on:click=move |_| {
+                                            let key = if open_menu.get_untracked() { Key::Escape } else { Key::Snooze };
+                                            press_on(key, Some(snooze_target.clone()))
+                                        }
+                                    >
+                                        "Snooze"
+                                    </button>
+                                    {kind.dismisses().then(|| view! {
+                                        <button
+                                            type="button"
+                                            class="row-action"
+                                            aria-label=dismiss_label
+                                            on:click=move |_| press_on(Key::Dismiss, Some(dismiss_target.clone()))
+                                        >
+                                            "Dismiss"
+                                        </button>
+                                    })}
+                                </span>
                                 <SnoozeMenu
                                     open=open_menu
                                     on_pick=move |snooze_for| {

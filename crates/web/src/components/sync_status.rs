@@ -2,8 +2,8 @@ use leptos::ev::keydown;
 use leptos::html::Button;
 use leptos::prelude::*;
 
-use crate::store::{use_store, FreshLoad};
-use crate::sync_label::{sync_label, SyncHealth};
+use crate::store::{use_store, FreshLoad, Load};
+use crate::sync_label::{sync_label, with_refresh, SyncHealth};
 use crate::views::freshness::FreshnessPanel;
 
 const PANEL_ID: &str = "data-freshness";
@@ -17,11 +17,13 @@ pub fn SyncStatus() -> impl IntoView {
     let button = NodeRef::<Button>::new();
 
     let label = move || {
-        store.freshness().with(|fresh| match fresh {
+        let freshness = store.freshness().with(|fresh| match fresh {
             FreshLoad::Loading => None,
             FreshLoad::Unavailable(_) => Some(sync_label(SyncHealth::Unknown)),
             FreshLoad::Ready(data) => Some(sync_label(SyncHealth::of(data, now.get()))),
-        })
+        });
+        let refresh_failed = store.load().with(|load| matches!(load, Load::Stale { .. }));
+        with_refresh(freshness, refresh_failed)
     };
 
     let close = window_event_listener(keydown, move |event| {

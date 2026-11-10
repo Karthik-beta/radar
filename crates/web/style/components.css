@@ -12,8 +12,8 @@
 
 .row {
   display: grid;
-  grid-template-columns: 17ch 20ch minmax(0, 1fr) minmax(0, 22ch) 4ch;
-  grid-template-areas: "reason repo title who age";
+  grid-template-columns: 17ch 20ch minmax(0, 1fr) minmax(0, 22ch) 4ch auto;
+  grid-template-areas: "reason repo title who age actions";
   align-items: baseline;
   column-gap: var(--spacing-4);
   position: relative;
@@ -81,6 +81,30 @@ a.row-link:hover {
   justify-self: end;
 }
 
+.row-actions {
+  grid-area: actions;
+  display: flex;
+  gap: var(--spacing-1);
+  align-self: center;
+}
+
+.row-action {
+  padding: 0 var(--spacing-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+
+.row-action:hover,
+.row-action[aria-expanded="true"] {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
 .row > .snooze-menu {
   position: absolute;
   top: 100%;
@@ -93,9 +117,14 @@ a.row-link:hover {
     grid-template-areas:
       "title title age"
       "who who who"
-      "reason repo repo";
+      "reason repo actions";
     column-gap: var(--spacing-2);
     row-gap: var(--spacing-1);
+  }
+
+  .row-action {
+    min-width: calc(var(--spacing-7) + var(--spacing-4));
+    min-height: calc(var(--spacing-7) + var(--spacing-4));
   }
 
   .row-title {

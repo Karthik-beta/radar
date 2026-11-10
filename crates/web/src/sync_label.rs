@@ -52,6 +52,16 @@ pub fn sync_label(health: SyncHealth) -> String {
     }
 }
 
+/// The header text with a failed dashboard refresh added. The freshness label
+/// stays, because the two fetches succeed and fail apart.
+pub fn with_refresh(label: Option<String>, refresh_failed: bool) -> Option<String> {
+    match (label, refresh_failed) {
+        (label, false) => label,
+        (Some(label), true) => Some(format!("{label}. Refresh failed")),
+        (None, true) => Some("Refresh failed".to_owned()),
+    }
+}
+
 /// "40s", "2m", "3h", "4d".
 pub fn age_compact(secs: i64) -> String {
     let secs = secs.max(0);
@@ -137,6 +147,18 @@ mod tests {
     use domain::sync_status::DeadWork;
 
     use super::*;
+
+    #[test]
+    fn a_failed_refresh_adds_to_the_freshness_label() {
+        let synced = Some("Synced 2m ago".to_owned());
+        assert_eq!(with_refresh(synced.clone(), false), synced);
+        assert_eq!(
+            with_refresh(synced, true).as_deref(),
+            Some("Synced 2m ago. Refresh failed")
+        );
+        assert_eq!(with_refresh(None, true).as_deref(), Some("Refresh failed"));
+        assert_eq!(with_refresh(None, false), None);
+    }
 
     fn freshness(poll_age: Option<i64>, dead: usize, now: i64) -> Freshness {
         Freshness {
