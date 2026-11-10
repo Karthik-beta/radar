@@ -3,7 +3,9 @@
 
 mod telegram;
 
-use domain::alert::{alert_text, decide, Alert, AlertDecision, AlertsMode, MAX_AGE_SECS};
+use domain::alert::{
+    alert_text, decide, Alert, AlertDecision, AlertsMode, SkipReason, MAX_AGE_SECS,
+};
 use domain::event::EventId;
 use domain::ids::Timestamp;
 use worker::{console_log, D1Database, Env};
@@ -30,9 +32,13 @@ pub struct Outgoing {
 }
 
 /// The messages this dispatch sends, in event order, and whether more wait.
-/// A skipped candidate is logged and left without a row.
-pub fn plan(candidates: &[Candidate], now: Timestamp) -> (Vec<Outgoing>, bool) {
+/// A skipped candidate is left without a row and returned for the caller to log.
+pub fn plan(
+    candidates: &[Candidate],
+    now: Timestamp,
+) -> (Vec<Outgoing>, bool, Vec<(EventId, SkipReason)>) {
     let mut sends = Vec::new();
+    let mut skipped = Vec::new();
     for candidate in candidates {
         match decide(&candidate.event, &candidate.item, now) {
             AlertDecision::Send => {
@@ -43,15 +49,12 @@ pub fn plan(candidates: &[Candidate], now: Timestamp) -> (Vec<Outgoing>, bool) {
                     });
                 }
             }
-            AlertDecision::Skip(why) => console_log!(
-                "alert event={} outcome=skipped why={why:?}",
-                candidate.event.id.as_str()
-            ),
+            AlertDecision::Skip(why) => skipped.push((candidate.event.id.clone(), why)),
         }
     }
     let more = sends.len() > BATCH;
     sends.truncate(BATCH);
-    (sends, more)
+    (sends, more, skipped)
 }
 
 pub async fn dispatch(db: &D1Database, env: &Env, now: Timestamp) -> UnitOutcome {
@@ -86,7 +89,10 @@ pub async fn dispatch(db: &D1Database, env: &Env, now: Timestamp) -> UnitOutcome
         Err(err) => return retry(format!("alert row: {err}")),
     };
 
-    let (sends, more) = plan(&candidates, now);
+    let (sends, more, skipped) = plan(&candidates, now);
+    for (id, why) in &skipped {
+        console_log!("alert event={} outcome=skipped why={why:?}", id.as_str());
+    }
     for outgoing in &sends {
         let sent = telegram::send(&base, &config, &outgoing.text).await;
         let outcome = if sent.is_ok() { "sent" } else { "failed" };
@@ -152,7 +158,7 @@ mod tests {
     #[test]
     fn twelve_fresh_mentions_send_five_and_leave_more() {
         let all: Vec<_> = (0..12).map(|n| candidate(n, false, 60)).collect();
-        let (sends, more) = plan(&all, NOW);
+        let (sends, more, _) = plan(&all, NOW);
         assert_eq!(sends.len(), BATCH);
         assert!(more);
         assert_eq!(sends[0].event.as_str(), "E0");
@@ -163,7 +169,7 @@ mod tests {
         let mut all: Vec<_> = (0..8).map(|n| candidate(n, true, 60)).collect();
         all.push(candidate(9, false, 60));
         all.push(candidate(10, false, MAX_AGE_SECS + 1));
-        let (sends, more) = plan(&all, NOW);
+        let (sends, more, _) = plan(&all, NOW);
         assert_eq!(sends.len(), 1);
         assert!(!more);
     }
