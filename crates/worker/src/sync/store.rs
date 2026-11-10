@@ -46,8 +46,10 @@ CREATE TABLE IF NOT EXISTS kv (
 ";
 
 const POLL_PHASE_KEY: &str = "poll_phase";
+const BACKFILL_DONE_KEY: &str = "backfill_done_at";
 
 pub const SELECT_PHASE: &str = "SELECT value FROM kv WHERE key = 'poll_phase'";
+pub const SELECT_BACKFILL_DONE: &str = "SELECT value FROM kv WHERE key = 'backfill_done_at'";
 
 pub const SELECT_ROWS: &str =
     "SELECT kind, key, payload, due_at, attempts, dead, last_error FROM work";
@@ -131,6 +133,7 @@ impl RawState {
                 .filter_map(|(kind, at)| Some((kind, Timestamp(at?))))
                 .collect(),
             poll_phase: PollPhase::default(),
+            backfill_done_at: None,
         }
     }
 }
@@ -143,6 +146,21 @@ pub struct RawKv {
 impl RawKv {
     pub fn parse_phase(&self) -> Option<PollPhase> {
         PollPhase::decode(&self.value)
+    }
+
+    pub fn parse_backfill_done(&self) -> Option<Timestamp> {
+        self.value.parse::<i64>().ok().map(Timestamp)
+    }
+}
+
+pub fn save_backfill_done(at: Timestamp) -> Statement {
+    Statement {
+        sql: "INSERT INTO kv (key, value) VALUES (?1, ?2) \
+              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params: vec![
+            Param::text(BACKFILL_DONE_KEY),
+            Param::text(at.0.to_string()),
+        ],
     }
 }
 
@@ -231,7 +249,8 @@ mod tests {
 
     use super::*;
     use crate::db::testing::{count_rows, exec, query_json};
-    use crate::sync::work::{Cursor, EnrichBatch, NodeId};
+    use crate::sync::backfill::{BackfillCursor, SearchKind, SearchWindow};
+    use crate::sync::work::{EnrichBatch, NodeId};
 
     fn open() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -302,7 +321,13 @@ mod tests {
                 state: RowState::Dead,
                 last_error: Some("transport".into()),
                 ..WorkRow::pending(
-                    WorkKind::BackfillPage(Cursor::After("Y3I=".into())),
+                    WorkKind::BackfillPage(BackfillCursor {
+                        window: SearchWindow::Backfill90d,
+                        since: "2026-08-09".into(),
+                        kind: SearchKind::AuthoredIssues,
+                        page: 2,
+                        after: Some("Y3I=".into()),
+                    }),
                     Timestamp(3),
                 )
             },
@@ -357,9 +382,33 @@ mod tests {
                 (SyncKind::Rollup, Timestamp(80)),
             ]),
             poll_phase: PollPhase::default(),
+            backfill_done_at: None,
         };
         exec(&conn, &save_state(&saved)).unwrap();
         assert_eq!(state(&conn), saved);
+    }
+
+    fn backfill_done(conn: &Connection) -> Option<Timestamp> {
+        let found = query_json(conn, SELECT_BACKFILL_DONE, &[]);
+        assert!(found.len() <= 1);
+        let raw =
+            serde_json::from_value::<RawKv>(Value::Object(found.into_iter().next()?)).unwrap();
+        Some(raw.parse_backfill_done().unwrap())
+    }
+
+    #[test]
+    fn backfill_done_is_absent_then_saved_and_shares_the_kv_table_with_the_phase() {
+        let conn = open();
+        assert_eq!(backfill_done(&conn), None);
+        exec(&conn, &save_backfill_done(Timestamp(1_794_052_800))).unwrap();
+        assert_eq!(backfill_done(&conn), Some(Timestamp(1_794_052_800)));
+        exec(&conn, &save_phase(&PollPhase::default())).unwrap();
+        assert_eq!(backfill_done(&conn), Some(Timestamp(1_794_052_800)));
+        assert_eq!(count_rows(&conn, "kv"), 2);
+        let bad = RawKv {
+            value: "yesterday".into(),
+        };
+        assert_eq!(bad.parse_backfill_done(), None);
     }
 
     fn phase(conn: &Connection) -> Option<PollPhase> {

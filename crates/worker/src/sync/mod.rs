@@ -1,6 +1,7 @@
 //! The Syncer Durable Object: the only code that calls GitHub. Each alarm runs
 //! one unit from the `work` table, and `scheduler` decides which.
 
+mod backfill;
 pub(crate) mod config;
 mod email_health;
 mod enrich;
@@ -128,6 +129,7 @@ impl Syncer {
         console_log!("unit start kind={name} key={key}");
         let started = Date::now().as_millis();
         let phase_before = observed.poll_phase.clone();
+        let done_before = observed.backfill_done_at;
         let Handled {
             outcome,
             finished_from,
@@ -162,6 +164,12 @@ impl Syncer {
         }
         if sync.poll_phase != phase_before {
             writes.push(store::save_phase(&sync.poll_phase));
+        }
+        if let Some(at) = sync
+            .backfill_done_at
+            .filter(|_| sync.backfill_done_at != done_before)
+        {
+            writes.push(store::save_backfill_done(at));
         }
         writes.push(store::save_state(&sync));
         for write in &writes {
@@ -278,6 +286,11 @@ impl Syncer {
                 PollPhase::default()
             });
         }
+        sync.backfill_done_at = sql
+            .exec(store::SELECT_BACKFILL_DONE, None)?
+            .to_array::<store::RawKv>()?
+            .first()
+            .and_then(store::RawKv::parse_backfill_done);
         Ok((rows, sync))
     }
 

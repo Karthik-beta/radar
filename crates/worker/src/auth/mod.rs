@@ -94,6 +94,10 @@ async fn callback(req: &Request, env: &Env) -> Result<Response> {
     match (outcome, signed_in) {
         (CallbackOutcome::Signed(session), Some(signed_in)) => {
             store(env, &config, &session, signed_in, now).await?;
+            // The token is stored, so the Syncer can poll and start the first backfill.
+            if let Err(err) = crate::sync::kick(env, crate::sync::KickReason::SignedIn).await {
+                console_error!("auth callback could not kick the syncer: {err}");
+            }
             let value = session.cookie_value(&config.session_key);
             redirect("/", &[clear_state, SESSION.set(&value)])
         }
