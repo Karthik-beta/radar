@@ -214,6 +214,7 @@ mod tests {
         assert_eq!(Route::parse("/merged"), Route::Tab(Tab::Merged));
         assert_eq!(Route::parse("/feed"), Route::Tab(Tab::Feed));
         assert_eq!(Route::parse("/feed/"), Route::Tab(Tab::Feed));
+        assert_eq!(Route::parse("/agents"), Route::Tab(Tab::Agents));
         assert_eq!(Route::parse("/signin"), Route::SignIn);
         assert_eq!(Route::parse("/zzz"), Route::NotFound);
         assert_eq!(Route::parse("/pipeline/extra"), Route::NotFound);

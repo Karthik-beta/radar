@@ -1,6 +1,7 @@
 //! D1 row access. Every write is a pure `Statement`, so tests run the same SQL
 //! against SQLite natively and `run` is the only function that touches D1.
 
+pub mod agents;
 pub mod auth;
 pub mod batch;
 pub mod dashboard;
@@ -35,12 +36,13 @@ pub(crate) mod testing {
     use super::items::ItemRow;
     use super::sql::{Param, Statement};
 
-    const MIGRATIONS: [&str; 5] = [
+    const MIGRATIONS: [&str; 6] = [
         include_str!("../../../../migrations/0001_init.sql"),
         include_str!("../../../../migrations/0003_item_extras.sql"),
         include_str!("../../../../migrations/0004_email_state.sql"),
         include_str!("../../../../migrations/0005_settings.sql"),
         include_str!("../../../../migrations/0006_feed_index.sql"),
+        include_str!("../../../../migrations/0008_agent_work.sql"),
     ];
 
     pub fn memory_db() -> Connection {

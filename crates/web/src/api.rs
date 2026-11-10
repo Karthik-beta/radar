@@ -1,3 +1,4 @@
+use domain::agents::AgentsPage;
 use domain::api::{Dashboard, Freshness, ItemId, SnoozeFor, SnoozeRequest};
 use domain::feed::{FeedCursor, FeedPage};
 use gloo_net::http::{Request, Response};
@@ -21,6 +22,10 @@ pub async fn dashboard() -> Result<Dashboard, ApiError> {
 
 pub async fn freshness() -> Result<Freshness, ApiError> {
     get("/api/freshness").await
+}
+
+pub async fn agents() -> Result<AgentsPage, ApiError> {
+    get("/api/agents").await
 }
 
 pub async fn feed(filter: &FeedFilter, before: Option<&FeedCursor>) -> Result<FeedPage, ApiError> {

@@ -1,6 +1,7 @@
 //! The `/api/` endpoints. They read D1 and the Syncer's status, and never
 //! call GitHub (N7).
 
+mod agents;
 mod dashboard;
 mod feed;
 mod items;
@@ -124,6 +125,7 @@ async fn respond(endpoint: Endpoint, req: &mut Request, env: &Env) -> Result<Rep
             }
             Reply::json(200, &dashboard::assemble(rows, now))
         }
+        Protected::Agents => agents::respond(env, now).await?,
         Protected::Feed => feed::respond(req, env).await?,
         Protected::Freshness => Reply {
             status: 200,
