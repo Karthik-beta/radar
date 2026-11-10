@@ -172,7 +172,7 @@ mod tests {
     use domain::ids::Timestamp;
 
     use super::*;
-    use crate::db::testing::{exec, memory_db, query_json};
+    use crate::db::testing::{memory_db, query_json};
 
     fn seed(conn: &rusqlite::Connection, id: &str, repo: &str, kind: &str, at: i64) {
         conn.execute(
@@ -262,7 +262,8 @@ mod tests {
         assert!(FeedQuery::parse([("repo", "x' OR 1=1--")]).is_err());
         let stmt = page(&query(&[("repo", "o/one")]));
         assert!(!stmt.sql.contains("o/one"));
-        exec(&conn, &repos()).expect("repos select runs");
+        let repos = repos();
+        assert_eq!(query_json(&conn, repos.sql, &repos.params).len(), 1);
     }
 
     #[test]

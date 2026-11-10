@@ -169,22 +169,26 @@ pub fn Feed() -> impl IntoView {
                     <option value="" prop:selected=move || filter.with(|f| f.repo.is_none())>
                         "All repos"
                     </option>
-                    <For each=move || repo_options.get() key=|name| name.clone() let:name>
-                        {
-                            let picked = name.clone();
-                            let label = name.clone();
-                            view! {
-                                <option
-                                    value=name.clone()
-                                    prop:selected=move || {
-                                        filter.with(|f| f.repo.as_ref().map(ToString::to_string).as_deref() == Some(picked.as_str()))
-                                    }
-                                >
-                                    {label}
-                                </option>
-                            }
-                        }
-                    </For>
+                    {move || {
+                        repo_options
+                            .get()
+                            .into_iter()
+                            .map(|name| {
+                                let picked = name.clone();
+                                let label = name.clone();
+                                view! {
+                                    <option
+                                        value=name.clone()
+                                        prop:selected=move || {
+                                            filter.with(|f| f.repo.as_ref().map(ToString::to_string).as_deref() == Some(picked.as_str()))
+                                        }
+                                    >
+                                        {label}
+                                    </option>
+                                }
+                            })
+                            .collect_view()
+                    }}
                 </select>
                 <select
                     aria-label="Kind"
