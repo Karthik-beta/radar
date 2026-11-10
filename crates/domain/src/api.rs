@@ -5,6 +5,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::email_health::EmailHealth;
 use crate::ids::{ItemKind, Login, RepoName, Timestamp};
 use crate::settings::NudgeThresholds;
 use crate::stage::Stage;
@@ -250,10 +251,11 @@ pub struct Freshness {
     pub dead: Vec<DeadWork>,
     pub scope: ScopeState,
     pub next_poll_at: Option<Timestamp>,
+    pub email: EmailHealth,
 }
 
 impl Freshness {
-    pub fn from_status(status: SyncStatus) -> Self {
+    pub fn from_status(status: SyncStatus, email: EmailHealth) -> Self {
         let sources = SyncKind::ALL
             .into_iter()
             .map(|source| SourceFreshness {
@@ -272,6 +274,7 @@ impl Freshness {
             dead: status.dead,
             scope: ScopeState::parse(status.scopes.as_deref()),
             next_poll_at: status.next_poll_at,
+            email,
         }
     }
 }
@@ -322,6 +325,10 @@ mod tests {
 
     use super::*;
     use crate::sync_status::Rate;
+
+    const QUIET: EmailHealth = EmailHealth::Idle {
+        last_email_at: None,
+    };
 
     #[test]
     fn scope_needs_the_exact_notifications_token() {
@@ -408,7 +415,7 @@ mod tests {
             scopes: Some("notifications,read:user".into()),
             ..SyncStatus::default()
         };
-        let out = Freshness::from_status(status);
+        let out = Freshness::from_status(status, QUIET);
         let sources: Vec<_> = out
             .sources
             .iter()
@@ -427,15 +434,19 @@ mod tests {
         assert_eq!(out.budget.remaining, Some(4990));
         assert_eq!(out.dead[0].attempts, 3);
         assert_eq!(out.next_poll_at, Some(Timestamp(960)));
+        assert_eq!(out.email, QUIET);
     }
 
     #[test]
     fn scope_reads_what_github_last_sent() {
         let with = |scopes: Option<&str>| {
-            Freshness::from_status(SyncStatus {
-                scopes: scopes.map(str::to_owned),
-                ..SyncStatus::default()
-            })
+            Freshness::from_status(
+                SyncStatus {
+                    scopes: scopes.map(str::to_owned),
+                    ..SyncStatus::default()
+                },
+                QUIET,
+            )
             .scope
         };
         assert_eq!(with(None), ScopeState::Unknown);

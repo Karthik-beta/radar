@@ -433,6 +433,9 @@ mod tests {
             dead: Vec::new(),
             scope: domain::api::ScopeState::Ok,
             next_poll_at: None,
+            email: domain::email_health::EmailHealth::Idle {
+                last_email_at: None,
+            },
         }
     }
 

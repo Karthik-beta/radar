@@ -160,6 +160,9 @@ mod tests {
                 .collect(),
             scope: ScopeState::Ok,
             next_poll_at: None,
+            email: domain::email_health::EmailHealth::Idle {
+                last_email_at: None,
+            },
         }
     }
 

@@ -1,6 +1,8 @@
 use domain::email::{EmailHeaders, EmailTrigger};
 use worker::{console_error, console_log, Env, ForwardableEmailMessage, Result};
 
+use crate::auth::now;
+use crate::db::email_state;
 use crate::sync::{self, KickReason};
 
 const FORWARD_TO: &str = "FORWARD_TO";
@@ -59,6 +61,10 @@ fn forward_address(env: &Env) -> Option<String> {
     (!value.is_empty()).then(|| value.to_owned())
 }
 
+async fn record(env: &Env, trigger: &EmailTrigger) -> Result<()> {
+    email_state::record(&env.d1("DB")?, now(), trigger.reason).await
+}
+
 // Only three headers are read. The message body is never opened.
 #[worker::event(email)]
 async fn email(message: ForwardableEmailMessage, env: Env, _ctx: worker::Context) -> Result<()> {
@@ -89,9 +95,13 @@ async fn email(message: ForwardableEmailMessage, env: Env, _ctx: worker::Context
     .ok();
 
     console_log!("{}", log_line(parsed.as_ref(), forward));
-    if parsed.is_some() {
+    if let Some(trigger) = &parsed {
         if let Err(err) = sync::kick(&env, KickReason::Email).await {
             console_error!("syncer kick failed: {err}");
+        }
+        // The forward is done, so a D1 failure only costs the health clock.
+        if let Err(err) = record(&env, trigger).await {
+            console_error!("email state write failed: {err}");
         }
     }
     Ok(())
