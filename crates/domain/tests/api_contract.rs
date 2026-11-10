@@ -82,6 +82,7 @@ fn fixed() -> Dashboard {
                 at: Timestamp(1_792_000_000),
             }),
             waiting_on: vec![login("alice"), login("bob")],
+            usual_reply_secs: Some(259_200),
         }],
         pipeline,
         recent: vec![

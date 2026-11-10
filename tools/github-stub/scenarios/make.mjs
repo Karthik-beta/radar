@@ -327,6 +327,36 @@ function feedOld() {
   });
 }
 
+// R21 repo cards: 60 of my pull requests across 4 repos. `replies` are the days a maintainer took to answer, and
+// null leaves the pull request unanswered. An open one ends with my own comment, so it sits on Their turn.
+const repoPlan = [
+  { repo: "octo/widgets", first: 200, states: ["MERGED", "MERGED", "MERGED", "CLOSED", "OPEN", "OPEN"], replies: [1, 2, 4, 9, null, null] },
+  { repo: "octo/gadgets", first: 220, states: [...Array(18).fill("MERGED"), "CLOSED", "OPEN"], replies: Array(20).fill(0.5) },
+  { repo: "octo/tools", first: 250, states: Array(18).fill("OPEN"), replies: Array(18).fill(null) },
+  { repo: "octo/docs", first: 280, states: [...Array(8).fill("MERGED"), ...Array(8).fill("CLOSED")], replies: Array(16).fill(1) },
+];
+
+function repoCards() {
+  return repoPlan.flatMap(({ repo, first, states, replies }) =>
+    states.map((state, i) => {
+      const number = first + i;
+      const age = 40 + i;
+      const reply = replies[i];
+      const last = `@-${Math.max(1, 30 - i)}d`;
+      return spec(number, "pr", "author", (c) => ({
+        decision: "REVIEW_REQUIRED", ci: ok,
+        created: `@-${age}d`, updated: last,
+        timeline: [
+          ...(reply === null ? [] : [comment(c, `IC_${number}_1`, `@-${(age - reply) * 24}h`, "bob")]),
+          ...(state === "OPEN" ? [comment(c, `IC_${number}_2`, last, ME)] : []),
+        ],
+        state,
+        extra: state === "OPEN" ? undefined : { closedAt: last, mergedAt: state === "MERGED" ? last : null },
+      }), { turn: "them", reason: null, stage: null }, { repo });
+    }),
+  );
+}
+
 // 100 pull requests of 20 events each: the opening and 19 comments.
 export function feedMany(count = 100, perPr = 20) {
   const repos = ["octo/widgets", "octo/gadgets", "octo/tools", "octo/docs", "octo/site"];
@@ -393,6 +423,7 @@ const kinds = {
   "their-turn-none": { specs: () => [asked(81, 5, "alice"), asked(82, 6, "bob"), asked(83, 7, "carol"), asked(84, 8, "dave")] },
   "their-turn-hostile": { specs: theirTurnHostile },
   "their-turn-large": { specs: () => theirTurnWaiting(200, 700) },
+  "repo-cards": { specs: repoCards },
 };
 
 // My own open pull requests, one per card. `created` sets the days in stage on first sync.

@@ -4,6 +4,7 @@
 mod dashboard;
 mod feed;
 mod items;
+mod repos;
 mod route;
 
 use domain::error::{ErrorBody, ErrorCode};
@@ -122,9 +123,12 @@ async fn respond(endpoint: Endpoint, req: &mut Request, env: &Env) -> Result<Rep
             for err in errors {
                 console_error!("api dashboard skipped a row: {err}");
             }
-            Reply::json(200, &dashboard::assemble(rows, now))
+            let mut dashboard = dashboard::assemble(rows, now);
+            dashboard::fill_usual_reply(&mut dashboard, &repos::read(env).await?);
+            Reply::json(200, &dashboard)
         }
         Protected::Feed => feed::respond(req, env).await?,
+        Protected::Repos => repos::respond(env).await?,
         Protected::Freshness => Reply {
             status: 200,
             body: Some(crate::sync::freshness_json(env).await?),
