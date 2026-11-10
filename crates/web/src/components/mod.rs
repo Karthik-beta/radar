@@ -1,6 +1,7 @@
 pub mod age;
 pub mod banner;
 pub mod count_block;
+pub mod email_banner;
 pub mod empty_state;
 pub mod header;
 pub mod key_hints;
