@@ -6,7 +6,7 @@
 use domain::activity::{Activity, ActivityKind, Actor, ActorKind, ReviewState};
 use domain::classify::classify;
 use domain::event::{CiOutcome, Event, EventActor, EventId, EventKind};
-use domain::ids::{ItemKind, ItemRef, Login, Timestamp};
+use domain::ids::{ItemKind, ItemRef, Login, RepoName, Timestamp};
 use domain::item::{Ci, CiState, Item, ItemState, ReviewDecision};
 use domain::stage::Stage;
 use worker::{console_log, Env};
@@ -18,6 +18,7 @@ use crate::auth;
 use crate::db::batch::{self, MeRecord, Stored, StoredRecord, Thread, ThreadRecord};
 use crate::db::events::{self, EventRow, EventSource};
 use crate::db::items::{self, ItemMeta, ItemRow};
+use crate::db::Statement;
 use crate::github::enrich_query::{build_enrich_query, enrich_variables, Target};
 use crate::github::enrich_response::{
     ActorNode, Decision, EnrichData, IssueState, ItemNode, PrState, RepoNode, ReviewStateNode,
@@ -367,6 +368,27 @@ pub fn outcome(
     let Some(node) = repo.and_then(|r| r.item.as_ref()) else {
         return Outcome::Gone;
     };
+    Outcome::Enriched(Box::new(classify_node(
+        node,
+        &thread.item.repo,
+        &thread.reason,
+        stored,
+        me,
+        now,
+    )))
+}
+
+/// Classifies one item node and lists the events it carries. `reason` is the
+/// notification reason, or empty for a node a search found. The backfill reuses
+/// this, so an item found by a notification and by a search is written alike.
+pub fn classify_node(
+    node: &ItemNode,
+    repo: &RepoName,
+    reason: &str,
+    stored: Option<&Stored>,
+    me: &Login,
+    now: Timestamp,
+) -> Enriched {
     let p = parts(node);
     let node_id = node.id();
     let mut activity: Vec<(usize, Activity)> = p
@@ -387,7 +409,7 @@ pub fn outcome(
         })
         .collect();
     let mention = MENTION_REASONS
-        .contains(&thread.reason.as_str())
+        .contains(&reason)
         .then(|| mentioned(&activity, me))
         .flatten();
     if let Some(index) = mention {
@@ -398,7 +420,7 @@ pub fn outcome(
         }
     }
     let mut assignees = p.assignees.clone();
-    if thread.reason == ASSIGN_REASON && !assignees.contains(me) {
+    if reason == ASSIGN_REASON && !assignees.contains(me) {
         assignees.push(me.clone());
     }
 
@@ -426,7 +448,7 @@ pub fn outcome(
 
     let item = Item {
         item_ref: ItemRef {
-            repo: thread.item.repo.clone(),
+            repo: repo.clone(),
             number: p.number,
             kind: p.kind,
         },
@@ -473,7 +495,7 @@ pub fn outcome(
 
     let since = stored.map(|s| s.updated_at);
     let mut events = Vec::new();
-    let repo_name = &thread.item.repo;
+    let repo_name = repo;
     let event = |id: EventId, kind: EventKind, actor: Option<EventActor>, at: Timestamp| Event {
         id,
         item: node_id.to_owned(),
@@ -525,7 +547,7 @@ pub fn outcome(
             ));
         }
     }
-    Outcome::Enriched(Box::new(Enriched { row, events }))
+    Enriched { row, events }
 }
 
 /// Maps every thread to its alias. A response that leaves out an alias is not
@@ -557,6 +579,26 @@ pub fn plan(
         }
     }
     Ok(planned)
+}
+
+/// The statements that store classified items: one upsert per item, then one
+/// insert for every event. An event whose id is already stored is left alone, so
+/// an item written twice keeps each timeline node once.
+pub fn writes(
+    rows: &[ItemRow],
+    events: &[Event],
+    source: EventSource,
+    now: Timestamp,
+) -> Vec<Statement> {
+    let mut statements: Vec<Statement> = rows.iter().map(items::upsert).collect();
+    if !events.is_empty() {
+        let event_rows: Vec<EventRow> = events
+            .iter()
+            .map(|e| EventRow::from_event(e, source, now))
+            .collect();
+        statements.push(events::insert_many(&event_rows));
+    }
+    statements
 }
 
 /// One Enrich unit. The caller has awaited nothing else, so no other GitHub
@@ -636,16 +678,8 @@ pub async fn run(
     for id in &planned.gone {
         console_log!("enrich.gone thread={id}");
     }
-    let rows: Vec<EventRow> = planned
-        .events
-        .iter()
-        .map(|e| EventRow::from_event(e, EventSource::Poll, now))
-        .collect();
-    let mut writes: Vec<_> = planned.items.iter().map(items::upsert).collect();
-    if !rows.is_empty() {
-        writes.push(events::insert_many(&rows));
-    }
-    if let Err(err) = crate::db::run(&db, writes).await {
+    let statements = writes(&planned.items, &planned.events, EventSource::Poll, now);
+    if let Err(err) = crate::db::run(&db, statements).await {
         return retry(format!("d1 write: {err}"));
     }
     console_log!(

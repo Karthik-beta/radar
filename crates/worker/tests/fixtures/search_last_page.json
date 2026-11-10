@@ -1,0 +1,125 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "__typename": "PullRequest",
+          "id": "PR_stub_1010",
+          "number": 1010,
+          "title": "Pull request 1010",
+          "url": "https://github.com/octo/widgets/pull/1010",
+          "prState": "OPEN",
+          "isDraft": false,
+          "createdAt": "2026-11-02T12:00:00Z",
+          "updatedAt": "2026-11-07T11:49:00Z",
+          "closedAt": null,
+          "mergedAt": null,
+          "headRefName": "feature/1010",
+          "reviewDecision": "REVIEW_REQUIRED",
+          "author": {
+            "login": "karthik",
+            "__typename": "User"
+          },
+          "assignees": {
+            "nodes": []
+          },
+          "reviewRequests": {
+            "nodes": []
+          },
+          "latestReviews": {
+            "nodes": []
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "c0ffee1",
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "timelineItems": {
+            "nodes": [
+              {
+                "__typename": "IssueComment",
+                "id": "IC_1010_1",
+                "at": "2026-11-07T11:49:00Z",
+                "url": "https://github.com/octo/widgets/pull/1010#issuecomment-IC_1010_1",
+                "actor": {
+                  "login": "bob",
+                  "__typename": "User"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "__typename": "PullRequest",
+          "id": "PR_stub_1011",
+          "number": 1011,
+          "title": "Pull request 1011",
+          "url": "https://github.com/octo/widgets/pull/1011",
+          "prState": "OPEN",
+          "isDraft": false,
+          "createdAt": "2026-11-02T12:00:00Z",
+          "updatedAt": "2026-11-07T11:48:00Z",
+          "closedAt": null,
+          "mergedAt": null,
+          "headRefName": "feature/1011",
+          "reviewDecision": "REVIEW_REQUIRED",
+          "author": {
+            "login": "karthik",
+            "__typename": "User"
+          },
+          "assignees": {
+            "nodes": []
+          },
+          "reviewRequests": {
+            "nodes": []
+          },
+          "latestReviews": {
+            "nodes": []
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "c0ffee1",
+                  "statusCheckRollup": {
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "timelineItems": {
+            "nodes": [
+              {
+                "__typename": "IssueComment",
+                "id": "IC_1011_1",
+                "at": "2026-11-07T11:48:00Z",
+                "url": "https://github.com/octo/widgets/pull/1011#issuecomment-IC_1011_1",
+                "actor": {
+                  "login": "bob",
+                  "__typename": "User"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "pageInfo": {
+        "endCursor": "Y3Vyc29yOjEy",
+        "hasNextPage": false
+      }
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 400,
+      "resetAt": "2026-11-07T12:00:20Z"
+    }
+  }
+}

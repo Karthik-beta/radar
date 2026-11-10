@@ -4,6 +4,7 @@
 use domain::ids::Timestamp;
 use domain::sync_status::SyncKind;
 
+use super::backfill::{BackfillCursor, SearchWindow};
 use super::config::{BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, MAX_ATTEMPTS, RETRY_DELAYS_SECS};
 use super::gate::{gate, Gate};
 use super::state::{SyncState, Throttle};
@@ -194,6 +195,29 @@ fn revive_or_insert(rows: &[WorkRow], kind: WorkKind, due_at: Timestamp) -> Opti
     }
 }
 
+fn window_of(row: &WorkRow) -> Option<SearchWindow> {
+    match &row.kind {
+        WorkKind::BackfillPage(cursor) => Some(cursor.window),
+        _ => None,
+    }
+}
+
+/// Starts the three searches of `window` at the first page, unless some of them are
+/// already queued. A dead page of the window comes back with zero attempts at its cursor.
+fn start_window(rows: &[WorkRow], window: SearchWindow, now: Timestamp) -> Vec<WorkRow> {
+    let mut queued = rows.iter().filter(|row| window_of(row) == Some(window));
+    if queued.next().is_none() {
+        return vec![WorkRow::pending(
+            WorkKind::BackfillPage(BackfillCursor::first(window, now)),
+            now,
+        )];
+    }
+    rows.iter()
+        .filter(|row| window_of(row) == Some(window) && row.is_dead())
+        .map(|row| row.clone().revived(now))
+        .collect()
+}
+
 /// Deferred, not dropped (ADR 0002). Returns the rows to upsert by key.
 pub fn kick(
     reason: KickReason,
@@ -203,22 +227,36 @@ pub fn kick(
 ) -> Vec<WorkRow> {
     state.last_kick_at = Some(now);
     state.throttle.no_token = false;
+    let backfill_wanted = state.backfill_done_at.is_none();
     match reason {
         KickReason::Rollup => {
+            let mut queued: Vec<WorkRow> = revive_or_insert(rows, WorkKind::Rollup, now)
+                .into_iter()
+                .collect();
+            queued.extend(start_window(rows, SearchWindow::Nightly7d, now));
+            if backfill_wanted {
+                queued.extend(start_window(rows, SearchWindow::Backfill90d, now));
+            }
             let dead_backfills = rows
                 .iter()
                 .filter(|row| row.is_dead() && row.kind.kind() == SyncKind::BackfillPage)
-                .map(|row| row.clone().revived(now));
-            revive_or_insert(rows, WorkKind::Rollup, now)
-                .into_iter()
-                .chain(dead_backfills)
-                .collect()
+                .filter(|row| !queued.iter().any(|q| q.kind == row.kind))
+                .map(|row| row.clone().revived(now))
+                .collect::<Vec<_>>();
+            queued.extend(dead_backfills);
+            queued
         }
-        KickReason::Reconcile
-        | KickReason::Email
-        | KickReason::Webhook
-        | KickReason::SignedIn
-        | KickReason::Manual => {
+        KickReason::SignedIn => {
+            let due = state.next_poll_at.map_or(now, |next| next.max(now));
+            let mut queued: Vec<WorkRow> = revive_or_insert(rows, WorkKind::PollNotifications, due)
+                .into_iter()
+                .collect();
+            if backfill_wanted {
+                queued.extend(start_window(rows, SearchWindow::Backfill90d, now));
+            }
+            queued
+        }
+        KickReason::Reconcile | KickReason::Email | KickReason::Webhook | KickReason::Manual => {
             let due = state.next_poll_at.map_or(now, |next| next.max(now));
             revive_or_insert(rows, WorkKind::PollNotifications, due)
                 .into_iter()
@@ -232,9 +270,31 @@ mod tests {
     use domain::sync_status::Rate;
 
     use super::*;
-    use crate::sync::work::{Cursor, EnrichBatch, NodeId};
+    use crate::sync::backfill::SearchKind;
+    use crate::sync::work::{EnrichBatch, NodeId};
 
     const NOW: Timestamp = Timestamp(1_000_000);
+
+    fn backfill_start(window: SearchWindow) -> WorkKind {
+        WorkKind::BackfillPage(BackfillCursor::first(window, NOW))
+    }
+
+    fn backfill_page(window: SearchWindow, kind: SearchKind, page: u32, after: &str) -> WorkKind {
+        WorkKind::BackfillPage(BackfillCursor {
+            since: window.since(NOW),
+            window,
+            kind,
+            page,
+            after: Some(after.to_owned()),
+        })
+    }
+
+    fn done_state() -> SyncState {
+        SyncState {
+            backfill_done_at: Some(at(-500)),
+            ..SyncState::default()
+        }
+    }
 
     fn at(offset: i64) -> Timestamp {
         Timestamp(NOW.0 + offset)
@@ -317,7 +377,7 @@ mod tests {
         let state = low_budget();
         let rows = vec![
             row(enrich("PR_a"), 0),
-            row(WorkKind::BackfillPage(Cursor::Start), 0),
+            row(backfill_start(SearchWindow::Backfill90d), 0),
         ];
         assert_eq!(plan(&rows, &state, NOW), Decision::Sleep(at(20)));
         assert!(matches!(plan(&rows, &state, at(20)), Decision::Run(_)));
@@ -482,13 +542,102 @@ mod tests {
 
     #[test]
     fn rollup_kick_inserts_nightly_once() {
-        let mut state = SyncState::default();
+        let mut state = done_state();
         let mut rows = Vec::new();
         let first = kick(KickReason::Rollup, &rows, &mut state, NOW);
-        assert_eq!(first, vec![row(WorkKind::Rollup, 0)]);
+        assert_eq!(
+            first,
+            vec![
+                row(WorkKind::Rollup, 0),
+                row(backfill_start(SearchWindow::Nightly7d), 0)
+            ]
+        );
         upsert(&mut rows, first);
         assert!(kick(KickReason::Rollup, &rows, &mut state, at(1)).is_empty());
-        assert_eq!(rows.len(), 1);
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn nightly_kick_starts_the_search_not_a_second_backfill_once_the_backfill_is_done() {
+        let mut state = done_state();
+        let queued = kick(KickReason::Rollup, &[], &mut state, NOW);
+        assert!(queued
+            .iter()
+            .all(|r| window_of(r) != Some(SearchWindow::Backfill90d)));
+        assert!(queued
+            .iter()
+            .any(|r| window_of(r) == Some(SearchWindow::Nightly7d)));
+    }
+
+    #[test]
+    fn nightly_kick_starts_a_backfill_that_never_ran() {
+        let mut state = SyncState::default();
+        let queued = kick(KickReason::Rollup, &[], &mut state, NOW);
+        assert!(queued.contains(&row(backfill_start(SearchWindow::Backfill90d), 0)));
+        assert!(queued.contains(&row(backfill_start(SearchWindow::Nightly7d), 0)));
+    }
+
+    #[test]
+    fn a_nightly_search_in_progress_is_left_alone() {
+        let mut state = done_state();
+        let page = backfill_page(SearchWindow::Nightly7d, SearchKind::Involves, 1, "Y3I=");
+        let rows = vec![row(WorkKind::Rollup, -1), row(page, -1)];
+        assert!(kick(KickReason::Rollup, &rows, &mut state, NOW).is_empty());
+    }
+
+    #[test]
+    fn sign_in_polls_and_starts_the_first_backfill() {
+        let mut state = SyncState::default();
+        let queued = kick(KickReason::SignedIn, &[], &mut state, NOW);
+        assert_eq!(
+            queued,
+            vec![
+                row(WorkKind::PollNotifications, 0),
+                row(backfill_start(SearchWindow::Backfill90d), 0)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_second_sign_in_after_the_backfill_finished_only_polls() {
+        let mut state = done_state();
+        let queued = kick(KickReason::SignedIn, &[], &mut state, NOW);
+        assert_eq!(queued, vec![row(WorkKind::PollNotifications, 0)]);
+    }
+
+    #[test]
+    fn sign_in_during_a_backfill_does_not_restart_it() {
+        let mut state = SyncState::default();
+        let page = backfill_page(SearchWindow::Backfill90d, SearchKind::Authored, 3, "Y3I=");
+        let rows = vec![row(page, 0)];
+        let queued = kick(KickReason::SignedIn, &rows, &mut state, NOW);
+        assert_eq!(queued, vec![row(WorkKind::PollNotifications, 0)]);
+    }
+
+    #[test]
+    fn sign_in_revives_a_dead_backfill_page_at_its_cursor() {
+        let mut state = SyncState::default();
+        let page = backfill_page(SearchWindow::Backfill90d, SearchKind::Authored, 3, "Y3I=");
+        let queued = kick(KickReason::SignedIn, &[dead(page.clone())], &mut state, NOW);
+        assert!(queued.contains(&row(page, 0)));
+    }
+
+    #[test]
+    fn other_kicks_never_start_a_backfill() {
+        for reason in [
+            KickReason::Reconcile,
+            KickReason::Email,
+            KickReason::Webhook,
+            KickReason::Manual,
+        ] {
+            let mut state = SyncState::default();
+            let queued = kick(reason, &[], &mut state, NOW);
+            assert_eq!(
+                queued,
+                vec![row(WorkKind::PollNotifications, 0)],
+                "{reason:?}"
+            );
+        }
     }
 
     #[test]
@@ -501,11 +650,29 @@ mod tests {
 
     #[test]
     fn nightly_kick_rearms_a_dead_backfill_row_at_its_cursor() {
-        let mut state = SyncState::default();
-        let cursor = WorkKind::BackfillPage(Cursor::After("Y3Vyc29yOjM=".into()));
+        let mut state = done_state();
+        let cursor = backfill_page(
+            SearchWindow::Backfill90d,
+            SearchKind::Authored,
+            3,
+            "Y3Vyc29yOjM=",
+        );
         let rows = vec![dead(cursor.clone()), row(WorkKind::Rollup, -1)];
         let rearmed = kick(KickReason::Rollup, &rows, &mut state, NOW);
-        assert_eq!(rearmed, vec![row(cursor, 0)]);
+        assert!(rearmed.contains(&row(cursor, 0)));
+        assert!(rearmed.contains(&row(backfill_start(SearchWindow::Nightly7d), 0)));
+        assert_eq!(rearmed.len(), 2);
+    }
+
+    #[test]
+    fn nightly_kick_rearms_a_dead_nightly_page_once() {
+        let mut state = done_state();
+        let cursor = backfill_page(SearchWindow::Nightly7d, SearchKind::Involves, 2, "Y3I=");
+        let rows = vec![dead(cursor.clone()), row(WorkKind::Rollup, -1)];
+        assert_eq!(
+            kick(KickReason::Rollup, &rows, &mut state, NOW),
+            vec![row(cursor, 0)]
+        );
     }
 
     #[test]
@@ -513,7 +680,7 @@ mod tests {
         let mut state = SyncState::default();
         let rows = vec![
             dead(enrich("PR_a")),
-            dead(WorkKind::BackfillPage(Cursor::Start)),
+            dead(backfill_start(SearchWindow::Backfill90d)),
         ];
         let new = kick(KickReason::Reconcile, &rows, &mut state, NOW);
         assert_eq!(new, vec![row(WorkKind::PollNotifications, 0)]);

@@ -37,10 +37,15 @@ macro_rules! timeline_node {
     };
 }
 
+pub(crate) use timeline_node;
+
 /// The fields of one pull request or issue. `Issue` and `PullRequest` each take
 /// the timeline types their own union allows, and each names its `state` apart
-/// because the two state enums are different types.
-pub const ENRICH_FRAGMENT: &str = concat!(
+/// because the two state enums are different types. A macro, because `concat!`
+/// takes only literals and the Search query appends the same fragment.
+macro_rules! item_fields {
+    () => {
+        concat!(
     "fragment ItemFields on IssueOrPullRequest { ",
     "... on Issue { id number title url issueState: state createdAt updatedAt closedAt ",
     "author { login __typename } assignees(first: 10) { nodes { login } } ",
@@ -79,7 +84,13 @@ pub const ENRICH_FRAGMENT: &str = concat!(
     " ",
     timeline_node!(reopened),
     " } } } }"
-);
+        )
+    };
+}
+
+pub(crate) use item_fields;
+
+pub const ENRICH_FRAGMENT: &str = item_fields!();
 
 /// One item to read: a repository and a number.
 #[derive(Debug, Clone, PartialEq, Eq)]
