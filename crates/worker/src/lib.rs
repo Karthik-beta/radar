@@ -1,3 +1,4 @@
+mod alerts;
 mod api;
 pub mod auth;
 pub mod db;

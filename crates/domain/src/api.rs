@@ -428,6 +428,7 @@ mod tests {
                 (SyncKind::Enrich, None, 2),
                 (SyncKind::BackfillPage, None, 0),
                 (SyncKind::Rollup, None, 0),
+                (SyncKind::SendAlerts, None, 0),
             ]
         );
         assert_eq!(out.scope, ScopeState::Ok);

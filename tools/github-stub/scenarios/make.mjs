@@ -288,10 +288,50 @@ function theirTurnWaiting(count, first) {
 }
 
 
+// R24 phone alerts. Two threads should alert, and four should not.
+function mentioned(number, o = {}) {
+  const at = o.at ?? "@-20m";
+  return spec(number, "issue", "mention", (c) => ({
+    by: "maint", title: o.title, updated: at,
+    timeline: [comment(c, `IC_${number}_1`, at, o.who ?? "alice", o.type)],
+  }), { turn: "me", reason: "mentioned", stage: null }, { mention: true });
+}
+
+function alerts() {
+  return [
+    mentioned(101, { title: "Mention that alerts" }),
+    asked(102, 1, "bob", { title: "Review request that alerts", updated: "@-30m", timeline: [requested("RRE_102", "@-30m", "bob", ME)] }),
+    spec(103, "pr", "ci_activity", (c) => ({
+      title: "CI failed on mine", decision: "REVIEW_REQUIRED", ci: { oid: "badc0de", state: "FAILURE" }, updated: "@-1h",
+      timeline: [commit(c, "PRC_103", "@-1h", ME, "badc0de")],
+    }), { turn: "me", reason: "ci_failed", stage: "ci_failing" }),
+    spec(104, "pr", "comment", (c) => ({
+      title: "Plain reply on mine", decision: "REVIEW_REQUIRED", ci: ok, updated: "@-15m",
+      timeline: [comment(c, "IC_104_1", "@-2h", ME), comment(c, "IC_104_2", "@-15m", "bob")],
+    }), { turn: "me", reason: "replied", stage: "awaiting_review" }),
+    spec(105, "issue", "mention", (c) => ({
+      by: "maint", title: "Mention by a bot", updated: "@-10m",
+      timeline: [comment(c, "IC_105_1", "@-10m", "dependabot[bot]", "Bot")],
+    }), { turn: "them", reason: null, stage: null }),
+    mentioned(106, { title: "Mention ten hours old", at: "@-10h" }),
+  ];
+}
+
+function alertsMany() {
+  return Array.from({ length: 12 }, (_, i) => mentioned(120 + i, { title: `Mention number ${i + 1}`, at: `@-${i + 1}m` }));
+}
+
+function alertsMarkup() {
+  return [mentioned(130, { title: "*bold* <b>x</b> [a](b) `code` _it_" })];
+}
+
 const kinds = {
   "your-turn-edge": { specs: yourTurnEdge },
   "your-turn-hostile": { specs: yourTurnHostile },
   "your-turn-theirs-only": { specs: theirsOnly },
+  alerts: { specs: alerts },
+  "alerts-many": { specs: alertsMany },
+  "alerts-markup": { specs: alertsMarkup },
   "enrich-20": { specs: () => [...basic(), ...many(14, 1000)] },
   "enrich-edge": { specs: edge },
   "enrich-basic": { specs: basic },

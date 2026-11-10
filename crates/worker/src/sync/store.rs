@@ -12,7 +12,7 @@ use crate::db::{Param, Statement};
 
 pub const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS work (
-  kind TEXT NOT NULL CHECK (kind IN ('poll_notifications', 'enrich', 'backfill_page', 'rollup')),
+  kind TEXT NOT NULL CHECK (kind IN ('poll_notifications', 'enrich', 'backfill_page', 'rollup', 'send_alerts')),
   key TEXT NOT NULL CHECK (key <> ''),
   payload TEXT,
   due_at INTEGER NOT NULL,

@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod alert;
 pub mod api;
 pub mod classify;
 pub mod email;

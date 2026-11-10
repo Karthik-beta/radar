@@ -13,7 +13,7 @@ use worker::{console_log, Env};
 
 use super::scheduler::UnitOutcome;
 use super::state::SyncState;
-use super::work::EnrichBatch;
+use super::work::{EnrichBatch, WorkKind};
 use crate::auth;
 use crate::db::batch::{self, MeRecord, Stored, StoredRecord, Thread, ThreadRecord};
 use crate::db::events::{self, EventRow, EventSource};
@@ -690,7 +690,12 @@ pub async fn run(
         planned.events.len(),
         limit.remaining
     );
-    UnitOutcome::Done { follow_ups: vec![] }
+    let follow_ups = if planned.events.is_empty() {
+        vec![]
+    } else {
+        vec![WorkKind::SendAlerts]
+    };
+    UnitOutcome::Done { follow_ups }
 }
 
 #[cfg(test)]
