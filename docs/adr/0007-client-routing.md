@@ -1,6 +1,6 @@
 # 0007. Client routing without leptos_router
 
-Status: proposed, 2026-11-09.
+Status: accepted, 2026-11-10.
 
 The UI must fit 200 KB gzipped (`node scripts/check-size.mjs`). With all four views, `origin/ui-wave` measures 234.9 KB. Radar has five fixed paths, no route parameters, no nested routes, and no lazy data per route. `leptos_router` brings nested async route matching, a path stack, and form handling that Radar never uses, and removing it takes the UI from 233.4 KB to 193.1 KB.
 
