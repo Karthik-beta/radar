@@ -152,6 +152,10 @@ node tools/github-stub/server.mjs --port 8900 --scenario generated/enrich-basic
 
 The stub's `/graphql` log entry carries `aliases`, the number of items the request named.
 
+## History scenarios
+
+The R22 history seed reads `scenario.history.pull_requests`, a list of `{occurred_at, merged_at, repo}`. The stub answers a `ContributionHistory` operation from it. The variables `from` and `to` pick the window, and `after` is `base64("history:<offset>")` into the filtered list, 100 contributions a page. `scenarios/trends-history.json` holds two years of them, and `scenarios/trends-26w.json` adds pull requests for `Search` that reach back 13 weeks.
+
 ## Search scenarios
 
 The R11 backfill and nightly search read `scenario.search.authored` and `scenario.search.involves`, two lists of `issueOrPullRequest` nodes. The stub answers a `Search` operation from them. The variable `q` picks the list (`involves:@me`, otherwise authored), the type (`is:pr` or `is:issue`), and the `updated:>=DATE` cutoff. `first` and `after` page the filtered list. A cursor is `base64("cursor:<offset>")`, and `endCursor` is null on an empty page. The log entry carries `variables` and `nodes`, the number of nodes the page held.

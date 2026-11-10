@@ -1,0 +1,26 @@
+query ContributionHistory($from: DateTime!, $to: DateTime!, $after: String) {
+  viewer {
+    contributionsCollection(from: $from, to: $to) {
+      pullRequestContributions(first: 100, after: $after) {
+        nodes {
+          occurredAt
+          pullRequest {
+            mergedAt
+            repository {
+              nameWithOwner
+            }
+          }
+        }
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+}

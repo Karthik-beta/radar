@@ -1,5 +1,6 @@
 use domain::api::{Dashboard, Freshness, ItemId, SnoozeFor, SnoozeRequest};
 use domain::feed::{FeedCursor, FeedPage};
+use domain::trends::Trends;
 use gloo_net::http::{Request, Response};
 use serde::de::DeserializeOwned;
 
@@ -21,6 +22,10 @@ pub async fn dashboard() -> Result<Dashboard, ApiError> {
 
 pub async fn freshness() -> Result<Freshness, ApiError> {
     get("/api/freshness").await
+}
+
+pub async fn trends() -> Result<Trends, ApiError> {
+    get("/api/trends").await
 }
 
 pub async fn feed(filter: &FeedFilter, before: Option<&FeedCursor>) -> Result<FeedPage, ApiError> {

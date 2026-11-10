@@ -47,9 +47,11 @@ CREATE TABLE IF NOT EXISTS kv (
 
 const POLL_PHASE_KEY: &str = "poll_phase";
 const BACKFILL_DONE_KEY: &str = "backfill_done_at";
+const HISTORY_SEEDED_KEY: &str = "history_seeded_at";
 
 pub const SELECT_PHASE: &str = "SELECT value FROM kv WHERE key = 'poll_phase'";
 pub const SELECT_BACKFILL_DONE: &str = "SELECT value FROM kv WHERE key = 'backfill_done_at'";
+pub const SELECT_HISTORY_SEEDED: &str = "SELECT value FROM kv WHERE key = 'history_seeded_at'";
 
 pub const SELECT_ROWS: &str =
     "SELECT kind, key, payload, due_at, attempts, dead, last_error FROM work";
@@ -134,6 +136,7 @@ impl RawState {
                 .collect(),
             poll_phase: PollPhase::default(),
             backfill_done_at: None,
+            history_seeded_at: None,
         }
     }
 }
@@ -159,6 +162,17 @@ pub fn save_backfill_done(at: Timestamp) -> Statement {
               ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         params: vec![
             Param::text(BACKFILL_DONE_KEY),
+            Param::text(at.0.to_string()),
+        ],
+    }
+}
+
+pub fn save_history_seeded(at: Timestamp) -> Statement {
+    Statement {
+        sql: "INSERT INTO kv (key, value) VALUES (?1, ?2) \
+              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params: vec![
+            Param::text(HISTORY_SEEDED_KEY),
             Param::text(at.0.to_string()),
         ],
     }
@@ -384,6 +398,7 @@ mod tests {
             ]),
             poll_phase: PollPhase::default(),
             backfill_done_at: None,
+            history_seeded_at: None,
         };
         exec(&conn, &save_state(&saved)).unwrap();
         assert_eq!(state(&conn), saved);

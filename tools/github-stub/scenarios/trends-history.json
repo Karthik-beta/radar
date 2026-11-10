@@ -1,0 +1,1042 @@
+{
+  "extends": "basic",
+  "history": {
+    "pull_requests": [
+      {
+        "occurred_at": "@-721d",
+        "merged_at": "@-719d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-720d",
+        "merged_at": "@-718d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-714d",
+        "merged_at": "@-712d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-713d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-712d",
+        "merged_at": "@-710d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-711d",
+        "merged_at": "@-709d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-707d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-700d",
+        "merged_at": "@-698d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-699d",
+        "merged_at": "@-697d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-698d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-686d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-685d",
+        "merged_at": "@-683d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-679d",
+        "merged_at": "@-677d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-678d",
+        "merged_at": "@-676d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-677d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-676d",
+        "merged_at": "@-674d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-672d",
+        "merged_at": "@-670d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-665d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-664d",
+        "merged_at": "@-662d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-663d",
+        "merged_at": "@-661d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-651d",
+        "merged_at": "@-649d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-650d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-644d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-643d",
+        "merged_at": "@-641d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-642d",
+        "merged_at": "@-640d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-641d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-637d",
+        "merged_at": "@-635d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-630d",
+        "merged_at": "@-628d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-629d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-628d",
+        "merged_at": "@-626d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-616d",
+        "merged_at": "@-614d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-615d",
+        "merged_at": "@-613d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-609d",
+        "merged_at": "@-607d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-608d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-607d",
+        "merged_at": "@-605d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-606d",
+        "merged_at": "@-604d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-602d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-595d",
+        "merged_at": "@-593d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-594d",
+        "merged_at": "@-592d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-593d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-581d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-580d",
+        "merged_at": "@-578d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-574d",
+        "merged_at": "@-572d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-573d",
+        "merged_at": "@-571d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-572d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-571d",
+        "merged_at": "@-569d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-567d",
+        "merged_at": "@-565d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-560d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-559d",
+        "merged_at": "@-557d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-558d",
+        "merged_at": "@-556d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-546d",
+        "merged_at": "@-544d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-545d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-539d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-538d",
+        "merged_at": "@-536d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-537d",
+        "merged_at": "@-535d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-536d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-532d",
+        "merged_at": "@-530d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-525d",
+        "merged_at": "@-523d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-524d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-523d",
+        "merged_at": "@-521d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-511d",
+        "merged_at": "@-509d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-510d",
+        "merged_at": "@-508d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-504d",
+        "merged_at": "@-502d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-503d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-502d",
+        "merged_at": "@-500d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-501d",
+        "merged_at": "@-499d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-497d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-490d",
+        "merged_at": "@-488d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-489d",
+        "merged_at": "@-487d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-488d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-476d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-475d",
+        "merged_at": "@-473d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-469d",
+        "merged_at": "@-467d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-468d",
+        "merged_at": "@-466d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-467d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-466d",
+        "merged_at": "@-464d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-462d",
+        "merged_at": "@-460d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-455d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-454d",
+        "merged_at": "@-452d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-453d",
+        "merged_at": "@-451d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-441d",
+        "merged_at": "@-439d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-440d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-434d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-433d",
+        "merged_at": "@-431d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-432d",
+        "merged_at": "@-430d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-431d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-427d",
+        "merged_at": "@-425d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-420d",
+        "merged_at": "@-418d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-419d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-418d",
+        "merged_at": "@-416d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-406d",
+        "merged_at": "@-404d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-405d",
+        "merged_at": "@-403d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-399d",
+        "merged_at": "@-397d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-398d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-397d",
+        "merged_at": "@-395d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-396d",
+        "merged_at": "@-394d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-392d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-385d",
+        "merged_at": "@-383d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-384d",
+        "merged_at": "@-382d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-383d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-371d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-370d",
+        "merged_at": "@-368d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-364d",
+        "merged_at": "@-362d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-363d",
+        "merged_at": "@-361d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-362d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-361d",
+        "merged_at": "@-359d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-357d",
+        "merged_at": "@-355d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-350d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-349d",
+        "merged_at": "@-347d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-348d",
+        "merged_at": "@-346d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-336d",
+        "merged_at": "@-334d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-335d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-329d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-328d",
+        "merged_at": "@-326d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-327d",
+        "merged_at": "@-325d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-326d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-322d",
+        "merged_at": "@-320d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-315d",
+        "merged_at": "@-313d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-314d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-313d",
+        "merged_at": "@-311d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-301d",
+        "merged_at": "@-299d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-300d",
+        "merged_at": "@-298d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-294d",
+        "merged_at": "@-292d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-293d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-292d",
+        "merged_at": "@-290d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-291d",
+        "merged_at": "@-289d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-287d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-280d",
+        "merged_at": "@-278d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-279d",
+        "merged_at": "@-277d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-278d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-266d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-265d",
+        "merged_at": "@-263d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-259d",
+        "merged_at": "@-257d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-258d",
+        "merged_at": "@-256d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-257d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-256d",
+        "merged_at": "@-254d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-252d",
+        "merged_at": "@-250d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-245d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-244d",
+        "merged_at": "@-242d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-243d",
+        "merged_at": "@-241d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-231d",
+        "merged_at": "@-229d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-230d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-224d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-223d",
+        "merged_at": "@-221d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-222d",
+        "merged_at": "@-220d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-221d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-217d",
+        "merged_at": "@-215d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-210d",
+        "merged_at": "@-208d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-209d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-208d",
+        "merged_at": "@-206d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-196d",
+        "merged_at": "@-194d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-195d",
+        "merged_at": "@-193d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-189d",
+        "merged_at": "@-187d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-188d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-187d",
+        "merged_at": "@-185d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-186d",
+        "merged_at": "@-184d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-182d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-175d",
+        "merged_at": "@-173d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-174d",
+        "merged_at": "@-172d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-173d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-161d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-160d",
+        "merged_at": "@-158d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-154d",
+        "merged_at": "@-152d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-153d",
+        "merged_at": "@-151d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-152d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-151d",
+        "merged_at": "@-149d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-147d",
+        "merged_at": "@-145d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-140d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-139d",
+        "merged_at": "@-137d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-138d",
+        "merged_at": "@-136d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-126d",
+        "merged_at": "@-124d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-125d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-119d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-118d",
+        "merged_at": "@-116d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-117d",
+        "merged_at": "@-115d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-116d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-112d",
+        "merged_at": "@-110d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-105d",
+        "merged_at": "@-103d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-104d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-103d",
+        "merged_at": "@-101d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-91d",
+        "merged_at": "@-89d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-90d",
+        "merged_at": "@-88d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-84d",
+        "merged_at": "@-82d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-83d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-82d",
+        "merged_at": "@-80d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-81d",
+        "merged_at": "@-79d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-77d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-70d",
+        "merged_at": "@-68d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-69d",
+        "merged_at": "@-67d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-68d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-56d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-55d",
+        "merged_at": "@-53d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-49d",
+        "merged_at": "@-47d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-48d",
+        "merged_at": "@-46d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-47d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-46d",
+        "merged_at": "@-44d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-42d",
+        "merged_at": "@-40d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-35d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-34d",
+        "merged_at": "@-32d",
+        "repo": "octo/cogs"
+      },
+      {
+        "occurred_at": "@-33d",
+        "merged_at": "@-31d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-21d",
+        "merged_at": "@-19d",
+        "repo": "octo/levers"
+      },
+      {
+        "occurred_at": "@-20d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-14d",
+        "merged_at": null,
+        "repo": "octo/widgets"
+      },
+      {
+        "occurred_at": "@-13d",
+        "merged_at": "@-11d",
+        "repo": "octo/gadgets"
+      },
+      {
+        "occurred_at": "@-12d",
+        "merged_at": "@-10d",
+        "repo": "octo/gizmos"
+      },
+      {
+        "occurred_at": "@-11d",
+        "merged_at": null,
+        "repo": "octo/sprockets"
+      },
+      {
+        "occurred_at": "@-7d",
+        "merged_at": "@-5d",
+        "repo": "octo/gadgets"
+      }
+    ]
+  }
+}

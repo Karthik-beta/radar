@@ -5,6 +5,7 @@ mod dashboard;
 mod feed;
 mod items;
 mod route;
+mod trends;
 
 use domain::error::{ErrorBody, ErrorCode};
 use domain::health::{Health, HealthStatus};
@@ -125,6 +126,14 @@ async fn respond(endpoint: Endpoint, req: &mut Request, env: &Env) -> Result<Rep
             Reply::json(200, &dashboard::assemble(rows, now))
         }
         Protected::Feed => feed::respond(req, env).await?,
+        Protected::Trends => {
+            let raw = crate::db::trends::read(&env.d1("DB")?, now).await?;
+            let (trends, errors) = trends::assemble(raw, now);
+            for err in errors {
+                console_error!("api trends skipped a row: {err}");
+            }
+            Reply::json(200, &trends)
+        }
         Protected::Freshness => Reply {
             status: 200,
             body: Some(crate::sync::freshness_json(env).await?),
