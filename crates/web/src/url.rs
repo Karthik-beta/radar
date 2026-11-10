@@ -1,5 +1,5 @@
 /// A link Radar is willing to put in an `href`: an `https://github.com/` URL.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GithubUrl(String);
 
 impl GithubUrl {

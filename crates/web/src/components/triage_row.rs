@@ -10,7 +10,7 @@ use crate::heat::{heat, Thresholds};
 use crate::url::GithubUrl;
 
 /// One list row as every triage view draws it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RowData {
     pub id: ItemId,
     pub url: Option<GithubUrl>,

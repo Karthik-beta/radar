@@ -80,12 +80,15 @@ pub fn triage_list(
     let press = move |key: Key| {
         let (next, effect) =
             active.with_untracked(|rows| keys::step(keys_state.get_untracked(), key, rows));
+        if matches!(effect, Some(Effect::Dismiss(_))) && !kind.dismisses() {
+            return;
+        }
         keys_state.set(next);
         match effect {
             Some(Effect::Open(url)) => open_tab(&url),
-            Some(Effect::Dismiss(id)) if kind.dismisses() => store.triage(id, Triage::Dismiss),
+            Some(Effect::Dismiss(id)) => store.triage(id, Triage::Dismiss),
             Some(Effect::Snooze(id, snooze_for)) => store.triage(id, Triage::Snooze(snooze_for)),
-            Some(Effect::Dismiss(_)) | None => {}
+            None => {}
         }
     };
     keys::listen(press);
@@ -98,7 +101,7 @@ pub fn triage_list(
                         let th = thresholds.get();
                         rows.get().into_iter().map(|row| (row, th)).collect::<Vec<_>>()
                     }
-                    key=|(row, th)| (row.id.clone(), th.warm, th.hot)
+                    key=|(row, th)| (row.clone(), th.warm, th.hot)
                     let:entry
                 >
                     {

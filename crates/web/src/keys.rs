@@ -108,7 +108,11 @@ pub fn step<R: Triageable>(state: State, key: Key, rows: &[R]) -> (State, Option
     let len = rows.len();
     let selection = state.selection.clamp(len);
     let selected = selection.index().and_then(|i| rows.get(i));
-    match state.mode {
+    let mode = match state.mode {
+        Mode::Snoozing { item } if !rows.iter().any(|row| row.item_id() == &item) => Mode::Browsing,
+        mode => mode,
+    };
+    match mode {
         Mode::Snoozing { item } => {
             let snooze = |snooze_for| {
                 let after = State {
@@ -171,8 +175,13 @@ pub fn step<R: Triageable>(state: State, key: Key, rows: &[R]) -> (State, Option
     }
 }
 
-/// Reads a keydown into a `Key`, ignoring keys with a modifier and keys typed
-/// into a field.
+/// Whether Enter on this element does its own job, so the triage keys leave it.
+fn activates_on_enter(tag: &str, role: Option<&str>) -> bool {
+    matches!(tag, "A" | "BUTTON") || matches!(role, Some("button" | "menuitem"))
+}
+
+/// Reads a keydown into a `Key`, ignoring keys with a modifier, keys typed
+/// into a field, and Enter on a link or button.
 pub fn from_event(event: &KeyboardEvent) -> Option<Key> {
     if event.ctrl_key() || event.meta_key() || event.alt_key() || event.shift_key() {
         return None;
@@ -187,7 +196,15 @@ pub fn from_event(event: &KeyboardEvent) -> Option<Key> {
     if typing {
         return None;
     }
-    Key::parse(&event.key())
+    let key = Key::parse(&event.key())?;
+    let activates = key == Key::Open
+        && event
+            .target()
+            .and_then(|target| target.dyn_into::<HtmlElement>().ok())
+            .is_some_and(|el| {
+                activates_on_enter(&el.tag_name(), el.get_attribute("role").as_deref())
+            });
+    (!activates).then_some(key)
 }
 
 /// Calls `on_key` for each triage key until the calling component unmounts.
@@ -327,6 +344,30 @@ mod tests {
         );
         let bad = vec![Row(id(0), "javascript:alert(1)")];
         assert_eq!(step(at(0), Key::Open, &bad).1, None);
+    }
+
+    #[test]
+    fn keys_reset_snoozing_when_the_item_is_gone() {
+        let list = rows(3);
+        let (snoozing, _) = step(at(1), Key::Snooze, &list);
+        let fewer = vec![Row(id(0), "https://github.com/o/r/pull/1")];
+        let (state, effect) = step(snoozing, Key::Escape, &fewer);
+        assert_eq!(state.mode, Mode::Browsing);
+        assert_eq!(effect, None);
+        let (snoozing, _) = step(at(1), Key::Snooze, &list);
+        let (state, _) = step(snoozing, Key::Down, &fewer);
+        assert_eq!(state.mode, Mode::Browsing);
+        assert_eq!(state.selection, Selection::At(0));
+    }
+
+    #[test]
+    fn keys_leave_enter_to_links_and_buttons() {
+        assert!(activates_on_enter("A", None));
+        assert!(activates_on_enter("BUTTON", None));
+        assert!(activates_on_enter("DIV", Some("button")));
+        assert!(activates_on_enter("LI", Some("menuitem")));
+        assert!(!activates_on_enter("BODY", None));
+        assert!(!activates_on_enter("LI", Some("listitem")));
     }
 
     #[test]

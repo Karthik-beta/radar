@@ -1,4 +1,4 @@
-use leptos::ev::{keydown, KeyboardEvent};
+use leptos::ev::keydown;
 use leptos::html::Button;
 use leptos::prelude::*;
 
@@ -34,14 +34,6 @@ pub fn SyncStatus() -> impl IntoView {
     });
     on_cleanup(move || close.remove());
 
-    // The Your turn view listens on `window` for Enter and swallows it, which
-    // would stop the button's own click. Keep these keys on the button.
-    let keep_key = move |event: KeyboardEvent| {
-        if matches!(event.key().as_str(), "Enter" | " ") {
-            event.stop_propagation();
-        }
-    };
-
     view! {
         <div class="sync-status">
             <Show when=move || label().is_some()>
@@ -53,7 +45,6 @@ pub fn SyncStatus() -> impl IntoView {
                     aria-expanded=move || open.get().to_string()
                     aria-controls=PANEL_ID
                     on:click=move |_| open.update(|o| *o = !*o)
-                    on:keydown=keep_key
                 >
                     {label}
                 </button>

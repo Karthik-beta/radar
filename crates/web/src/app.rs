@@ -45,7 +45,7 @@ fn Shell() -> impl IntoView {
                 Route::Tab(Tab::Pipeline) => view! { <Pipeline/> }.into_any(),
                 Route::Tab(Tab::Merged) => view! { <Merged/> }.into_any(),
                 Route::SignIn => {
-                    queue_microtask(move || location.navigate("/"));
+                    queue_microtask(move || location.replace("/"));
                     ().into_any()
                 }
                 Route::NotFound => view! { <NotFound/> }.into_any(),

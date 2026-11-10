@@ -49,7 +49,7 @@ pub fn Pipeline() -> impl IntoView {
             }}
             <Show when=move || dashboard.with(Option::is_some)>
                 <h1 class="summary-line">{move || summary_line(open())}</h1>
-                <div class="board" role="region" aria-label="Pull request pipeline" tabindex="-1">
+                <div class="board" role="region" aria-label="Pull request pipeline" tabindex="0">
                     <div class="board-grid">
                         {move || {
                             let nudge = dashboard

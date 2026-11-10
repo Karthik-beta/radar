@@ -77,6 +77,15 @@ impl Location {
         self.path.set(current_path());
         scroll_to_hash_or_top();
     }
+
+    /// Like `navigate`, but replaces the current history entry.
+    pub fn replace(&self, to: &str) {
+        if let Ok(history) = window().history() {
+            let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(to));
+        }
+        self.path.set(current_path());
+        scroll_to_hash_or_top();
+    }
 }
 
 /// One value from the address bar's query string.

@@ -22,13 +22,7 @@ pub fn card_heat(stage: Stage, age_secs: i64, nudge: NudgeThresholds) -> Heat {
     if stage != Stage::AwaitingReview {
         return Heat::Fresh;
     }
-    heat(
-        age_secs,
-        Thresholds {
-            warm: i64::from(nudge.warm_days()) * DAY,
-            hot: i64::from(nudge.hot_days()) * DAY,
-        },
-    )
+    heat(age_secs, Thresholds::from_nudge(nudge))
 }
 
 /// "repo #number", with ", agent" for agent items.
