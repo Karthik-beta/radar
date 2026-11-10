@@ -38,8 +38,8 @@ impl Tab {
 
     pub fn in_group(group: NavGroup) -> impl Iterator<Item = Tab> {
         TABS.into_iter()
-            .filter(move |(.., g)| *g == group)
             .map(|(tab, ..)| tab)
+            .filter(move |tab| tab.group() == group)
     }
 
     pub fn label(self) -> &'static str {
