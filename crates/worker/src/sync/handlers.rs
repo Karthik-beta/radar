@@ -32,7 +32,7 @@ impl From<UnitOutcome> for Handled {
 /// token overlap (P5).
 pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timestamp) -> Handled {
     match kind {
-        WorkKind::Rollup => UnitOutcome::Done { follow_ups: vec![] }.into(),
+        WorkKind::Rollup(key) => crate::rollup::run_unit(*key, env, now).await.into(),
         WorkKind::PollNotifications => poll::run(env, state).await,
         WorkKind::Enrich(batch) => enrich::run(batch, env, state, now).await.into(),
         WorkKind::BackfillPage(cursor) => backfill::run(cursor, env, state, now).await.into(),

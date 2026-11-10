@@ -1,0 +1,333 @@
+{
+  "extends": "basic",
+  "notifications": {
+    "last_modified": "@-1m",
+    "etag": "\"stub-feed-basic\"",
+    "items": [
+      {
+        "id": "8101",
+        "unread": true,
+        "reason": "comment",
+        "updated_at": "@-1h",
+        "last_read_at": null,
+        "subject": {
+          "title": "Item 101",
+          "url": "https://api.github.com/repos/octo/widgets/pulls/101",
+          "latest_comment_url": null,
+          "type": "PullRequest"
+        },
+        "repository": {
+          "full_name": "octo/widgets",
+          "owner": {
+            "login": "octo"
+          }
+        }
+      },
+      {
+        "id": "8102",
+        "unread": true,
+        "reason": "comment",
+        "updated_at": "@-1h",
+        "last_read_at": null,
+        "subject": {
+          "title": "Item 102",
+          "url": "https://api.github.com/repos/octo/gadgets/pulls/102",
+          "latest_comment_url": null,
+          "type": "PullRequest"
+        },
+        "repository": {
+          "full_name": "octo/gadgets",
+          "owner": {
+            "login": "octo"
+          }
+        }
+      },
+      {
+        "id": "8103",
+        "unread": true,
+        "reason": "ci_activity",
+        "updated_at": "@-30m",
+        "last_read_at": null,
+        "subject": {
+          "title": "Item 103",
+          "url": "https://api.github.com/repos/octo/tools/pulls/103",
+          "latest_comment_url": null,
+          "type": "PullRequest"
+        },
+        "repository": {
+          "full_name": "octo/tools",
+          "owner": {
+            "login": "octo"
+          }
+        }
+      },
+      {
+        "id": "8104",
+        "unread": true,
+        "reason": "comment",
+        "updated_at": "@-20m",
+        "last_read_at": null,
+        "subject": {
+          "title": "Item 104",
+          "url": "https://api.github.com/repos/octo/widgets/issues/104",
+          "latest_comment_url": null,
+          "type": "Issue"
+        },
+        "repository": {
+          "full_name": "octo/widgets",
+          "owner": {
+            "login": "octo"
+          }
+        }
+      }
+    ]
+  },
+  "items": {
+    "octo/widgets#101": {
+      "__typename": "PullRequest",
+      "id": "PR_stub_101",
+      "number": 101,
+      "title": "Pull request 101",
+      "url": "https://github.com/octo/widgets/pull/101",
+      "prState": "OPEN",
+      "isDraft": false,
+      "createdAt": "@-6h",
+      "updatedAt": "@-1h",
+      "closedAt": null,
+      "mergedAt": null,
+      "headRefName": "feature/101",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "author": {
+        "login": "karthik",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "__typename": "IssueComment",
+            "id": "IC_101_1",
+            "at": "@-5h",
+            "url": "https://github.com/octo/widgets/pull/101#issuecomment-IC_101_1",
+            "actor": {
+              "login": "bob",
+              "__typename": "User"
+            }
+          },
+          {
+            "__typename": "IssueComment",
+            "id": "IC_101_2",
+            "at": "@-4h",
+            "url": "https://github.com/octo/widgets/pull/101#issuecomment-IC_101_2",
+            "actor": {
+              "login": "karthik",
+              "__typename": "User"
+            }
+          }
+        ]
+      }
+    },
+    "octo/gadgets#102": {
+      "__typename": "PullRequest",
+      "id": "PR_stub_102",
+      "number": 102,
+      "title": "Pull request 102",
+      "url": "https://github.com/octo/gadgets/pull/102",
+      "prState": "OPEN",
+      "isDraft": false,
+      "createdAt": "@-6h",
+      "updatedAt": "@-1h",
+      "closedAt": null,
+      "mergedAt": null,
+      "headRefName": "feature/102",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "author": {
+        "login": "karthik",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "__typename": "IssueComment",
+            "id": "IC_102_1",
+            "at": "@-3h",
+            "url": "https://github.com/octo/gadgets/pull/102#issuecomment-IC_102_1",
+            "actor": {
+              "login": "alice",
+              "__typename": "User"
+            }
+          },
+          {
+            "__typename": "IssueComment",
+            "id": "IC_102_2",
+            "at": "@-2h",
+            "url": "https://github.com/octo/gadgets/pull/102#issuecomment-IC_102_2",
+            "actor": {
+              "login": "dependabot[bot]",
+              "__typename": "Bot"
+            }
+          }
+        ]
+      }
+    },
+    "octo/tools#103": {
+      "__typename": "PullRequest",
+      "id": "PR_stub_103",
+      "number": 103,
+      "title": "Pull request 103",
+      "url": "https://github.com/octo/tools/pull/103",
+      "prState": "OPEN",
+      "isDraft": false,
+      "createdAt": "@-6h",
+      "updatedAt": "@-30m",
+      "closedAt": null,
+      "mergedAt": null,
+      "headRefName": "feature/103",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "author": {
+        "login": "karthik",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "oid": "badc0de",
+              "statusCheckRollup": {
+                "state": "FAILURE"
+              }
+            }
+          }
+        ]
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "__typename": "IssueComment",
+            "id": "IC_103_1",
+            "at": "@-90m",
+            "url": "https://github.com/octo/tools/pull/103#issuecomment-IC_103_1",
+            "actor": {
+              "login": "bob",
+              "__typename": "User"
+            }
+          }
+        ]
+      }
+    },
+    "octo/widgets#104": {
+      "__typename": "Issue",
+      "id": "I_stub_104",
+      "number": 104,
+      "title": "Issue 104",
+      "url": "https://github.com/octo/widgets/issues/104",
+      "issueState": "OPEN",
+      "createdAt": "@-6h",
+      "updatedAt": "@-20m",
+      "closedAt": null,
+      "author": {
+        "login": "karthik",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "__typename": "IssueComment",
+            "id": "IC_104_1",
+            "at": "@-1h",
+            "url": "https://github.com/octo/widgets/issues/104#issuecomment-IC_104_1",
+            "actor": {
+              "login": "maint",
+              "__typename": "User"
+            }
+          },
+          {
+            "__typename": "IssueComment",
+            "id": "IC_104_2",
+            "at": "@-20m",
+            "url": "https://github.com/octo/widgets/issues/104#issuecomment-IC_104_2",
+            "actor": {
+              "login": "karthik",
+              "__typename": "User"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "_expect": {
+    "threads": 4,
+    "items": 4,
+    "gone": 0,
+    "events": 12,
+    "rows": [
+      {
+        "repo": "octo/widgets",
+        "number": 101,
+        "kind": "pr",
+        "turn": "them",
+        "reason": null,
+        "stage": "awaiting_review"
+      },
+      {
+        "repo": "octo/gadgets",
+        "number": 102,
+        "kind": "pr",
+        "turn": "them",
+        "reason": null,
+        "stage": "awaiting_review"
+      },
+      {
+        "repo": "octo/tools",
+        "number": 103,
+        "kind": "pr",
+        "turn": "me",
+        "reason": "ci_failed",
+        "stage": "ci_failing"
+      },
+      {
+        "repo": "octo/widgets",
+        "number": 104,
+        "kind": "issue",
+        "turn": "them",
+        "reason": null,
+        "stage": null
+      }
+    ]
+  }
+}

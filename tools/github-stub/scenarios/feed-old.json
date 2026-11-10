@@ -1,0 +1,235 @@
+{
+  "extends": "basic",
+  "notifications": {
+    "last_modified": "@-1m",
+    "etag": "\"stub-feed-old\"",
+    "items": [
+      {
+        "id": "8110",
+        "unread": true,
+        "reason": "comment",
+        "updated_at": "@-200d",
+        "last_read_at": null,
+        "subject": {
+          "title": "Item 110",
+          "url": "https://api.github.com/repos/octo/widgets/pulls/110",
+          "latest_comment_url": null,
+          "type": "PullRequest"
+        },
+        "repository": {
+          "full_name": "octo/widgets",
+          "owner": {
+            "login": "octo"
+          }
+        }
+      },
+      {
+        "id": "8111",
+        "unread": true,
+        "reason": "comment",
+        "updated_at": "@-190d",
+        "last_read_at": null,
+        "subject": {
+          "title": "Item 111",
+          "url": "https://api.github.com/repos/octo/widgets/pulls/111",
+          "latest_comment_url": null,
+          "type": "PullRequest"
+        },
+        "repository": {
+          "full_name": "octo/widgets",
+          "owner": {
+            "login": "octo"
+          }
+        }
+      },
+      {
+        "id": "8112",
+        "unread": true,
+        "reason": "comment",
+        "updated_at": "@-170d",
+        "last_read_at": null,
+        "subject": {
+          "title": "Item 112",
+          "url": "https://api.github.com/repos/octo/widgets/pulls/112",
+          "latest_comment_url": null,
+          "type": "PullRequest"
+        },
+        "repository": {
+          "full_name": "octo/widgets",
+          "owner": {
+            "login": "octo"
+          }
+        }
+      }
+    ]
+  },
+  "items": {
+    "octo/widgets#110": {
+      "__typename": "PullRequest",
+      "id": "PR_stub_110",
+      "number": 110,
+      "title": "Pull request 110",
+      "url": "https://github.com/octo/widgets/pull/110",
+      "prState": "OPEN",
+      "isDraft": false,
+      "createdAt": "@-200d",
+      "updatedAt": "@-200d",
+      "closedAt": null,
+      "mergedAt": null,
+      "headRefName": "feature/110",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "author": {
+        "login": "karthik",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "__typename": "IssueComment",
+            "id": "IC_110_1",
+            "at": "@-200d",
+            "url": "https://github.com/octo/widgets/pull/110#issuecomment-IC_110_1",
+            "actor": {
+              "login": "bob",
+              "__typename": "User"
+            }
+          }
+        ]
+      }
+    },
+    "octo/widgets#111": {
+      "__typename": "PullRequest",
+      "id": "PR_stub_111",
+      "number": 111,
+      "title": "Pull request 111",
+      "url": "https://github.com/octo/widgets/pull/111",
+      "prState": "OPEN",
+      "isDraft": false,
+      "createdAt": "@-190d",
+      "updatedAt": "@-190d",
+      "closedAt": null,
+      "mergedAt": null,
+      "headRefName": "feature/111",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "author": {
+        "login": "karthik",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "__typename": "IssueComment",
+            "id": "IC_111_1",
+            "at": "@-190d",
+            "url": "https://github.com/octo/widgets/pull/111#issuecomment-IC_111_1",
+            "actor": {
+              "login": "bob",
+              "__typename": "User"
+            }
+          }
+        ]
+      }
+    },
+    "octo/widgets#112": {
+      "__typename": "PullRequest",
+      "id": "PR_stub_112",
+      "number": 112,
+      "title": "Pull request 112",
+      "url": "https://github.com/octo/widgets/pull/112",
+      "prState": "OPEN",
+      "isDraft": false,
+      "createdAt": "@-170d",
+      "updatedAt": "@-170d",
+      "closedAt": null,
+      "mergedAt": null,
+      "headRefName": "feature/112",
+      "reviewDecision": "REVIEW_REQUIRED",
+      "author": {
+        "login": "karthik",
+        "__typename": "User"
+      },
+      "assignees": {
+        "nodes": []
+      },
+      "reviewRequests": {
+        "nodes": []
+      },
+      "latestReviews": {
+        "nodes": []
+      },
+      "commits": {
+        "nodes": []
+      },
+      "timelineItems": {
+        "nodes": [
+          {
+            "__typename": "IssueComment",
+            "id": "IC_112_1",
+            "at": "@-170d",
+            "url": "https://github.com/octo/widgets/pull/112#issuecomment-IC_112_1",
+            "actor": {
+              "login": "bob",
+              "__typename": "User"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "_expect": {
+    "threads": 3,
+    "items": 3,
+    "gone": 0,
+    "events": 6,
+    "rows": [
+      {
+        "repo": "octo/widgets",
+        "number": 110,
+        "kind": "pr",
+        "turn": "them",
+        "reason": null,
+        "stage": "awaiting_review"
+      },
+      {
+        "repo": "octo/widgets",
+        "number": 111,
+        "kind": "pr",
+        "turn": "them",
+        "reason": null,
+        "stage": "awaiting_review"
+      },
+      {
+        "repo": "octo/widgets",
+        "number": 112,
+        "kind": "pr",
+        "turn": "them",
+        "reason": null,
+        "stage": "awaiting_review"
+      }
+    ]
+  }
+}

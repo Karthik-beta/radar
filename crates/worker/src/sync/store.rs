@@ -249,6 +249,7 @@ mod tests {
 
     use super::*;
     use crate::db::testing::{count_rows, exec, query_json};
+    use crate::rollup::RollupKey;
     use crate::sync::backfill::{BackfillCursor, SearchKind, SearchWindow};
     use crate::sync::work::{EnrichBatch, NodeId};
 
@@ -331,7 +332,7 @@ mod tests {
                     Timestamp(3),
                 )
             },
-            WorkRow::pending(WorkKind::Rollup, Timestamp(4)),
+            WorkRow::pending(WorkKind::Rollup(RollupKey::Nightly), Timestamp(4)),
         ];
         for row in &all {
             exec(&conn, &upsert(row)).unwrap();
@@ -457,7 +458,10 @@ mod tests {
         .unwrap();
         exec(
             &conn,
-            &upsert(&WorkRow::pending(WorkKind::Rollup, Timestamp(1))),
+            &upsert(&WorkRow::pending(
+                WorkKind::Rollup(RollupKey::Nightly),
+                Timestamp(1),
+            )),
         )
         .unwrap();
         let raw = query_json(&conn, SELECT_ROWS, &[])

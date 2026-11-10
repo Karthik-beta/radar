@@ -288,6 +288,60 @@ function theirTurnWaiting(count, first) {
 }
 
 
+// R20 activity feed. Each pull request here has no CI node unless it says so, so `eventCount` stays easy to read.
+const feedExpect = { turn: "them", reason: null, stage: "awaiting_review" };
+
+function feedPr(number, repo, timeline, o = {}) {
+  return spec(number, "pr", "comment", (c) => ({
+    decision: "REVIEW_REQUIRED", updated: o.updated ?? "@-1h", created: o.created ?? "@-6h",
+    timeline: timeline(c), ...o.extra,
+  }), feedExpect, { repo });
+}
+
+// Twelve events across three repos: a bot comment, a failing check, and an issue.
+function feedBasic() {
+  return [
+    feedPr(101, "octo/widgets", (c) => [comment(c, "IC_101_1", "@-5h", "bob"), comment(c, "IC_101_2", "@-4h", ME)]),
+    feedPr(102, "octo/gadgets", (c) => [
+      comment(c, "IC_102_1", "@-3h", "alice"),
+      comment(c, "IC_102_2", "@-2h", "dependabot[bot]", "Bot"),
+    ]),
+    spec(103, "pr", "ci_activity", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: { oid: "badc0de", state: "FAILURE" }, updated: "@-30m", created: "@-6h",
+      timeline: [comment(c, "IC_103_1", "@-90m", "bob")],
+    }), { turn: "me", reason: "ci_failed", stage: "ci_failing" }, { repo: "octo/tools" }),
+    spec(104, "issue", "comment", (c) => ({
+      updated: "@-20m", created: "@-6h",
+      timeline: [comment(c, "IC_104_1", "@-1h", "maint"), comment(c, "IC_104_2", "@-20m", ME)],
+    }), { turn: "them", reason: null, stage: null }, { repo: "octo/widgets" }),
+  ];
+}
+
+// Three pull requests whose events are 200, 190, and 170 days old. The nightly rollup folds the first two.
+function feedOld() {
+  return [200, 190, 170].map((days, i) => {
+    const at = `@-${days}d`;
+    return feedPr(110 + i, "octo/widgets", (c) => [comment(c, `IC_${110 + i}_1`, at, "bob")], {
+      created: at, updated: at,
+    });
+  });
+}
+
+// 100 pull requests of 20 events each: the opening and 19 comments.
+export function feedMany(count = 100, perPr = 20) {
+  const repos = ["octo/widgets", "octo/gadgets", "octo/tools", "octo/docs", "octo/site"];
+  return Array.from({ length: count }, (_, i) => {
+    const n = 1000 + i;
+    return feedPr(
+      n,
+      repos[i % repos.length],
+      (c) => Array.from({ length: perPr - 1 }, (_, j) => comment(c, `IC_${n}_${j}`, `@-${i * 20 + j + 1}m`, j % 2 ? "bob" : ME)),
+      { created: `@-${i * 20 + perPr}m`, updated: `@-${i * 20 + 1}m` },
+    );
+  });
+}
+
+
 const kinds = {
   "your-turn-edge": { specs: yourTurnEdge },
   "your-turn-hostile": { specs: yourTurnHostile },
@@ -317,6 +371,9 @@ const kinds = {
   },
   "enrich-body-marker": { specs: bodyMarker },
   "enrich-ci-step": { specs: ciStep },
+  "feed-basic": { specs: feedBasic },
+  "feed-old": { specs: feedOld },
+  "feed-many": { specs: () => feedMany() },
   "pipeline-all-stages": { specs: pipelineAllStages },
   "pipeline-two-stages": { specs: pipelineTwoStages },
   "pipeline-stage-move": { specs: () => pipelineAllStages({ moveToFailing: true }) },

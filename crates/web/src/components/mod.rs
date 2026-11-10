@@ -4,6 +4,7 @@ pub mod count_block;
 pub mod empty_state;
 pub mod header;
 pub mod key_hints;
+pub mod more_nav;
 pub mod pipeline_card;
 pub mod reauth_banner;
 pub mod recent_list;

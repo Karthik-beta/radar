@@ -25,7 +25,6 @@ pub enum RowError {
         column: &'static str,
         value: i64,
     },
-    NotMonday(i64),
     NotFinite(&'static str),
     PartialLastHuman,
     BadReviewers,
@@ -41,7 +40,6 @@ impl fmt::Display for RowError {
             }
             Self::BadId { column, source } => write!(f, "{column}: {source}"),
             Self::BadNumber { column, value } => write!(f, "{column}: {value} is out of range"),
-            Self::NotMonday(ts) => write!(f, "week_start {ts} is not a Monday 00:00 UTC"),
             Self::NotFinite(column) => write!(f, "{column}: not a finite number"),
             Self::PartialLastHuman => f.write_str("last_human columns are only partly set"),
             Self::BadReviewers => f.write_str("requested_reviewers is not a JSON array of logins"),

@@ -8,10 +8,10 @@ mod enrich;
 mod gate;
 mod handlers;
 mod poll;
-mod scheduler;
+pub(crate) mod scheduler;
 mod state;
 mod store;
-mod work;
+pub(crate) mod work;
 
 use domain::api::Freshness;
 use domain::ids::Timestamp;
