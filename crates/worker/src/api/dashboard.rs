@@ -4,7 +4,7 @@ use domain::api::{
 };
 use domain::ids::Timestamp;
 use domain::item::ItemState;
-use domain::local_state::visible;
+use domain::local_state::{visible, LocalState};
 use domain::turn::Reason;
 
 use crate::db::dashboard::{DashboardRows, ItemRecord};
@@ -26,7 +26,8 @@ pub fn assemble(rows: DashboardRows, now: Timestamp) -> Dashboard {
     let mut theirs: Vec<ItemRecord> = rows
         .their_turn
         .into_iter()
-        .filter(|w| visible(w.local, w.item.last_human.as_ref().map(|h| h.at), now))
+        // A dismissal belongs to Your turn. Their turn has no dismiss key, so only a snooze hides an item here.
+        .filter(|w| !matches!(w.local, Some(LocalState::Snoozed { until }) if until > now))
         .map(|w| w.item)
         .collect();
     sort_by(&mut theirs, |item| item.since.0);
@@ -160,7 +161,6 @@ fn recent_row(item: ItemRecord) -> Option<RecentRow> {
 mod tests {
     use domain::api::{Action, ItemId, LastAction};
     use domain::ids::{ItemKind, Login, RepoName};
-    use domain::local_state::LocalState;
     use domain::stage::Stage;
 
     use domain::settings::NudgeThresholds;
@@ -328,6 +328,23 @@ mod tests {
         assert_eq!(ids(&d.their_turn, |r| &r.id), ["PR_2"]);
         assert_eq!(d.counters.their_turn, 1);
         assert_eq!(d.nudge, nudge);
+    }
+
+    #[test]
+    fn a_dismissal_from_your_turn_does_not_hide_the_item_in_their_turn() {
+        let dismissed = Waiting {
+            local: Some(LocalState::Dismissed {
+                seen_human_at: Timestamp(NOW.0),
+            }),
+            ..waiting(record(1, 100))
+        };
+        let rows = DashboardRows {
+            their_turn: vec![dismissed],
+            ..DashboardRows::default()
+        };
+        let d = assemble(rows, NOW);
+        assert_eq!(ids(&d.their_turn, |r| &r.id), ["PR_1"]);
+        assert_eq!(d.counters.their_turn, 1);
     }
 
     #[test]
