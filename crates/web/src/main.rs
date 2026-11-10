@@ -1,3 +1,4 @@
+mod a11y;
 mod api;
 mod app;
 mod auth;

@@ -3,6 +3,7 @@ use leptos::prelude::*;
 
 use super::snooze_menu::SnoozeMenu;
 use super::triage_row::{RowData, TriageRow};
+use crate::a11y::{live_text, Announce};
 use crate::heat::Thresholds;
 use crate::keys::{self, Effect, Key, Mode, State};
 use crate::store::{use_store, Triage};
@@ -77,14 +78,24 @@ pub fn triage_list(
         })
     });
 
+    let announce = move |store: &crate::store::Store, action: Announce| {
+        let left = active.with_untracked(Vec::len);
+        store.announce(live_text(action, left));
+    };
     let press = move |key: Key| {
         let (next, effect) =
             active.with_untracked(|rows| keys::step(keys_state.get_untracked(), key, rows));
         keys_state.set(next);
         match effect {
             Some(Effect::Open(url)) => open_tab(&url),
-            Some(Effect::Dismiss(id)) if kind.dismisses() => store.triage(id, Triage::Dismiss),
-            Some(Effect::Snooze(id, snooze_for)) => store.triage(id, Triage::Snooze(snooze_for)),
+            Some(Effect::Dismiss(id)) if kind.dismisses() => {
+                store.triage(id, Triage::Dismiss);
+                announce(&store, Announce::Dismissed);
+            }
+            Some(Effect::Snooze(id, snooze_for)) => {
+                store.triage(id, Triage::Snooze(snooze_for));
+                announce(&store, Announce::Snoozed(snooze_for));
+            }
             Some(Effect::Dismiss(_)) | None => {}
         }
     };
