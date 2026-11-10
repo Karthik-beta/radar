@@ -7,7 +7,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const features = process.env.RADAR_FEATURES;
 
 const steps = [
-  { cwd: "crates/web", cmd: "trunk", args: ["build", "--release"] },
+  // Leptos erases component types under this cfg, which cuts about 10 KB gzipped from the UI.
+  { cwd: "crates/web", cmd: "trunk", args: ["build", "--release"], env: { RUSTFLAGS: "--cfg erase_components" } },
   {
     cwd: "crates/worker",
     cmd: "worker-build",
@@ -16,9 +17,9 @@ const steps = [
   { cwd: ".", cmd: process.execPath, args: ["scripts/strip-wasm-names.mjs", "crates/worker/build/index_bg.wasm"] },
 ];
 
-for (const { cwd, cmd, args } of steps) {
+for (const { cwd, cmd, args, env } of steps) {
   console.log(`> ${cmd} ${args.join(" ")} (in ${cwd})`);
-  const result = spawnSync(cmd, args, { cwd: join(root, cwd), stdio: "inherit" });
+  const result = spawnSync(cmd, args, { cwd: join(root, cwd), stdio: "inherit", env: { ...process.env, ...env } });
   if (result.error) {
     console.error(`${cmd} failed to start: ${result.error.message}`);
     process.exit(1);
