@@ -96,51 +96,38 @@ pub fn Agents() -> impl IntoView {
                 <p class="empty-state" data-empty>{NO_AGENTS}</p>
             </Show>
             <ul class="rows" aria-label="Agents">
-                <For
-                    each=move || agents.get().into_iter().enumerate()
-                    key=|(i, a)| (*i, a.key.clone(), a.state.word(), a.also_taken_by.join(","), a.last_signal_at.0)
-                    let:entry
-                >
-                    {
-                        let (index, agent) = entry;
-                        view! { <AgentRow agent=agent now=now selected=Signal::derive(move || selected.get() == Some(index))/> }
-                    }
-                </For>
+                {move || {
+                    agents
+                        .get()
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, agent)| {
+                            agent_row(agent, now, Signal::derive(move || selected.get() == Some(index)))
+                        })
+                        .collect_view()
+                }}
             </ul>
         </section>
     }
 }
 
-/// State word, repo, who holds the work with its title, issue and branch, and
-/// the age of the last signal.
-#[component]
-fn AgentRow(
-    agent: AgentView,
-    #[prop(into)] now: Signal<i64>,
-    #[prop(into)] selected: Signal<bool>,
-) -> impl IntoView {
+fn github_href(url: Option<String>) -> Option<String> {
+    url.as_deref()
+        .and_then(GithubUrl::parse)
+        .map(|u| u.as_str().to_owned())
+}
+
+/// State word, repo, who holds the work with its title and overlap, the issue
+/// and branch, and the age of the last signal.
+fn agent_row(agent: AgentView, now: Signal<i64>, selected: Signal<bool>) -> impl IntoView {
     let at = agent.last_signal_at.0;
     let age = move || now.get().saturating_sub(at);
-    let who = agent.who();
-    let lead = match agent.url().as_deref().and_then(GithubUrl::parse) {
-        Some(url) => view! {
-            <a class="row-link" href=url.as_str().to_owned() target="_blank" rel="noopener noreferrer">{who}</a>
-        }
-        .into_any(),
-        None => view! { <span class="row-link">{who}</span> }.into_any(),
-    };
-    let issue = agent
-        .issue_url()
-        .as_deref()
-        .and_then(GithubUrl::parse)
-        .zip(agent.issue)
-        .map(|(url, n)| {
-            view! {
-                <a class="row-link" href=url.as_str().to_owned() target="_blank" rel="noopener noreferrer">
-                    {format!("#{}", n.get())}
-                </a>
-            }
-        });
+    let note = [agent.title.clone(), taken_words(&agent.also_taken_by)]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(". ");
+    let issue = agent.issue.map(|n| format!("#{}", n.get()));
     let branch = agent
         .agent
         .is_some()
@@ -157,12 +144,17 @@ fn AgentRow(
             <span class="row-reason text-muted">{agent.state.word()}</span>
             <span class="row-repo text-muted">{agent.repo.to_string()}</span>
             <span class="row-title">
-                {lead}
-                {agent.title.map(|t| view! { <span class="row-agent text-muted">{t}</span> })}
-                {taken_words(&agent.also_taken_by)
-                    .map(|w| view! { <span class="row-agent text-muted" data-taken>{w}</span> })}
+                <a class="row-link" href=github_href(agent.url()) target="_blank" rel="noopener noreferrer">
+                    {agent.who()}
+                </a>
+                <span class="row-agent text-muted">{note}</span>
             </span>
-            <span class="row-who text-muted">{issue}{branch}</span>
+            <span class="row-who text-muted">
+                <a class="row-link" href=github_href(agent.issue_url()) target="_blank" rel="noopener noreferrer">
+                    {issue}
+                </a>
+                {branch}
+            </span>
             <span class="age text-muted" title=move || format!("{} ago", age_words(age()))>
                 {move || age_short(age())}
             </span>
