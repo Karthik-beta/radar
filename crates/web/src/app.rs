@@ -46,7 +46,7 @@ fn Shell() -> impl IntoView {
             Route::Tab(tab) => {
                 let count = store
                     .dashboard()
-                    .with(|d| d.as_ref().map(|d| tab.count(&d.counters)));
+                    .with(|d| d.as_ref().and_then(|d| tab.count(&d.counters)));
                 document_title(tab, count)
             }
             Route::SignIn | Route::NotFound => "Radar".to_owned(),

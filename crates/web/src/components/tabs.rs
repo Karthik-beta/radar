@@ -24,7 +24,7 @@ pub enum NavGroup {
 
 /// Every tab, in header order, with its label, path, and group. A new tab is a
 /// variant, one row here, and a `ready` arm.
-const TABS: [(Tab, &str, &str, NavGroup); 6] = [
+const TABS: [(Tab, &str, &str, NavGroup); 8] = [
     (Tab::YourTurn, "Your turn", "/", NavGroup::Counters),
     (Tab::TheirTurn, "Their turn", "/theirs", NavGroup::Counters),
     (Tab::Pipeline, "Pipeline", "/pipeline", NavGroup::Counters),
