@@ -14,8 +14,10 @@ use super::sql::{Param, Statement};
 /// How many candidates one dispatch reads. The 6 hour window keeps the set small.
 pub const CANDIDATE_LIMIT: i64 = 100;
 
-/// A mention or review request in the age window with no row, or a failed row
-/// that has attempts left.
+/// An eligible mention or review request in the age window with no row, or a
+/// failed row that has attempts left. Every skip condition `decide` checks is
+/// in the WHERE clause, so events that would be skipped never fill the limit
+/// and starve the eligible ones behind them.
 const CANDIDATES: &str = "SELECT e.id, e.kind, e.repo, e.item_node_id, e.actor_login, \
      e.actor_is_me, e.actor_is_bot, e.occurred_at, \
      i.number, i.title, i.url, i.turn, i.reason, i.state, i.last_human_at, \
@@ -26,6 +28,12 @@ const CANDIDATES: &str = "SELECT e.id, e.kind, e.repo, e.item_node_id, e.actor_l
      LEFT JOIN alerts a ON a.event_id = e.id \
      WHERE e.kind IN ('mentioned', 'review_requested') AND e.occurred_at >= ?1 \
        AND (a.event_id IS NULL OR (a.state = 'failed' AND a.attempts < ?2)) \
+       AND e.actor_login IS NOT NULL AND e.actor_is_me = 0 AND e.actor_is_bot = 0 \
+       AND i.state IN ('open', 'draft') AND i.turn = 'me' \
+       AND i.reason = CASE e.kind WHEN 'mentioned' THEN 'mentioned' ELSE 'review_requested' END \
+       AND (l.kind IS NULL \
+         OR (l.kind = 'dismissed' AND COALESCE(i.last_human_at, 0) > l.value) \
+         OR (l.kind = 'snoozed' AND l.value <= ?4)) \
      ORDER BY e.occurred_at, e.id LIMIT ?3";
 
 const RECORD_SENT: &str = "INSERT INTO alerts (event_id, state, attempts, updated_at) \
@@ -33,18 +41,23 @@ const RECORD_SENT: &str = "INSERT INTO alerts (event_id, state, attempts, update
      ON CONFLICT (event_id) DO UPDATE SET state = 'sent', \
      attempts = alerts.attempts + 1, updated_at = excluded.updated_at";
 
+/// A decision that cannot change later. The row keeps the event out of `CANDIDATES`.
+const RECORD_SKIPPED: &str = "INSERT INTO alerts (event_id, state, attempts, updated_at) \
+     VALUES (?1, 'skipped', 1, ?2) ON CONFLICT (event_id) DO NOTHING";
+
 const RECORD_FAILED: &str = "INSERT INTO alerts (event_id, state, attempts, updated_at) \
      VALUES (?1, 'failed', 1, ?2) \
      ON CONFLICT (event_id) DO UPDATE SET state = 'failed', \
      attempts = alerts.attempts + 1, updated_at = excluded.updated_at";
 
-pub fn candidates(since: Timestamp) -> Statement {
+pub fn candidates(since: Timestamp, now: Timestamp) -> Statement {
     Statement {
         sql: CANDIDATES,
         params: vec![
             Param::ts(since),
             Param::Int(i64::from(MAX_ATTEMPTS)),
             Param::Int(CANDIDATE_LIMIT),
+            Param::ts(now),
         ],
     }
 }
@@ -52,6 +65,13 @@ pub fn candidates(since: Timestamp) -> Statement {
 pub fn record_sent(event_id: &EventId, now: Timestamp) -> Statement {
     Statement {
         sql: RECORD_SENT,
+        params: vec![Param::text(event_id.as_str()), Param::ts(now)],
+    }
+}
+
+pub fn record_skipped(event_id: &EventId, now: Timestamp) -> Statement {
+    Statement {
+        sql: RECORD_SKIPPED,
         params: vec![Param::text(event_id.as_str()), Param::ts(now)],
     }
 }
@@ -187,7 +207,7 @@ mod tests {
     }
 
     fn ids(conn: &rusqlite::Connection) -> Vec<String> {
-        let stmt = candidates(Timestamp(NOW.0 - 6 * 3600));
+        let stmt = candidates(Timestamp(NOW.0 - 6 * 3600), NOW);
         query_json(conn, stmt.sql, &stmt.params)
             .iter()
             .map(|r| r["id"].as_str().unwrap_or_default().to_owned())
@@ -216,6 +236,30 @@ mod tests {
     }
 
     #[test]
+    fn skipped_events_cannot_starve_an_eligible_one() {
+        let conn = setup();
+        let mut other = item_row(2);
+        other.turn = Turn::Them;
+        exec(&conn, &items::upsert(&other)).expect("item");
+        let node = other.node_id.clone();
+        for n in 0..(CANDIDATE_LIMIT + 5) {
+            let mut row = mention(&format!("S{n}"), &node, 3000 + n);
+            row.actor_is_bot = n % 2 == 0;
+            exec(&conn, &insert(&row)).expect("skipped event");
+        }
+        exec(&conn, &insert(&mention("E1", "PR_1", 60))).expect("event");
+        assert_eq!(ids(&conn), ["E1"]);
+    }
+
+    #[test]
+    fn a_skipped_row_keeps_an_event_out() {
+        let conn = setup();
+        exec(&conn, &insert(&mention("E1", "PR_1", 60))).expect("event");
+        exec(&conn, &record_skipped(&EventId::for_node("E1"), NOW)).expect("skipped");
+        assert!(ids(&conn).is_empty());
+    }
+
+    #[test]
     fn an_event_outside_the_window_is_not_a_candidate() {
         let conn = setup();
         exec(&conn, &insert(&mention("E1", "PR_1", 7 * 3600))).expect("event");
@@ -226,7 +270,7 @@ mod tests {
     fn rows_convert_to_candidates_with_visibility() {
         let conn = setup();
         exec(&conn, &insert(&mention("E1", "PR_1", 60))).expect("event");
-        let stmt = candidates(Timestamp(0));
+        let stmt = candidates(Timestamp(0), NOW);
         let rows = query_json(&conn, stmt.sql, &stmt.params);
         let row: CandidateRow =
             serde_json::from_value(serde_json::Value::Object(rows[0].clone())).expect("row");

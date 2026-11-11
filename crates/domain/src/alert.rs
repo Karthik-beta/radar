@@ -58,6 +58,14 @@ pub enum SkipReason {
     TooOld,
 }
 
+impl SkipReason {
+    /// True when no later change can turn the skip into a send. A turn that
+    /// flips back or a snooze that ends can still make `NotMyTurn` a send.
+    pub fn is_permanent(self) -> bool {
+        !matches!(self, Self::NotMyTurn)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlertDecision {
     Send,

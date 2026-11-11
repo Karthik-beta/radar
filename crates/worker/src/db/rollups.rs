@@ -34,16 +34,21 @@ const SEED: &str = "INSERT INTO rollups_weekly (week_start, prs_opened, prs_merg
 
 const OLDEST_BEFORE: &str = "SELECT MIN(occurred_at) AS at FROM events WHERE occurred_at < ?1";
 
-/// Counts only my events on my authored pull requests, as `db/trends.rs` does,
-/// so a rolled week matches the live chart. `DELETE_WEEK` still removes every
-/// event in the week.
-const WEEK_TOTALS: &str = "SELECT COUNT(*) AS events, \
-     COALESCE(SUM(kind = 'opened' AND item_node_id IN \
-       (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1)), 0) AS prs_opened, \
-     COALESCE(SUM(kind = 'merged' AND item_node_id IN \
-       (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1)), 0) AS prs_merged, \
-     COUNT(DISTINCT repo) AS repos_touched \
-     FROM events WHERE actor_is_me = 1 AND occurred_at >= ?1 AND occurred_at < ?2";
+/// `events` and `repos_touched` count my own events. `prs_opened` and
+/// `prs_merged` count `opened` and `merged` events on my authored pull
+/// requests whoever the actor is, because a maintainer usually merges my PR.
+/// This matches `db/trends.rs`. `DELETE_WEEK` still removes every event in the week.
+const WEEK_TOTALS: &str = "SELECT \
+     (SELECT COUNT(*) FROM events WHERE actor_is_me = 1 \
+        AND occurred_at >= ?1 AND occurred_at < ?2) AS events, \
+     (SELECT COUNT(*) FROM events WHERE kind = 'opened' \
+        AND item_node_id IN (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1) \
+        AND occurred_at >= ?1 AND occurred_at < ?2) AS prs_opened, \
+     (SELECT COUNT(*) FROM events WHERE kind = 'merged' \
+        AND item_node_id IN (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1) \
+        AND occurred_at >= ?1 AND occurred_at < ?2) AS prs_merged, \
+     (SELECT COUNT(DISTINCT repo) FROM events WHERE actor_is_me = 1 \
+        AND occurred_at >= ?1 AND occurred_at < ?2) AS repos_touched";
 
 const DELETE_WEEK: &str = "DELETE FROM events WHERE occurred_at >= ?1 AND occurred_at < ?2";
 
@@ -271,7 +276,16 @@ mod tests {
         seed(&conn, "a", "o/one", "opened", "PR_1", start);
         seed(&conn, "b", "o/two", "opened", "PR_2", start + day);
         seed(&conn, "c", "o/two", "merged", "PR_2", start + day);
-        seed_by(&conn, "d", "o/three", "opened", "PR_1", start + day, false);
+        seed_by(&conn, "f", "o/four", "merged", "PR_1", start + day, false);
+        seed_by(
+            &conn,
+            "d",
+            "o/three",
+            "commented",
+            "PR_1",
+            start + day,
+            false,
+        );
         seed_by(
             &conn,
             "e",
@@ -284,7 +298,7 @@ mod tests {
         let rows = query_json(&conn, WEEK_TOTALS, &week_totals(week()).params);
         assert_eq!(rows[0]["events"], 3);
         assert_eq!(rows[0]["prs_opened"], 1);
-        assert_eq!(rows[0]["prs_merged"], 0);
+        assert_eq!(rows[0]["prs_merged"], 1);
         assert_eq!(rows[0]["repos_touched"], 2);
     }
 

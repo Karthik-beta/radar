@@ -32,7 +32,8 @@ pub struct Outgoing {
 }
 
 /// The messages this dispatch sends, in event order, and whether more wait.
-/// A skipped candidate is left without a row and returned for the caller to log.
+/// A skipped candidate is returned for the caller to log. The caller records
+/// a permanent skip and leaves `NotMyTurn` without a row.
 pub fn plan(
     candidates: &[Candidate],
     now: Timestamp,
@@ -79,7 +80,7 @@ pub async fn dispatch(db: &D1Database, env: &Env, now: Timestamp) -> UnitOutcome
     };
 
     let since = Timestamp(now.0.saturating_sub(MAX_AGE_SECS));
-    let rows = match alerts::candidates(since).prepare(db) {
+    let rows = match alerts::candidates(since, now).prepare(db) {
         Ok(stmt) => stmt.all().await.and_then(|r| r.results::<CandidateRow>()),
         Err(err) => Err(err),
     };
@@ -98,6 +99,11 @@ pub async fn dispatch(db: &D1Database, env: &Env, now: Timestamp) -> UnitOutcome
     let (sends, more, skipped) = plan(&candidates, now);
     for (id, why) in &skipped {
         console_log!("alert event={} outcome=skipped why={why:?}", id.as_str());
+        if why.is_permanent() {
+            if let Err(err) = run(db, vec![alerts::record_skipped(id, now)]).await {
+                return retry(format!("d1 write: {err}"));
+            }
+        }
     }
     let mut failed = None;
     for outgoing in &sends {
