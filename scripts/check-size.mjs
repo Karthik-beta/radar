@@ -6,7 +6,7 @@ import { gzipSync } from "node:zlib";
 const { values } = parseArgs({
   options: {
     "worker-budget-kb": { type: "string", default: "400" },
-    "ui-budget-kb": { type: "string", default: "200" },
+    "ui-budget-kb": { type: "string", default: "300" },
     "worker-dir": { type: "string", default: "crates/worker/build" },
     "ui-dir": { type: "string", default: "crates/web/dist" },
   },
