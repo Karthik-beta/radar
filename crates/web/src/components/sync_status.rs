@@ -53,7 +53,7 @@ pub fn SyncStatus() -> impl IntoView {
                     {label}
                 </button>
             </Show>
-            <Show when=move || open.get()>
+            <Show when=move || open.get() && label().is_some()>
                 <FreshnessPanel id=PANEL_ID/>
             </Show>
         </div>
