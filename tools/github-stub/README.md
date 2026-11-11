@@ -174,6 +174,16 @@ A fault takes `graphql: { after, q }` to match only the requests whose variables
 
 Boot one with `--scenario generated/<kind>` after saving its output under `scenarios/generated/`. The relative times resolve when the stub starts, so start it just before the sign-in.
 
+## Feed scenarios
+
+`node scripts/gen-feed-scenario.mjs` writes the R20 activity feed scenarios beside the others, with times relative to now. They boot like any scenario: `node tools/github-stub/server.mjs --port 8900 --scenario feed-basic`. `feed-many.json` is 750 KB, so git ignores it.
+
+| Scenario | What it holds |
+| --- | --- |
+| `feed-basic` | Four threads in three repos with 12 events: a bot comment, a failing check, and an issue. |
+| `feed-old` | Three pull requests whose events are 200, 190, and 170 days old, for the nightly rollup. |
+| `feed-many` | 100 pull requests of 20 events each, 2,000 events. |
+
 ## Tests
 
 `node --test "tools/**/*.test.mjs"`

@@ -183,7 +183,7 @@ pub fn triage_list(
     TriageList { active, view }
 }
 
-fn open_tab(url: &GithubUrl) {
+pub fn open_tab(url: &GithubUrl) {
     let _ = window().open_with_url_and_target_and_features(
         url.as_str(),
         "_blank",

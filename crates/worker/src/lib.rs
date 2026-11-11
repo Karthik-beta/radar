@@ -5,6 +5,7 @@ mod email;
 pub mod github;
 #[cfg(feature = "probe")]
 mod probe;
+mod rollup;
 mod security;
 mod sync;
 

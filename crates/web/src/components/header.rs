@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 
+use super::more_nav::MoreNav;
 use super::sync_status::SyncStatus;
-use super::tabs::Tab;
+use super::tabs::{NavGroup, Tab};
 use crate::route::use_location;
 use crate::store::use_store;
 
@@ -15,11 +16,10 @@ pub fn Header() -> impl IntoView {
         <header class="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-(--gutter) py-3">
             <span class="font-semibold">"Radar"</span>
             <nav aria-label="Views" class="-m-1 flex gap-1 p-1 phone-down:order-3 phone-down:w-full phone-down:overflow-x-auto">
-                {Tab::ALL
-                    .into_iter()
+                {Tab::in_group(NavGroup::Counters)
                     .map(|tab| {
                         let active = move || current() == Some(tab);
-                        let count = move || counters().map(|c| tab.count(&c));
+                        let count = move || counters().and_then(|c| tab.count(&c));
                         let class = move || {
                             if active() {
                                 "tab whitespace-nowrap rounded-md bg-surface px-3 py-1 text-text"
@@ -56,6 +56,7 @@ pub fn Header() -> impl IntoView {
                     })
                     .collect_view()}
             </nav>
+            <MoreNav/>
             <div class="ml-auto"><SyncStatus/></div>
         </header>
     }

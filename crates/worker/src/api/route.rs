@@ -15,6 +15,7 @@ pub enum Endpoint {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Protected {
     Dashboard,
+    Feed,
     Freshness,
     Dismiss(ItemId),
     Snooze(ItemId),
@@ -29,6 +30,7 @@ impl Endpoint {
         let (allowed, endpoint) = match path {
             "/api/health" => (Method::Get, Self::Health),
             "/api/dashboard" => (Method::Get, Self::Protected(Protected::Dashboard)),
+            "/api/feed" => (Method::Get, Self::Protected(Protected::Feed)),
             "/api/freshness" => (Method::Get, Self::Protected(Protected::Freshness)),
             _ => match item_action(path) {
                 Some(action) => (Method::Post, Self::Protected(action)),
@@ -78,6 +80,14 @@ mod tests {
         assert_eq!(
             Endpoint::parse(&get, "/api/dashboard"),
             protected(Protected::Dashboard)
+        );
+        assert_eq!(
+            Endpoint::parse(&get, "/api/feed"),
+            protected(Protected::Feed)
+        );
+        assert_eq!(
+            Endpoint::parse(&post, "/api/feed"),
+            Some(Endpoint::WrongMethod)
         );
         assert_eq!(
             Endpoint::parse(&get, "/api/freshness"),

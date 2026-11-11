@@ -112,6 +112,7 @@ pub fn status(
 mod tests {
     use super::*;
     use crate::github::Timestamp as GithubTimestamp;
+    use crate::rollup::RollupKey;
     use crate::sync::work::{RowState, WorkKind};
 
     #[test]
@@ -181,7 +182,7 @@ mod tests {
         let rollup = WorkRow {
             state: RowState::Dead,
             attempts: 3,
-            ..WorkRow::pending(WorkKind::Rollup, Timestamp(999_000))
+            ..WorkRow::pending(WorkKind::Rollup(RollupKey::Nightly), Timestamp(999_000))
         };
         let mut state = SyncState::default();
         state.throttle.no_token = true;
@@ -191,7 +192,7 @@ mod tests {
             out.dead,
             [DeadWork {
                 kind: SyncKind::Rollup,
-                key: WorkKind::Rollup.key(),
+                key: WorkKind::Rollup(RollupKey::Nightly).key(),
                 attempts: 3,
                 since: Timestamp(999_000),
             }]

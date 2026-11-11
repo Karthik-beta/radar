@@ -2,6 +2,7 @@
 //! call GitHub (N7).
 
 mod dashboard;
+mod feed;
 mod items;
 mod route;
 
@@ -123,6 +124,7 @@ async fn respond(endpoint: Endpoint, req: &mut Request, env: &Env) -> Result<Rep
             }
             Reply::json(200, &dashboard::assemble(rows, now))
         }
+        Protected::Feed => feed::respond(req, env).await?,
         Protected::Freshness => Reply {
             status: 200,
             body: Some(crate::sync::freshness_json(env).await?),
