@@ -22,7 +22,9 @@ pub fn SyncStatus() -> impl IntoView {
             FreshLoad::Unavailable(_) => Some(sync_label(SyncHealth::Unknown)),
             FreshLoad::Ready(data) => Some(sync_label(SyncHealth::of(data, now.get()))),
         });
-        let refresh_failed = store.load().with(|load| matches!(load, Load::Stale { .. }));
+        let refresh_failed = store
+            .load()
+            .with(|load| matches!(load, Load::Stale { .. } | Load::Failed(_)));
         with_refresh(freshness, refresh_failed)
     };
 
