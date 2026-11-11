@@ -11,6 +11,7 @@ pub enum Tab {
     Feed,
     Repos,
     Trends,
+    Agents,
 }
 
 /// `Counters` are the four tabs of ADR 0003, each with a count. `More` is the
@@ -31,6 +32,7 @@ const TABS: [(Tab, &str, &str, NavGroup); 6] = [
     (Tab::Feed, "Feed", "/feed", NavGroup::More),
     (Tab::Repos, "Repos", "/repos", NavGroup::More),
     (Tab::Trends, "Trends", "/trends", NavGroup::More),
+    (Tab::Agents, "Agents", "/agents", NavGroup::More),
 ];
 
 impl Tab {
@@ -68,6 +70,7 @@ impl Tab {
             Tab::Feed => views::feed::READY,
             Tab::Repos => views::repos::READY,
             Tab::Trends => views::trends::READY,
+            Tab::Agents => views::agents::READY,
         }
     }
 
@@ -78,7 +81,7 @@ impl Tab {
             Tab::TheirTurn => Some(counters.their_turn),
             Tab::Pipeline => Some(counters.open_prs),
             Tab::Merged => Some(counters.merged_this_month),
-            Tab::Feed | Tab::Repos | Tab::Trends => None,
+            Tab::Feed | Tab::Repos | Tab::Trends | Tab::Agents => None,
         }
     }
 
@@ -135,7 +138,7 @@ mod tests {
             .collect();
         assert_eq!(labels, ["Your turn", "Their turn", "Pipeline", "Merged"]);
         let more: Vec<_> = Tab::in_group(NavGroup::More).collect();
-        assert_eq!(more, [Tab::Feed, Tab::Repos, Tab::Trends]);
+        assert_eq!(more, [Tab::Feed, Tab::Repos, Tab::Trends, Tab::Agents]);
     }
 
     #[test]

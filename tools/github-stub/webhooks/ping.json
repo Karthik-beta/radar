@@ -1,0 +1,12 @@
+{
+  "zen": "Keep it logically awesome.",
+  "hook_id": 500001,
+  "hook": { "type": "Repository", "id": 500001, "events": ["push"], "active": true },
+  "repository": {
+    "id": 900001,
+    "name": "widgets",
+    "full_name": "karthik/widgets",
+    "owner": { "login": "karthik", "id": 1001, "type": "User" }
+  },
+  "sender": { "login": "karthik", "id": 1001 }
+}

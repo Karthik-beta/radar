@@ -14,6 +14,7 @@ pub enum Endpoint {
 /// The endpoints that need a signed-in session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Protected {
+    Agents,
     Dashboard,
     Feed,
     Repos,
@@ -31,6 +32,7 @@ impl Endpoint {
         }
         let (allowed, endpoint) = match path {
             "/api/health" => (Method::Get, Self::Health),
+            "/api/agents" => (Method::Get, Self::Protected(Protected::Agents)),
             "/api/dashboard" => (Method::Get, Self::Protected(Protected::Dashboard)),
             "/api/feed" => (Method::Get, Self::Protected(Protected::Feed)),
             "/api/freshness" => (Method::Get, Self::Protected(Protected::Freshness)),

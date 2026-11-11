@@ -8,6 +8,7 @@ use crate::components::header::Header;
 use crate::components::tabs::Tab;
 use crate::route::{provide_location, use_location, Route};
 use crate::store::{provide_store, Load};
+use crate::views::agents::Agents;
 use crate::views::feed::Feed;
 use crate::views::merged::Merged;
 use crate::views::not_found::NotFound;
@@ -67,6 +68,7 @@ fn Shell() -> impl IntoView {
                 Route::Tab(Tab::Feed) => view! { <Feed/> }.into_any(),
                 Route::Tab(Tab::Repos) => view! { <Repos/> }.into_any(),
                 Route::Tab(Tab::Trends) => view! { <Trends/> }.into_any(),
+                Route::Tab(Tab::Agents) => view! { <Agents/> }.into_any(),
                 Route::SignIn => {
                     queue_microtask(move || location.replace("/"));
                     ().into_any()

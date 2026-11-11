@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod feed;
 pub mod freshness;
 pub mod merged;

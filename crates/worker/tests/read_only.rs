@@ -13,6 +13,8 @@ const ALLOWED_WRITERS: &[&str] = &[
     "auth/route.rs",
     // Names the inbound POST routes /api/items/:id/dismiss and /snooze. It sends no request.
     "api/route.rs",
+    // Names the inbound POST routes /hooks/github and /hooks/checkin. It sends no request.
+    "hooks/route.rs",
 ];
 
 const METHOD_PATHS: &[&str] = &[
@@ -134,6 +136,21 @@ fn no_write_methods_outside_the_client() {
         "write method outside github/client.rs:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn hooks_never_reach_the_github_client() {
+    let hooks = src_dir().join("hooks");
+    for file in files_with_extension(&hooks, "rs") {
+        let text = fs::read_to_string(&file).expect("read source");
+        for needle in ["crate::github", "github::Client", "Fetch::", "fetch("] {
+            assert!(
+                !text.contains(needle),
+                "{} mentions {needle}",
+                relative(&src_dir(), &file)
+            );
+        }
+    }
 }
 
 #[test]

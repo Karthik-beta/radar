@@ -1,0 +1,25 @@
+{
+  "ref": "refs/heads/agent/fix-123",
+  "before": "0000000000000000000000000000000000000000",
+  "after": "1f1c2b3a4d5e6f708192a3b4c5d6e7f801234567",
+  "created": true,
+  "deleted": false,
+  "forced": false,
+  "repository": {
+    "id": 900001,
+    "name": "widgets",
+    "full_name": "karthik/widgets",
+    "private": false,
+    "owner": { "login": "karthik", "id": 1001, "type": "User" },
+    "fork": true
+  },
+  "pusher": { "name": "karthik" },
+  "sender": { "login": "karthik", "id": 1001 },
+  "head_commit": {
+    "id": "1f1c2b3a4d5e6f708192a3b4c5d6e7f801234567",
+    "message": "Fix the off-by-one in the parser (#123)\n\nThe loop stopped one token early.",
+    "timestamp": "2026-11-10T09:00:00Z",
+    "author": { "name": "agent", "email": "agent@example.invalid" }
+  },
+  "commits": []
+}

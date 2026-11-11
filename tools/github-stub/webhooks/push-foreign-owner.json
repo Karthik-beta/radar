@@ -1,0 +1,25 @@
+{
+  "ref": "refs/heads/agent/fix-123",
+  "before": "0000000000000000000000000000000000000000",
+  "after": "3b3c2b3a4d5e6f708192a3b4c5d6e7f801234569",
+  "created": true,
+  "deleted": false,
+  "forced": false,
+  "repository": {
+    "id": 900002,
+    "name": "widgets",
+    "full_name": "someone-else/widgets",
+    "private": false,
+    "owner": { "login": "someone-else", "id": 2002, "type": "User" },
+    "fork": false
+  },
+  "pusher": { "name": "someone-else" },
+  "sender": { "login": "someone-else", "id": 2002 },
+  "head_commit": {
+    "id": "3b3c2b3a4d5e6f708192a3b4c5d6e7f801234569",
+    "message": "Not the operator's fork",
+    "timestamp": "2026-11-10T09:10:00Z",
+    "author": { "name": "someone-else", "email": "someone@example.invalid" }
+  },
+  "commits": []
+}
