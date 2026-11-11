@@ -21,7 +21,7 @@ run_worker_first = true
 [[d1_databases]]
 binding = "DB"
 database_name = "radar"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "1245dc1f-c424-404c-9a35-13643460cffd"
 migrations_dir = "migrations"
 
 [[durable_objects.bindings]]
