@@ -8,3 +8,8 @@ TOKEN_KEY=ZGV2LW9ubHktdG9rZW4ta2V5LW5vdC1hLXNlY3JldCE=
 SESSION_KEY=ZGV2LW9ubHktc2Vzc2lvbi1rZXktbm90LXNlY3JldCE=
 ALLOWED_USER_ID=1001
 FORWARD_TO=
+# R23 hooks fail closed until each holds at least 32 bytes. Pass lane values with --var.
+WEBHOOK_SECRET=
+AGENT_TOKEN=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=

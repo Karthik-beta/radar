@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { answerEnrich } from "./enrich.mjs";
+import { answerHistory } from "./history.mjs";
 import { answerSearch } from "./search.mjs";
 
 const SCENARIOS_DIR = join(dirname(fileURLToPath(import.meta.url)), "scenarios");
@@ -338,6 +339,11 @@ export function createStub({ scenario: initial = "basic" } = {}) {
       }
       if (info.name === "Search" && state.scenario.search) {
         const { count, body: answer } = answerSearch(state.scenario, payload?.variables);
+        entry.nodes = count;
+        return reply(res, entry, 200, answer, headers);
+      }
+      if (info.name === "ContributionHistory" && state.scenario.history) {
+        const { count, body: answer } = answerHistory(state.scenario, payload?.variables);
         entry.nodes = count;
         return reply(res, entry, 200, answer, headers);
       }

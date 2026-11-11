@@ -20,6 +20,7 @@ pub struct RowData {
     pub title: String,
     pub agent: bool,
     pub who: Option<String>,
+    pub usual_reply: Option<i64>,
     pub since: Timestamp,
 }
 
@@ -34,6 +35,7 @@ impl From<&TurnRow> for RowData {
             title: row.title.clone(),
             agent: row.agent,
             who: who_did_what(row.reason, row.actor.as_ref(), row.what),
+            usual_reply: None,
             since: row.since,
         }
     }

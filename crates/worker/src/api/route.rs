@@ -14,8 +14,12 @@ pub enum Endpoint {
 /// The endpoints that need a signed-in session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Protected {
+    Agents,
     Dashboard,
+    Feed,
+    Repos,
     Freshness,
+    Trends,
     Dismiss(ItemId),
     Snooze(ItemId),
 }
@@ -28,8 +32,12 @@ impl Endpoint {
         }
         let (allowed, endpoint) = match path {
             "/api/health" => (Method::Get, Self::Health),
+            "/api/agents" => (Method::Get, Self::Protected(Protected::Agents)),
             "/api/dashboard" => (Method::Get, Self::Protected(Protected::Dashboard)),
+            "/api/feed" => (Method::Get, Self::Protected(Protected::Feed)),
             "/api/freshness" => (Method::Get, Self::Protected(Protected::Freshness)),
+            "/api/repos" => (Method::Get, Self::Protected(Protected::Repos)),
+            "/api/trends" => (Method::Get, Self::Protected(Protected::Trends)),
             _ => match item_action(path) {
                 Some(action) => (Method::Post, Self::Protected(action)),
                 None => return Some(Self::NotFound),
@@ -80,8 +88,28 @@ mod tests {
             protected(Protected::Dashboard)
         );
         assert_eq!(
+            Endpoint::parse(&get, "/api/feed"),
+            protected(Protected::Feed)
+        );
+        assert_eq!(
+            Endpoint::parse(&post, "/api/feed"),
+            Some(Endpoint::WrongMethod)
+        );
+        assert_eq!(
             Endpoint::parse(&get, "/api/freshness"),
             protected(Protected::Freshness)
+        );
+        assert_eq!(
+            Endpoint::parse(&get, "/api/repos"),
+            protected(Protected::Repos)
+        );
+        assert_eq!(
+            Endpoint::parse(&get, "/api/trends"),
+            protected(Protected::Trends)
+        );
+        assert_eq!(
+            Endpoint::parse(&Method::Post, "/api/trends"),
+            Some(Endpoint::WrongMethod)
         );
         assert_eq!(
             Endpoint::parse(&post, "/api/items/PR_1/dismiss"),

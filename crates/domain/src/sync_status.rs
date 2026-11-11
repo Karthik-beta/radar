@@ -13,14 +13,16 @@ pub enum SyncKind {
     Enrich,
     BackfillPage,
     Rollup,
+    SendAlerts,
 }
 
 impl SyncKind {
-    pub const ALL: [SyncKind; 4] = [
+    pub const ALL: [SyncKind; 5] = [
         SyncKind::PollNotifications,
         SyncKind::Enrich,
         SyncKind::BackfillPage,
         SyncKind::Rollup,
+        SyncKind::SendAlerts,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -29,6 +31,7 @@ impl SyncKind {
             Self::Enrich => "enrich",
             Self::BackfillPage => "backfill_page",
             Self::Rollup => "rollup",
+            Self::SendAlerts => "send_alerts",
         }
     }
 
@@ -37,7 +40,7 @@ impl SyncKind {
     }
 
     pub fn calls_github(self) -> bool {
-        !matches!(self, Self::Rollup)
+        !matches!(self, Self::Rollup | Self::SendAlerts)
     }
 }
 

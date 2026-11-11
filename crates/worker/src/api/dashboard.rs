@@ -5,6 +5,7 @@ use domain::api::{
 use domain::ids::Timestamp;
 use domain::item::ItemState;
 use domain::local_state::{visible, LocalState};
+use domain::repo_stats::RepoCard;
 use domain::turn::Reason;
 
 use crate::db::dashboard::{DashboardRows, ItemRecord};
@@ -72,6 +73,16 @@ pub fn assemble(rows: DashboardRows, now: Timestamp) -> Dashboard {
     }
 }
 
+/// Gives each Their turn row its repo's median first-reply time.
+pub fn fill_usual_reply(dashboard: &mut Dashboard, cards: &[RepoCard]) {
+    for row in &mut dashboard.their_turn {
+        row.usual_reply_secs = cards
+            .iter()
+            .find(|card| card.repo == row.repo)
+            .and_then(|card| card.median_first_response_secs);
+    }
+}
+
 /// One stable sort for every list. A key function pointer keeps it to one
 /// copy of the sort in the Worker, where each closure would add its own.
 fn sort_by(items: &mut [ItemRecord], key: fn(&ItemRecord) -> i64) {
@@ -123,6 +134,7 @@ fn their_row(item: ItemRecord) -> TheirRow {
         agent,
         last_action: item.last_human,
         waiting_on: item.requested_reviewers,
+        usual_reply_secs: None,
     }
 }
 
@@ -345,6 +357,28 @@ mod tests {
         let d = assemble(rows, NOW);
         assert_eq!(ids(&d.their_turn, |r| &r.id), ["PR_1"]);
         assert_eq!(d.counters.their_turn, 1);
+    }
+
+    #[test]
+    fn their_turn_rows_take_their_repos_median_reply_and_keep_the_dash_without_one() {
+        let rows = DashboardRows {
+            their_turn: vec![waiting(record(1, 100))],
+            ..DashboardRows::default()
+        };
+        let mut d = assemble(rows, NOW);
+        let card = |secs| RepoCard {
+            repo: RepoName::parse("rust-lang/rust").expect("repo"),
+            open: 0,
+            merged: 0,
+            closed: 0,
+            merge_rate: None,
+            median_first_response_secs: secs,
+            last_activity: NOW,
+        };
+        fill_usual_reply(&mut d, &[card(Some(3 * DAY))]);
+        assert_eq!(d.their_turn[0].usual_reply_secs, Some(3 * DAY));
+        fill_usual_reply(&mut d, &[card(None)]);
+        assert_eq!(d.their_turn[0].usual_reply_secs, None);
     }
 
     #[test]

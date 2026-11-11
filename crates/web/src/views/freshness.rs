@@ -3,9 +3,11 @@ use domain::ids::Timestamp;
 use domain::sync_status::{DeadWork, SyncKind};
 use leptos::prelude::*;
 
+use crate::components::email_banner::EmailBanner;
 use crate::store::use_store;
 use crate::sync_label::{
-    age_compact, attempts_words, budget_used, clock, last_ok, source_name, source_when,
+    age_compact, attempts_words, budget_used, clock, email_silent_words, email_when, last_ok,
+    source_name, source_when,
 };
 
 /// The panel the status button opens: when each source last synced, the
@@ -27,8 +29,10 @@ pub fn FreshnessPanel(#[prop(into)] id: &'static str) -> impl IntoView {
                                 .into_iter()
                                 .map(|kind| source_row(&freshness, kind, now))
                                 .collect_view()}
-                            // R19 adds the email row here.
+                            <Row name="Notification email" value=email_when(&freshness.email, now)/>
                         </ul>
+                        {email_silent_words(&freshness.email, now)
+                            .map(|words| view! { <EmailBanner words=words/> })}
                         <ul class="fresh-list" aria-label="GitHub budget">
                             <Row name="API budget" value=budget_words(&freshness.budget)/>
                         </ul>

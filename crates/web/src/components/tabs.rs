@@ -8,27 +8,56 @@ pub enum Tab {
     TheirTurn,
     Pipeline,
     Merged,
+    Feed,
+    Repos,
+    Trends,
+    Agents,
 }
 
+/// `Counters` are the four tabs of ADR 0003, each with a count. `More` is the
+/// second, quieter group at the end of the header, with no counts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NavGroup {
+    Counters,
+    More,
+}
+
+/// Every tab, in header order, with its label, path, and group. A new tab is a
+/// variant, one row here, and a `ready` arm.
+const TABS: [(Tab, &str, &str, NavGroup); 8] = [
+    (Tab::YourTurn, "Your turn", "/", NavGroup::Counters),
+    (Tab::TheirTurn, "Their turn", "/theirs", NavGroup::Counters),
+    (Tab::Pipeline, "Pipeline", "/pipeline", NavGroup::Counters),
+    (Tab::Merged, "Merged", "/merged", NavGroup::Counters),
+    (Tab::Feed, "Feed", "/feed", NavGroup::More),
+    (Tab::Repos, "Repos", "/repos", NavGroup::More),
+    (Tab::Trends, "Trends", "/trends", NavGroup::More),
+    (Tab::Agents, "Agents", "/agents", NavGroup::More),
+];
+
 impl Tab {
-    pub const ALL: [Tab; 4] = [Tab::YourTurn, Tab::TheirTurn, Tab::Pipeline, Tab::Merged];
+    fn row(self) -> (Tab, &'static str, &'static str, NavGroup) {
+        TABS.into_iter()
+            .find(|(tab, ..)| *tab == self)
+            .unwrap_or(TABS[0])
+    }
+
+    pub fn in_group(group: NavGroup) -> impl Iterator<Item = Tab> {
+        TABS.into_iter()
+            .map(|(tab, ..)| tab)
+            .filter(move |tab| tab.group() == group)
+    }
 
     pub fn label(self) -> &'static str {
-        match self {
-            Tab::YourTurn => "Your turn",
-            Tab::TheirTurn => "Their turn",
-            Tab::Pipeline => "Pipeline",
-            Tab::Merged => "Merged",
-        }
+        self.row().1
     }
 
     pub fn href(self) -> &'static str {
-        match self {
-            Tab::YourTurn => "/",
-            Tab::TheirTurn => "/theirs",
-            Tab::Pipeline => "/pipeline",
-            Tab::Merged => "/merged",
-        }
+        self.row().2
+    }
+
+    pub fn group(self) -> NavGroup {
+        self.row().3
     }
 
     /// Whether the tab's view exists. Each view module owns its flag.
@@ -38,16 +67,21 @@ impl Tab {
             Tab::TheirTurn => views::their_turn::READY,
             Tab::Pipeline => views::pipeline::READY,
             Tab::Merged => views::merged::READY,
+            Tab::Feed => views::feed::READY,
+            Tab::Repos => views::repos::READY,
+            Tab::Trends => views::trends::READY,
+            Tab::Agents => views::agents::READY,
         }
     }
 
-    /// The tab's counter (F5).
-    pub fn count(self, counters: &Counters) -> u32 {
+    /// The tab's counter (F5). Tabs outside the counter group have none.
+    pub fn count(self, counters: &Counters) -> Option<u32> {
         match self {
-            Tab::YourTurn => counters.your_turn,
-            Tab::TheirTurn => counters.their_turn,
-            Tab::Pipeline => counters.open_prs,
-            Tab::Merged => counters.merged_this_month,
+            Tab::YourTurn => Some(counters.your_turn),
+            Tab::TheirTurn => Some(counters.their_turn),
+            Tab::Pipeline => Some(counters.open_prs),
+            Tab::Merged => Some(counters.merged_this_month),
+            Tab::Feed | Tab::Repos | Tab::Trends | Tab::Agents => None,
         }
     }
 
@@ -57,7 +91,9 @@ impl Tab {
         } else {
             path
         };
-        Tab::ALL.into_iter().find(|tab| tab.href() == path)
+        TABS.into_iter()
+            .find(|(_, _, href, _)| *href == path)
+            .map(|(tab, ..)| tab)
     }
 }
 
@@ -67,9 +103,19 @@ mod tests {
 
     #[test]
     fn from_path_round_trips_every_tab() {
-        for tab in Tab::ALL {
+        for (tab, ..) in TABS {
             assert_eq!(Tab::from_path(tab.href()), Some(tab));
         }
+    }
+
+    #[test]
+    fn every_tab_has_one_row_and_a_group() {
+        for (tab, label, href, group) in TABS {
+            assert_eq!((tab.label(), tab.href(), tab.group()), (label, href, group));
+        }
+        assert_eq!(Tab::from_path("/feed"), Some(Tab::Feed));
+        assert_eq!(Tab::Feed.group(), NavGroup::More);
+        assert_eq!(Tab::YourTurn.group(), NavGroup::Counters);
     }
 
     #[test]
@@ -87,8 +133,12 @@ mod tests {
 
     #[test]
     fn all_follows_the_adr_order() {
-        let labels: Vec<_> = Tab::ALL.iter().map(|tab| tab.label()).collect();
+        let labels: Vec<_> = Tab::in_group(NavGroup::Counters)
+            .map(|tab| tab.label())
+            .collect();
         assert_eq!(labels, ["Your turn", "Their turn", "Pipeline", "Merged"]);
+        let more: Vec<_> = Tab::in_group(NavGroup::More).collect();
+        assert_eq!(more, [Tab::Feed, Tab::Repos, Tab::Trends, Tab::Agents]);
     }
 
     #[test]
@@ -99,7 +149,11 @@ mod tests {
             open_prs: 3,
             merged_this_month: 4,
         };
-        let counts: Vec<_> = Tab::ALL.iter().map(|tab| tab.count(&counters)).collect();
-        assert_eq!(counts, [1, 2, 3, 4]);
+        let counts: Vec<_> = Tab::in_group(NavGroup::Counters)
+            .map(|tab| tab.count(&counters))
+            .collect();
+        assert_eq!(counts, [Some(1), Some(2), Some(3), Some(4)]);
+        assert_eq!(Tab::Feed.count(&counters), None);
+        assert_eq!(Tab::Trends.count(&counters), None);
     }
 }

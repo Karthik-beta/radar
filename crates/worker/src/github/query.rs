@@ -41,7 +41,10 @@ macro_rules! query_doc {
 
 pub const VIEWER: QueryDoc = query_doc!("Viewer", "viewer.graphql");
 
-pub const ALL: &[&QueryDoc] = &[&VIEWER];
+pub const CONTRIBUTION_HISTORY: QueryDoc =
+    query_doc!("ContributionHistory", "contribution_history.graphql");
+
+pub const ALL: &[&QueryDoc] = &[&VIEWER, &CONTRIBUTION_HISTORY];
 
 pub fn find(name: &str) -> Option<&'static QueryDoc> {
     ALL.iter().copied().find(|doc| doc.name == name)

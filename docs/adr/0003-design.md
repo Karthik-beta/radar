@@ -1,6 +1,6 @@
 # 0003. Visual design
 
-Status: accepted, 2026-11-05. Builds on [0002. Architecture](0002-architecture.md).
+Status: accepted, 2026-11-05. [0008. Faint text contrast](0008-faint-contrast.md) proposes to replace the `faint` value. Builds on [0002. Architecture](0002-architecture.md).
 
 Radar is a focused inbox. You open it, deal with what is waiting on you, and leave. The design borrows from two directions explored in [prototypes/design-directions.html](../../prototypes/design-directions.html). The list comes from "Triage": one row per item, oldest first, driven from the keyboard. The opening answer comes from "Your move": a big count. The working demo is [prototypes/direction-ac.html](../../prototypes/direction-ac.html).
 

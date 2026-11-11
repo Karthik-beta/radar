@@ -7,11 +7,12 @@ mod email_health;
 mod enrich;
 mod gate;
 mod handlers;
+mod history;
 mod poll;
-mod scheduler;
+pub(crate) mod scheduler;
 mod state;
 mod store;
-mod work;
+pub(crate) mod work;
 
 use domain::api::Freshness;
 use domain::ids::Timestamp;
@@ -60,6 +61,8 @@ impl DurableObject for Syncer {
         let syncer = Self { state, env };
         if let Err(err) = syncer.exec_sql(store::SCHEMA, Vec::new()) {
             console_error!("syncer schema failed: {err}");
+        } else if let Err(err) = syncer.upgrade_schema() {
+            console_error!("syncer schema upgrade failed: {err}");
         }
         syncer
     }
@@ -130,6 +133,7 @@ impl Syncer {
         let started = Date::now().as_millis();
         let phase_before = observed.poll_phase.clone();
         let done_before = observed.backfill_done_at;
+        let seeded_before = observed.history_seeded_at;
         let Handled {
             outcome,
             finished_from,
@@ -170,6 +174,12 @@ impl Syncer {
             .filter(|_| sync.backfill_done_at != done_before)
         {
             writes.push(store::save_backfill_done(at));
+        }
+        if let Some(at) = sync
+            .history_seeded_at
+            .filter(|_| sync.history_seeded_at != seeded_before)
+        {
+            writes.push(store::save_history_seeded(at));
         }
         writes.push(store::save_state(&sync));
         for write in &writes {
@@ -260,6 +270,19 @@ impl Syncer {
         }
     }
 
+    fn upgrade_schema(&self) -> Result<()> {
+        let stored = self
+            .state
+            .storage()
+            .sql()
+            .exec(store::SELECT_SCHEMA_VERSION, None)?
+            .to_array::<store::RawKv>()?;
+        if store::needs_upgrade(stored.first()) {
+            self.exec_sql(store::UPGRADE_WORK, Vec::new())?;
+        }
+        Ok(())
+    }
+
     fn load(&self) -> Result<(Vec<WorkRow>, SyncState)> {
         let sql = self.state.storage().sql();
         let raw = sql
@@ -288,6 +311,11 @@ impl Syncer {
         }
         sync.backfill_done_at = sql
             .exec(store::SELECT_BACKFILL_DONE, None)?
+            .to_array::<store::RawKv>()?
+            .first()
+            .and_then(store::RawKv::parse_backfill_done);
+        sync.history_seeded_at = sql
+            .exec(store::SELECT_HISTORY_SEEDED, None)?
             .to_array::<store::RawKv>()?
             .first()
             .and_then(store::RawKv::parse_backfill_done);

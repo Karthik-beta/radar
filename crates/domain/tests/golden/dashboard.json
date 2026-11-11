@@ -49,7 +49,8 @@
         "what": "comment",
         "at": "2026-10-14T17:46:40Z"
       },
-      "waiting_on": ["alice", "bob"]
+      "waiting_on": ["alice", "bob"],
+      "usual_reply_secs": 259200
     }
   ],
   "pipeline": {

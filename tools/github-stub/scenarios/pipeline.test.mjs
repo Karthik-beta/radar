@@ -35,3 +35,13 @@ test("pipeline-hostile carries a 300 character title, markup, and a bad URL", ()
   assert.equal(items[1].title, "<img src=x onerror=alert(1)>");
   assert.equal(items[2].url, "javascript:alert(1)");
 });
+
+test("a11y-all-views fills every view, drops a scope, and faults the backfill search", () => {
+  const scenario = build("a11y-all-views");
+  const rows = scenario._expect.rows;
+  assert.ok(rows.some((row) => row.turn === "me"));
+  assert.ok(rows.some((row) => row.turn === "them"));
+  assert.ok(rows.some((row) => row.stage === "ci_failing"));
+  assert.deepEqual(scenario.scopes, ["read:user"]);
+  assert.equal(scenario.faults.length, 1);
+});

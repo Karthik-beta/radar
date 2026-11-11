@@ -5,6 +5,7 @@ use worker::Env;
 
 use super::backfill;
 use super::enrich;
+use super::history;
 use super::poll;
 use super::scheduler::UnitOutcome;
 use super::state::SyncState;
@@ -32,9 +33,20 @@ impl From<UnitOutcome> for Handled {
 /// token overlap (P5).
 pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timestamp) -> Handled {
     match kind {
-        WorkKind::Rollup => UnitOutcome::Done { follow_ups: vec![] }.into(),
+        WorkKind::Rollup(key) => crate::rollup::run_unit(*key, env, now).await.into(),
         WorkKind::PollNotifications => poll::run(env, state).await,
         WorkKind::Enrich(batch) => enrich::run(batch, env, state, now).await.into(),
         WorkKind::BackfillPage(cursor) => backfill::run(cursor, env, state, now).await.into(),
+        WorkKind::SeedHistory(key) => history::run(key, env, state, now).await.into(),
+        WorkKind::SendAlerts => send_alerts(env, now).await.into(),
+    }
+}
+
+async fn send_alerts(env: &Env, now: Timestamp) -> UnitOutcome {
+    match env.d1("DB") {
+        Ok(db) => crate::alerts::dispatch(&db, env, now).await,
+        Err(err) => UnitOutcome::Retry {
+            error: format!("d1 binding: {err}"),
+        },
     }
 }

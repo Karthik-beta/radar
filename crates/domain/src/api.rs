@@ -141,6 +141,8 @@ pub struct TheirRow {
     pub agent: bool,
     pub last_action: Option<LastAction>,
     pub waiting_on: Vec<Login>,
+    /// The repo's median time to a first maintainer reply, in seconds.
+    pub usual_reply_secs: Option<i64>,
 }
 
 /// My open pull requests, always all six open stages in this order.
@@ -428,6 +430,7 @@ mod tests {
                 (SyncKind::Enrich, None, 2),
                 (SyncKind::BackfillPage, None, 0),
                 (SyncKind::Rollup, None, 0),
+                (SyncKind::SendAlerts, None, 0),
             ]
         );
         assert_eq!(out.scope, ScopeState::Ok);

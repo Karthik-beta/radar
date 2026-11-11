@@ -1,10 +1,13 @@
+mod alerts;
 mod api;
 pub mod auth;
 pub mod db;
 mod email;
 pub mod github;
+mod hooks;
 #[cfg(feature = "probe")]
 mod probe;
+mod rollup;
 mod security;
 mod sync;
 
@@ -26,6 +29,9 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     }
     if let Some(route) = auth::Route::parse(&req.method(), &path) {
         return security::apply(auth::handle(route, &req, &env).await?);
+    }
+    if let Some(hook) = hooks::Hook::parse(&req.method(), &path) {
+        return security::apply(hooks::handle(hook, req, &env).await?);
     }
     if let Some(endpoint) = api::Endpoint::parse(&req.method(), &path) {
         return security::apply(api::handle(endpoint, req, &env).await?);

@@ -1,9 +1,13 @@
 //! The `/api/` endpoints. They read D1 and the Syncer's status, and never
 //! call GitHub (N7).
 
+mod agents;
 mod dashboard;
+mod feed;
 mod items;
+mod repos;
 mod route;
+mod trends;
 
 use domain::error::{ErrorBody, ErrorCode};
 use domain::health::{Health, HealthStatus};
@@ -121,7 +125,20 @@ async fn respond(endpoint: Endpoint, req: &mut Request, env: &Env) -> Result<Rep
             for err in errors {
                 console_error!("api dashboard skipped a row: {err}");
             }
-            Reply::json(200, &dashboard::assemble(rows, now))
+            let mut dashboard = dashboard::assemble(rows, now);
+            dashboard::fill_usual_reply(&mut dashboard, &repos::read(env).await?);
+            Reply::json(200, &dashboard)
+        }
+        Protected::Agents => agents::respond(env, now).await?,
+        Protected::Feed => feed::respond(req, env).await?,
+        Protected::Repos => repos::respond(env).await?,
+        Protected::Trends => {
+            let raw = crate::db::trends::read(&env.d1("DB")?, now).await?;
+            let (trends, errors) = trends::assemble(raw, now);
+            for err in errors {
+                console_error!("api trends skipped a row: {err}");
+            }
+            Reply::json(200, &trends)
         }
         Protected::Freshness => Reply {
             status: 200,

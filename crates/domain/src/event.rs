@@ -43,6 +43,11 @@ impl EventId {
         Self(format!("ci:{item_node_id}:{commit_oid}:{word}"))
     }
 
+    /// An id read back from the `events` table.
+    pub fn from_stored(id: &str) -> Self {
+        Self(id.to_owned())
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

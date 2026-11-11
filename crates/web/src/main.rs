@@ -1,6 +1,8 @@
+mod a11y;
 mod api;
 mod app;
 mod auth;
+mod charts;
 mod components;
 mod heat;
 mod keys;

@@ -13,7 +13,26 @@ const ALLOWED_WRITERS: &[&str] = &[
     "auth/route.rs",
     // Names the inbound POST routes /api/items/:id/dismiss and /snooze. It sends no request.
     "api/route.rs",
+    // Names the inbound POST routes /hooks/github and /hooks/checkin. It sends no request.
+    "hooks/route.rs",
+    // Posts one Telegram sendMessage. It never names a GitHub host, which a test below enforces.
+    "alerts/telegram.rs",
 ];
+
+const GITHUB_NAMES: &[&str] = &[
+    "github.com",
+    "GITHUB_API_BASE",
+    "GITHUB_WEB_BASE",
+    "github::",
+];
+
+fn github_names_in(text: &str) -> Vec<&'static str> {
+    GITHUB_NAMES
+        .iter()
+        .copied()
+        .filter(|name| text.contains(name))
+        .collect()
+}
 
 const METHOD_PATHS: &[&str] = &[
     "Method::Post",
@@ -137,6 +156,21 @@ fn no_write_methods_outside_the_client() {
 }
 
 #[test]
+fn hooks_never_reach_the_github_client() {
+    let hooks = src_dir().join("hooks");
+    for file in files_with_extension(&hooks, "rs") {
+        let text = fs::read_to_string(&file).expect("read source");
+        for needle in ["crate::github", "github::Client", "Fetch::", "fetch("] {
+            assert!(
+                !text.contains(needle),
+                "{} mentions {needle}",
+                relative(&src_dir(), &file)
+            );
+        }
+    }
+}
+
+#[test]
 fn every_graphql_file_is_registered() {
     let missing = unregistered_graphql_files(&src_dir());
     assert!(
@@ -229,4 +263,41 @@ fn scanner_fails_on_a_non_empty_default_feature() {
     assert!(!default_feature_is_empty(
         "[features]\ndefault=[ \"probe\" ]\n"
     ));
+}
+
+#[test]
+fn telegram_client_never_names_a_github_host() {
+    let text = fs::read_to_string(src_dir().join("alerts/telegram.rs")).expect("read telegram.rs");
+    assert_eq!(github_names_in(&text), Vec::<&str>::new());
+}
+
+#[test]
+fn github_host_check_fails_on_a_planted_name() {
+    for planted in [
+        "let base = env.var(\"GITHUB_API_BASE\");",
+        "const URL: &str = \"https://api.github.com\";",
+        "use crate::github::client;",
+    ] {
+        assert!(!github_names_in(planted).is_empty(), "{planted}");
+    }
+    assert!(github_names_in("let url = format!(\"{base}/bot{token}/sendMessage\");").is_empty());
+}
+
+#[test]
+fn a_post_outside_the_allow_list_still_fails() {
+    let root = scratch("telegram_scope");
+    plant(
+        &root,
+        "alerts/telegram.rs",
+        "fn ok() { let _ = Method::Post; }\n",
+    );
+    plant(
+        &root,
+        "alerts/mod.rs",
+        "fn bad() { let _ = Method::Post; }\n",
+    );
+    assert_eq!(
+        write_method_violations(&root, ALLOWED_WRITERS),
+        vec!["alerts/mod.rs:1: Method::Post".to_owned()]
+    );
 }

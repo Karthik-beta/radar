@@ -288,10 +288,134 @@ function theirTurnWaiting(count, first) {
 }
 
 
+// R20 activity feed. Each pull request here has no CI node unless it says so, so `eventCount` stays easy to read.
+const feedExpect = { turn: "them", reason: null, stage: "awaiting_review" };
+
+function feedPr(number, repo, timeline, o = {}) {
+  return spec(number, "pr", "comment", (c) => ({
+    decision: "REVIEW_REQUIRED", updated: o.updated ?? "@-1h", created: o.created ?? "@-6h",
+    timeline: timeline(c), ...o.extra,
+  }), feedExpect, { repo });
+}
+
+// Twelve events across three repos: a bot comment, a failing check, and an issue.
+function feedBasic() {
+  return [
+    feedPr(101, "octo/widgets", (c) => [comment(c, "IC_101_1", "@-5h", "bob"), comment(c, "IC_101_2", "@-4h", ME)]),
+    feedPr(102, "octo/gadgets", (c) => [
+      comment(c, "IC_102_1", "@-3h", "alice"),
+      comment(c, "IC_102_2", "@-2h", "dependabot[bot]", "Bot"),
+    ]),
+    spec(103, "pr", "ci_activity", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: { oid: "badc0de", state: "FAILURE" }, updated: "@-30m", created: "@-6h",
+      timeline: [comment(c, "IC_103_1", "@-90m", "bob")],
+    }), { turn: "me", reason: "ci_failed", stage: "ci_failing" }, { repo: "octo/tools" }),
+    spec(104, "issue", "comment", (c) => ({
+      updated: "@-20m", created: "@-6h",
+      timeline: [comment(c, "IC_104_1", "@-1h", "maint"), comment(c, "IC_104_2", "@-20m", ME)],
+    }), { turn: "them", reason: null, stage: null }, { repo: "octo/widgets" }),
+  ];
+}
+
+// Three pull requests whose events are 200, 190, and 170 days old. The nightly rollup folds the first two.
+function feedOld() {
+  return [200, 190, 170].map((days, i) => {
+    const at = `@-${days}d`;
+    return feedPr(110 + i, "octo/widgets", (c) => [comment(c, `IC_${110 + i}_1`, at, "bob")], {
+      created: at, updated: at,
+    });
+  });
+}
+
+// R21 repo cards: 60 of my pull requests across 4 repos. `replies` are the days a maintainer took to answer, and
+// null leaves the pull request unanswered. An open one ends with my own comment, so it sits on Their turn.
+const repoPlan = [
+  { repo: "octo/widgets", first: 200, states: ["MERGED", "MERGED", "MERGED", "CLOSED", "OPEN", "OPEN"], replies: [1, 2, 4, 9, null, null] },
+  { repo: "octo/gadgets", first: 220, states: [...Array(18).fill("MERGED"), "CLOSED", "OPEN"], replies: Array(20).fill(0.5) },
+  { repo: "octo/tools", first: 250, states: Array(18).fill("OPEN"), replies: Array(18).fill(null) },
+  { repo: "octo/docs", first: 280, states: [...Array(8).fill("MERGED"), ...Array(8).fill("CLOSED")], replies: Array(16).fill(1) },
+];
+
+function repoCards() {
+  return repoPlan.flatMap(({ repo, first, states, replies }) =>
+    states.map((state, i) => {
+      const number = first + i;
+      const age = 40 + i;
+      const reply = replies[i];
+      const last = `@-${Math.max(1, 30 - i)}d`;
+      return spec(number, "pr", "author", (c) => ({
+        decision: "REVIEW_REQUIRED", ci: ok,
+        created: `@-${age}d`, updated: last,
+        timeline: [
+          ...(reply === null ? [] : [comment(c, `IC_${number}_1`, `@-${(age - reply) * 24}h`, "bob")]),
+          ...(state === "OPEN" ? [comment(c, `IC_${number}_2`, last, ME)] : []),
+        ],
+        state,
+        extra: state === "OPEN" ? undefined : { closedAt: last, mergedAt: state === "MERGED" ? last : null },
+      }), { turn: "them", reason: null, stage: null }, { repo });
+    }),
+  );
+}
+
+// 100 pull requests of 20 events each: the opening and 19 comments.
+export function feedMany(count = 100, perPr = 20) {
+  const repos = ["octo/widgets", "octo/gadgets", "octo/tools", "octo/docs", "octo/site"];
+  return Array.from({ length: count }, (_, i) => {
+    const n = 1000 + i;
+    return feedPr(
+      n,
+      repos[i % repos.length],
+      (c) => Array.from({ length: perPr - 1 }, (_, j) => comment(c, `IC_${n}_${j}`, `@-${i * 20 + j + 1}m`, j % 2 ? "bob" : ME)),
+      { created: `@-${i * 20 + perPr}m`, updated: `@-${i * 20 + 1}m` },
+    );
+  });
+}
+
+
+// R24 phone alerts. Two threads should alert, and four should not.
+function mentioned(number, o = {}) {
+  const at = o.at ?? "@-20m";
+  return spec(number, "issue", "mention", (c) => ({
+    by: "maint", title: o.title, updated: at,
+    timeline: [comment(c, `IC_${number}_1`, at, o.who ?? "alice", o.type)],
+  }), { turn: "me", reason: "mentioned", stage: null }, { mention: true });
+}
+
+function alerts() {
+  return [
+    mentioned(101, { title: "Mention that alerts" }),
+    asked(102, 1, "bob", { title: "Review request that alerts", updated: "@-30m", timeline: [requested("RRE_102", "@-30m", "bob", ME)] }),
+    spec(103, "pr", "ci_activity", (c) => ({
+      title: "CI failed on mine", decision: "REVIEW_REQUIRED", ci: { oid: "badc0de", state: "FAILURE" }, updated: "@-1h",
+      timeline: [commit(c, "PRC_103", "@-1h", ME, "badc0de")],
+    }), { turn: "me", reason: "ci_failed", stage: "ci_failing" }),
+    spec(104, "pr", "comment", (c) => ({
+      title: "Plain reply on mine", decision: "REVIEW_REQUIRED", ci: ok, updated: "@-15m",
+      timeline: [comment(c, "IC_104_1", "@-2h", ME), comment(c, "IC_104_2", "@-15m", "bob")],
+    }), { turn: "me", reason: "replied", stage: "awaiting_review" }),
+    spec(105, "issue", "mention", (c) => ({
+      by: "maint", title: "Mention by a bot", updated: "@-10m",
+      timeline: [comment(c, "IC_105_1", "@-10m", "dependabot[bot]", "Bot")],
+    }), { turn: "them", reason: null, stage: null }),
+    mentioned(106, { title: "Mention ten hours old", at: "@-10h" }),
+  ];
+}
+
+function alertsMany() {
+  return Array.from({ length: 12 }, (_, i) => mentioned(120 + i, { title: `Mention number ${i + 1}`, at: `@-${i + 1}m` }));
+}
+
+function alertsMarkup() {
+  return [mentioned(130, { title: "*bold* <b>x</b> [a](b) `code` _it_" })];
+}
+
 const kinds = {
   "your-turn-edge": { specs: yourTurnEdge },
   "your-turn-hostile": { specs: yourTurnHostile },
   "your-turn-theirs-only": { specs: theirsOnly },
+  alerts: { specs: alerts },
+  "alerts-many": { specs: alertsMany },
+  "alerts-markup": { specs: alertsMarkup },
   "enrich-20": { specs: () => [...basic(), ...many(14, 1000)] },
   "enrich-edge": { specs: edge },
   "enrich-basic": { specs: basic },
@@ -317,6 +441,9 @@ const kinds = {
   },
   "enrich-body-marker": { specs: bodyMarker },
   "enrich-ci-step": { specs: ciStep },
+  "feed-basic": { specs: feedBasic },
+  "feed-old": { specs: feedOld },
+  "feed-many": { specs: () => feedMany() },
   "pipeline-all-stages": { specs: pipelineAllStages },
   "pipeline-two-stages": { specs: pipelineTwoStages },
   "pipeline-stage-move": { specs: () => pipelineAllStages({ moveToFailing: true }) },
@@ -332,10 +459,17 @@ const kinds = {
     specs: basic,
     faults: [{ match: "POST /graphql", status: 502 }],
   },
+  // R17: every view has rows, the token lacks the notifications scope, and the search backfill fails.
+  "a11y-all-views": {
+    specs: () => [...basic(), ...theirTurnMixed(), ...pipelineAllStages()],
+    scenario: { scopes: ["read:user"] },
+    faults: [{ match: "POST /graphql", status: 502, graphql: { q: "is:pr author" } }],
+  },
   "their-turn-mixed": { specs: theirTurnMixed },
   "their-turn-none": { specs: () => [asked(81, 5, "alice"), asked(82, 6, "bob"), asked(83, 7, "carol"), asked(84, 8, "dave")] },
   "their-turn-hostile": { specs: theirTurnHostile },
   "their-turn-large": { specs: () => theirTurnWaiting(200, 700) },
+  "repo-cards": { specs: repoCards },
 };
 
 // My own open pull requests, one per card. `created` sets the days in stage on first sync.

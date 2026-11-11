@@ -35,6 +35,9 @@ pub struct SyncState {
     /// When the first sign-in backfill finished all three searches. Set once, and
     /// kept in the `kv` table. A sign-in starts a backfill only while it is unset.
     pub backfill_done_at: Option<Timestamp>,
+    /// When the last year of contribution history was seeded. Kept in the `kv` table.
+    /// The nightly kick queues a seed only while it is unset.
+    pub history_seeded_at: Option<Timestamp>,
 }
 
 impl SyncState {
@@ -43,6 +46,7 @@ impl SyncState {
         self.last_modified.clone_from(&unit.last_modified);
         self.poll_phase.clone_from(&unit.poll_phase);
         self.backfill_done_at = unit.backfill_done_at.or(self.backfill_done_at);
+        self.history_seeded_at = unit.history_seeded_at.or(self.history_seeded_at);
         self.next_poll_at = unit.next_poll_at;
         self.rate = unit.rate;
         self.scopes.clone_from(&unit.scopes);
@@ -112,6 +116,7 @@ pub fn status(
 mod tests {
     use super::*;
     use crate::github::Timestamp as GithubTimestamp;
+    use crate::rollup::RollupKey;
     use crate::sync::work::{RowState, WorkKind};
 
     #[test]
@@ -181,7 +186,7 @@ mod tests {
         let rollup = WorkRow {
             state: RowState::Dead,
             attempts: 3,
-            ..WorkRow::pending(WorkKind::Rollup, Timestamp(999_000))
+            ..WorkRow::pending(WorkKind::Rollup(RollupKey::Nightly), Timestamp(999_000))
         };
         let mut state = SyncState::default();
         state.throttle.no_token = true;
@@ -191,7 +196,7 @@ mod tests {
             out.dead,
             [DeadWork {
                 kind: SyncKind::Rollup,
-                key: WorkKind::Rollup.key(),
+                key: WorkKind::Rollup(RollupKey::Nightly).key(),
                 attempts: 3,
                 since: Timestamp(999_000),
             }]

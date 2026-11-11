@@ -26,6 +26,8 @@ jobs:
           node-version: 22
       - name: Check script syntax
         run: for f in scripts/*.mjs tools/github-stub/*.mjs; do node --check "$f"; done
+      - name: Check text contrast and focus outlines
+        run: node scripts/check-contrast.mjs && node scripts/check-contrast.mjs --css crates/web/style
       - name: Render the design tokens page
         run: node scripts/tokens-to-wiki.mjs "$RUNNER_TEMP/wiki"
       - name: Check links between repository files

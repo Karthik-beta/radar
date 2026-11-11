@@ -48,7 +48,7 @@ impl SearchWindow {
         }
     }
 
-    fn days(self) -> i64 {
+    pub(super) fn days(self) -> i64 {
         match self {
             Self::Backfill90d => 90,
             Self::Nightly7d => 7,
@@ -187,7 +187,7 @@ fn valid_date(raw: &str) -> bool {
 }
 
 /// A cursor ends up in a row key and the log, so it keeps to the alphabet of a base64 string.
-fn valid_cursor(raw: &str) -> bool {
+pub(super) fn valid_cursor(raw: &str) -> bool {
     !raw.is_empty()
         && raw != START
         && raw.len() <= MAX_CURSOR_LEN

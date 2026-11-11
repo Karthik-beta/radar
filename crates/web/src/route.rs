@@ -1,3 +1,5 @@
+use domain::feed::FeedKind;
+use domain::ids::RepoName;
 use leptos::ev;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -88,6 +90,66 @@ impl Location {
     }
 }
 
+/// The feed's two filters, as `/feed?repo=<owner/name>&kind=<kind>` holds them.
+/// A value that does not parse is no filter, so a hand-edited address never
+/// breaks the page.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FeedFilter {
+    pub repo: Option<RepoName>,
+    pub kind: Option<FeedKind>,
+}
+
+impl FeedFilter {
+    pub fn from_params(repo: Option<&str>, kind: Option<&str>) -> Self {
+        Self {
+            repo: repo.and_then(|repo| RepoName::parse(repo).ok()),
+            kind: kind.and_then(FeedKind::parse),
+        }
+    }
+
+    pub fn from_address() -> Self {
+        Self::from_params(query("repo").as_deref(), query("kind").as_deref())
+    }
+
+    pub fn is_set(&self) -> bool {
+        self.repo.is_some() || self.kind.is_some()
+    }
+
+    /// The query string for `/feed` and `/api/feed`, with no leading `?`.
+    pub fn query(&self) -> String {
+        let repo = self
+            .repo
+            .as_ref()
+            .map(|r| format!("repo={}", encode(&r.to_string())));
+        let kind = self.kind.map(|k| format!("kind={}", encode(k.tag())));
+        [repo, kind]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join("&")
+    }
+
+    pub fn href(&self) -> String {
+        match self.query() {
+            q if q.is_empty() => "/feed".to_owned(),
+            q => format!("/feed?{q}"),
+        }
+    }
+}
+
+/// Percent-encodes everything but letters, digits, and `-_./`.
+pub fn encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/') {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 /// One value from the address bar's query string.
 pub fn query(name: &str) -> Option<String> {
     let search = window().location().search().ok()?;
@@ -159,8 +221,38 @@ mod tests {
         assert_eq!(Route::parse("/theirs"), Route::Tab(Tab::TheirTurn));
         assert_eq!(Route::parse("/pipeline/"), Route::Tab(Tab::Pipeline));
         assert_eq!(Route::parse("/merged"), Route::Tab(Tab::Merged));
+        assert_eq!(Route::parse("/feed"), Route::Tab(Tab::Feed));
+        assert_eq!(Route::parse("/feed/"), Route::Tab(Tab::Feed));
+        assert_eq!(Route::parse("/agents"), Route::Tab(Tab::Agents));
         assert_eq!(Route::parse("/signin"), Route::SignIn);
         assert_eq!(Route::parse("/zzz"), Route::NotFound);
         assert_eq!(Route::parse("/pipeline/extra"), Route::NotFound);
+    }
+
+    #[test]
+    fn the_feed_filter_round_trips_through_its_address() {
+        let filter = FeedFilter::from_params(Some("octo/widgets"), Some("ci_failed"));
+        assert_eq!(filter.href(), "/feed?repo=octo/widgets&kind=ci_failed");
+        assert_eq!(FeedFilter::default().href(), "/feed");
+        let kind_only = FeedFilter::from_params(None, Some("merged"));
+        assert_eq!(kind_only.href(), "/feed?kind=merged");
+        assert!(filter.is_set() && !FeedFilter::default().is_set());
+    }
+
+    #[test]
+    fn a_bad_filter_value_is_no_filter() {
+        let filter = FeedFilter::from_params(Some("x' OR 1=1"), Some("nope"));
+        assert_eq!(filter, FeedFilter::default());
+        assert_eq!(
+            FeedFilter::from_params(Some(""), Some("")),
+            FeedFilter::default()
+        );
+    }
+
+    #[test]
+    fn encode_keeps_unreserved_bytes_and_escapes_the_rest() {
+        assert_eq!(encode("a-b_c.d/e"), "a-b_c.d/e");
+        assert_eq!(encode("ci:PR_1=x"), "ci%3APR_1%3Dx");
+        assert_eq!(encode("a b&c#d+e%f"), "a%20b%26c%23d%2Be%25f");
     }
 }

@@ -9,9 +9,10 @@ use sha2::{Digest, Sha256};
 
 use super::backfill::BackfillCursor;
 use super::config::ENRICH_BATCH;
+use super::history::HistoryKey;
+use crate::rollup::RollupKey;
 
 const MAIN_KEY: &str = "main";
-const NIGHTLY_KEY: &str = "nightly";
 const MAX_NODE_ID_LEN: usize = 128;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,7 +106,11 @@ pub enum WorkKind {
     PollNotifications,
     Enrich(EnrichBatch),
     BackfillPage(BackfillCursor),
-    Rollup,
+    /// Stored as a `backfill_page` row under a `seed.` key, so it shares that kind's
+    /// rate gate, freshness, and dead-row revival.
+    SeedHistory(HistoryKey),
+    Rollup(RollupKey),
+    SendAlerts,
 }
 
 /// The `kind`, `key`, and `payload` columns of a `work` row. `(kind, key)` is the
@@ -122,8 +127,9 @@ impl WorkKind {
         match self {
             Self::PollNotifications => SyncKind::PollNotifications,
             Self::Enrich(_) => SyncKind::Enrich,
-            Self::BackfillPage(_) => SyncKind::BackfillPage,
-            Self::Rollup => SyncKind::Rollup,
+            Self::BackfillPage(_) | Self::SeedHistory(_) => SyncKind::BackfillPage,
+            Self::Rollup(_) => SyncKind::Rollup,
+            Self::SendAlerts => SyncKind::SendAlerts,
         }
     }
 
@@ -132,7 +138,9 @@ impl WorkKind {
             Self::PollNotifications => MAIN_KEY.to_owned(),
             Self::Enrich(batch) => batch.key(),
             Self::BackfillPage(cursor) => cursor.key(),
-            Self::Rollup => NIGHTLY_KEY.to_owned(),
+            Self::SeedHistory(key) => key.key(),
+            Self::Rollup(key) => key.key(),
+            Self::SendAlerts => MAIN_KEY.to_owned(),
         }
     }
 
@@ -155,7 +163,11 @@ impl WorkKind {
         };
         let work = match kind {
             SyncKind::PollNotifications if key == MAIN_KEY => Self::PollNotifications,
-            SyncKind::Rollup if key == NIGHTLY_KEY => Self::Rollup,
+            SyncKind::SendAlerts if key == MAIN_KEY => Self::SendAlerts,
+            SyncKind::Rollup => Self::Rollup(RollupKey::parse(key).ok_or_else(bad_key)?),
+            SyncKind::BackfillPage if HistoryKey::is_seed_key(key) => {
+                Self::SeedHistory(HistoryKey::parse(key).ok_or_else(bad_key)?)
+            }
             SyncKind::BackfillPage => {
                 Self::BackfillPage(BackfillCursor::parse(key).ok_or_else(bad_key)?)
             }
@@ -166,7 +178,7 @@ impl WorkKind {
                 }
                 Self::Enrich(batch)
             }
-            SyncKind::PollNotifications | SyncKind::Rollup => return Err(bad_key()),
+            SyncKind::PollNotifications | SyncKind::SendAlerts => return Err(bad_key()),
         };
         Ok(work)
     }
@@ -274,7 +286,7 @@ mod tests {
             enrich(&["PR_a", "I_b"]).key()
         );
         assert_eq!(WorkKind::PollNotifications.key(), "main");
-        assert_eq!(WorkKind::Rollup.key(), "nightly");
+        assert_eq!(WorkKind::Rollup(RollupKey::Nightly).key(), "nightly");
         assert_eq!(
             WorkKind::BackfillPage(BackfillCursor::first(
                 SearchWindow::Backfill90d,
@@ -284,6 +296,15 @@ mod tests {
             "b90.1969-10-03.authored.1.start"
         );
         assert_ne!(enrich(&["PR_a"]).key(), enrich(&["PR_b"]).key());
+    }
+
+    #[test]
+    fn send_alerts_enqueued_twice_is_one_row() {
+        use crate::sync::scheduler::enqueue;
+        let first = enqueue(&[], WorkKind::SendAlerts, Timestamp(5)).unwrap();
+        assert_eq!(first.kind.key(), "main");
+        assert_eq!(enqueue(&[first], WorkKind::SendAlerts, Timestamp(9)), None);
+        assert!(WorkKind::from_columns("send_alerts", "other", None).is_err());
     }
 
     #[test]
@@ -311,7 +332,9 @@ mod tests {
                 page: 3,
                 after: Some("Y3Vyc29yOjI=".into()),
             }),
-            WorkKind::Rollup,
+            WorkKind::Rollup(RollupKey::Nightly),
+            WorkKind::SeedHistory(HistoryKey::first(Timestamp(1_794_052_800))),
+            WorkKind::SendAlerts,
         ] {
             let c = kind.columns();
             let back = WorkKind::from_columns(c.kind.as_str(), &c.key, c.payload.as_deref());
@@ -362,7 +385,7 @@ mod tests {
         );
         assert_eq!(
             WorkKind::from_request("rollup", "nightly"),
-            Ok(WorkKind::Rollup)
+            Ok(WorkKind::Rollup(RollupKey::Nightly))
         );
         assert!(WorkKind::from_request("enrich", "").is_err());
     }

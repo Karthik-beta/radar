@@ -30,7 +30,7 @@ Commands, run from the repository root:
 - `cargo clippy --workspace --all-targets -- -D warnings` lints. The Worker denies `unwrap` and `expect` outside tests.
 - `cargo test --workspace` and `node --test "scripts/*.test.mjs"` run the tests.
 - `node scripts/build.mjs` builds the UI with `trunk build --release`, then the Worker with `worker-build --release`. Install both with `cargo install --locked trunk@0.22.1 worker-build@0.8.7`.
-- `node scripts/check-size.mjs` checks the gzipped bundles against their budgets, 400 KB for the Worker and 200 KB for the UI.
+- `node scripts/check-size.mjs` checks the gzipped bundles against their budgets, 400 KB for the Worker and 300 KB for the UI ([ADR 0009](docs/adr/0009-ui-size-budget.md)).
 - `npm ci`, then `npx wrangler dev`, serves Radar on `http://localhost:8787`.
 
 The Worker package is `radar-worker`, because a package named `worker` would clash with the `worker` crate, so run `cargo test -p radar-worker`. Lane worktrees may share one `CARGO_TARGET_DIR` to reuse compiled dependencies. `spikes/` holds throwaway measurements, not product code.

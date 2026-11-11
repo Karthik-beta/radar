@@ -7,8 +7,10 @@ use domain::sync_status::SyncKind;
 use super::backfill::{BackfillCursor, SearchWindow};
 use super::config::{BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, MAX_ATTEMPTS, RETRY_DELAYS_SECS};
 use super::gate::{gate, Gate};
+use super::history::HistoryKey;
 use super::state::{SyncState, Throttle};
 use super::work::{KickReason, RowState, WorkKind, WorkRow};
+use crate::rollup::RollupKey;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitOutcome {
@@ -230,12 +232,22 @@ pub fn kick(
     let backfill_wanted = state.backfill_done_at.is_none();
     match reason {
         KickReason::Rollup => {
-            let mut queued: Vec<WorkRow> = revive_or_insert(rows, WorkKind::Rollup, now)
-                .into_iter()
-                .collect();
+            let mut queued: Vec<WorkRow> =
+                revive_or_insert(rows, WorkKind::Rollup(RollupKey::Nightly), now)
+                    .into_iter()
+                    .collect();
             queued.extend(start_window(rows, SearchWindow::Nightly7d, now));
             if backfill_wanted {
                 queued.extend(start_window(rows, SearchWindow::Backfill90d, now));
+            }
+            let history_queued = rows
+                .iter()
+                .any(|row| matches!(row.kind, WorkKind::SeedHistory(_)));
+            if state.history_seeded_at.is_none() && !history_queued {
+                queued.push(WorkRow::pending(
+                    WorkKind::SeedHistory(HistoryKey::first(now)),
+                    now,
+                ));
             }
             let dead_backfills = rows
                 .iter()
@@ -292,6 +304,7 @@ mod tests {
     fn done_state() -> SyncState {
         SyncState {
             backfill_done_at: Some(at(-500)),
+            history_seeded_at: Some(at(-500)),
             ..SyncState::default()
         }
     }
@@ -340,7 +353,7 @@ mod tests {
         let rows = vec![
             row(enrich("PR_b"), -5),
             row(enrich("PR_a"), -10),
-            row(WorkKind::Rollup, 30),
+            row(WorkKind::Rollup(RollupKey::Nightly), 30),
         ];
         assert_eq!(
             plan(&rows, &SyncState::default(), NOW),
@@ -393,10 +406,13 @@ mod tests {
         let mut state = low_budget();
         state.throttle.retry_at = Some(at(600));
         state.throttle.no_token = true;
-        let rows = vec![row(enrich("PR_a"), -1), row(WorkKind::Rollup, 0)];
+        let rows = vec![
+            row(enrich("PR_a"), -1),
+            row(WorkKind::Rollup(RollupKey::Nightly), 0),
+        ];
         assert_eq!(
             plan(&rows, &state, NOW),
-            Decision::Run(row(WorkKind::Rollup, 0))
+            Decision::Run(row(WorkKind::Rollup(RollupKey::Nightly), 0))
         );
     }
 
@@ -513,7 +529,13 @@ mod tests {
         };
         let backoff = apply(row(enrich("PR_a"), 0), &limited, Throttle::default(), NOW).throttle;
         let done = UnitOutcome::Done { follow_ups: vec![] };
-        let kept = apply(row(WorkKind::Rollup, 0), &done, backoff, NOW).throttle;
+        let kept = apply(
+            row(WorkKind::Rollup(RollupKey::Nightly), 0),
+            &done,
+            backoff,
+            NOW,
+        )
+        .throttle;
         assert_eq!(kept, backoff);
     }
 
@@ -548,7 +570,7 @@ mod tests {
         assert_eq!(
             first,
             vec![
-                row(WorkKind::Rollup, 0),
+                row(WorkKind::Rollup(RollupKey::Nightly), 0),
                 row(backfill_start(SearchWindow::Nightly7d), 0)
             ]
         );
@@ -578,10 +600,43 @@ mod tests {
     }
 
     #[test]
+    fn nightly_kick_seeds_history_once_until_it_is_done() {
+        let mut state = SyncState {
+            backfill_done_at: Some(at(-500)),
+            ..SyncState::default()
+        };
+        let queued = kick(KickReason::Rollup, &[], &mut state, NOW);
+        let seed = row(WorkKind::SeedHistory(HistoryKey::first(NOW)), 0);
+        assert!(queued.contains(&seed));
+        let again = kick(KickReason::Rollup, &queued, &mut state, at(1));
+        assert!(again
+            .iter()
+            .all(|r| !matches!(r.kind, WorkKind::SeedHistory(_))));
+        state.history_seeded_at = Some(at(5));
+        let done = kick(KickReason::Rollup, &[], &mut state, at(10));
+        assert!(done
+            .iter()
+            .all(|r| !matches!(r.kind, WorkKind::SeedHistory(_))));
+    }
+
+    #[test]
+    fn a_dead_seed_unit_comes_back_with_the_nightly_kick() {
+        let mut state = done_state();
+        state.history_seeded_at = None;
+        let seed = WorkKind::SeedHistory(HistoryKey::first(NOW));
+        let rows = vec![
+            row(WorkKind::Rollup(RollupKey::Nightly), -1),
+            dead(seed.clone()),
+        ];
+        let queued = kick(KickReason::Rollup, &rows, &mut state, NOW);
+        assert!(queued.contains(&row(seed, 0)));
+    }
+
+    #[test]
     fn a_nightly_search_in_progress_is_left_alone() {
         let mut state = done_state();
         let page = backfill_page(SearchWindow::Nightly7d, SearchKind::Involves, 1, "Y3I=");
-        let rows = vec![row(WorkKind::Rollup, -1), row(page, -1)];
+        let rows = vec![row(WorkKind::Rollup(RollupKey::Nightly), -1), row(page, -1)];
         assert!(kick(KickReason::Rollup, &rows, &mut state, NOW).is_empty());
     }
 
@@ -657,7 +712,10 @@ mod tests {
             3,
             "Y3Vyc29yOjM=",
         );
-        let rows = vec![dead(cursor.clone()), row(WorkKind::Rollup, -1)];
+        let rows = vec![
+            dead(cursor.clone()),
+            row(WorkKind::Rollup(RollupKey::Nightly), -1),
+        ];
         let rearmed = kick(KickReason::Rollup, &rows, &mut state, NOW);
         assert!(rearmed.contains(&row(cursor, 0)));
         assert!(rearmed.contains(&row(backfill_start(SearchWindow::Nightly7d), 0)));
@@ -668,7 +726,10 @@ mod tests {
     fn nightly_kick_rearms_a_dead_nightly_page_once() {
         let mut state = done_state();
         let cursor = backfill_page(SearchWindow::Nightly7d, SearchKind::Involves, 2, "Y3I=");
-        let rows = vec![dead(cursor.clone()), row(WorkKind::Rollup, -1)];
+        let rows = vec![
+            dead(cursor.clone()),
+            row(WorkKind::Rollup(RollupKey::Nightly), -1),
+        ];
         assert_eq!(
             kick(KickReason::Rollup, &rows, &mut state, NOW),
             vec![row(cursor, 0)]

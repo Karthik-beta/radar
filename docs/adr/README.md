@@ -11,6 +11,8 @@ Each record captures one decision: the context, what we chose, and what we rejec
 | [0005](0005-rust.md) | Rust everywhere | Superseded in part by 0006 |
 | [0006](0006-ui-components.md) | UI components and Tailwind | Accepted |
 | [0007](0007-client-routing.md) | Client routing without leptos_router | Accepted |
+| [0008](0008-faint-contrast.md) | Faint text contrast | Proposed |
+| [0009](0009-ui-size-budget.md) | UI size budget | Accepted |
 
 ## Add a record
 
