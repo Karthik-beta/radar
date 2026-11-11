@@ -2,6 +2,7 @@
 //! against SQLite natively and `run` is the only function that touches D1.
 
 pub mod agents;
+pub mod alerts;
 pub mod auth;
 pub mod batch;
 pub mod dashboard;
@@ -38,7 +39,7 @@ pub(crate) mod testing {
     use super::items::ItemRow;
     use super::sql::{Param, Statement};
 
-    const MIGRATIONS: [&str; 8] = [
+    const MIGRATIONS: [&str; 9] = [
         include_str!("../../../../migrations/0001_init.sql"),
         include_str!("../../../../migrations/0003_item_extras.sql"),
         include_str!("../../../../migrations/0004_email_state.sql"),
@@ -46,6 +47,7 @@ pub(crate) mod testing {
         include_str!("../../../../migrations/0006_feed_index.sql"),
         include_str!("../../../../migrations/0007_rollup_source.sql"),
         include_str!("../../../../migrations/0008_agent_work.sql"),
+        include_str!("../../../../migrations/0009_alerts.sql"),
         include_str!("../../../../migrations/0010_events_by_item.sql"),
     ];
 

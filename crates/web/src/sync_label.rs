@@ -150,6 +150,7 @@ pub fn source_name(kind: SyncKind) -> &'static str {
         SyncKind::Enrich => "Enrichment",
         SyncKind::BackfillPage => "Search backfill",
         SyncKind::Rollup => "Nightly run",
+        SyncKind::SendAlerts => "Phone alerts",
     }
 }
 

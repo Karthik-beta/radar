@@ -110,6 +110,7 @@ pub enum WorkKind {
     /// rate gate, freshness, and dead-row revival.
     SeedHistory(HistoryKey),
     Rollup(RollupKey),
+    SendAlerts,
 }
 
 /// The `kind`, `key`, and `payload` columns of a `work` row. `(kind, key)` is the
@@ -128,6 +129,7 @@ impl WorkKind {
             Self::Enrich(_) => SyncKind::Enrich,
             Self::BackfillPage(_) | Self::SeedHistory(_) => SyncKind::BackfillPage,
             Self::Rollup(_) => SyncKind::Rollup,
+            Self::SendAlerts => SyncKind::SendAlerts,
         }
     }
 
@@ -138,6 +140,7 @@ impl WorkKind {
             Self::BackfillPage(cursor) => cursor.key(),
             Self::SeedHistory(key) => key.key(),
             Self::Rollup(key) => key.key(),
+            Self::SendAlerts => MAIN_KEY.to_owned(),
         }
     }
 
@@ -160,6 +163,7 @@ impl WorkKind {
         };
         let work = match kind {
             SyncKind::PollNotifications if key == MAIN_KEY => Self::PollNotifications,
+            SyncKind::SendAlerts if key == MAIN_KEY => Self::SendAlerts,
             SyncKind::Rollup => Self::Rollup(RollupKey::parse(key).ok_or_else(bad_key)?),
             SyncKind::BackfillPage if HistoryKey::is_seed_key(key) => {
                 Self::SeedHistory(HistoryKey::parse(key).ok_or_else(bad_key)?)
@@ -174,7 +178,7 @@ impl WorkKind {
                 }
                 Self::Enrich(batch)
             }
-            SyncKind::PollNotifications => return Err(bad_key()),
+            SyncKind::PollNotifications | SyncKind::SendAlerts => return Err(bad_key()),
         };
         Ok(work)
     }
@@ -295,6 +299,15 @@ mod tests {
     }
 
     #[test]
+    fn send_alerts_enqueued_twice_is_one_row() {
+        use crate::sync::scheduler::enqueue;
+        let first = enqueue(&[], WorkKind::SendAlerts, Timestamp(5)).unwrap();
+        assert_eq!(first.kind.key(), "main");
+        assert_eq!(enqueue(&[first], WorkKind::SendAlerts, Timestamp(9)), None);
+        assert!(WorkKind::from_columns("send_alerts", "other", None).is_err());
+    }
+
+    #[test]
     fn batch_key_ignores_id_order() {
         assert_eq!(
             enrich(&["PR_c", "PR_a", "I_b"]).key(),
@@ -321,6 +334,7 @@ mod tests {
             }),
             WorkKind::Rollup(RollupKey::Nightly),
             WorkKind::SeedHistory(HistoryKey::first(Timestamp(1_794_052_800))),
+            WorkKind::SendAlerts,
         ] {
             let c = kind.columns();
             let back = WorkKind::from_columns(c.kind.as_str(), &c.key, c.payload.as_deref());

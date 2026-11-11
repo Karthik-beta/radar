@@ -11,3 +11,5 @@ FORWARD_TO=
 # R23 hooks fail closed until each holds at least 32 bytes. Pass lane values with --var.
 WEBHOOK_SECRET=
 AGENT_TOKEN=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=

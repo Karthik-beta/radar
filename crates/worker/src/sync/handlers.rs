@@ -38,5 +38,15 @@ pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timesta
         WorkKind::Enrich(batch) => enrich::run(batch, env, state, now).await.into(),
         WorkKind::BackfillPage(cursor) => backfill::run(cursor, env, state, now).await.into(),
         WorkKind::SeedHistory(key) => history::run(key, env, state, now).await.into(),
+        WorkKind::SendAlerts => send_alerts(env, now).await.into(),
+    }
+}
+
+async fn send_alerts(env: &Env, now: Timestamp) -> UnitOutcome {
+    match env.d1("DB") {
+        Ok(db) => crate::alerts::dispatch(&db, env, now).await,
+        Err(err) => UnitOutcome::Retry {
+            error: format!("d1 binding: {err}"),
+        },
     }
 }
