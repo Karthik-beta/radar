@@ -572,7 +572,11 @@ mod tests {
             };
             exec(&bound, &upsert(&row)).expect("bound insert");
             assert_eq!(record(&bound, &row.node_id).title, title);
-            assert_eq!(count_rows(&bound, "sqlite_master WHERE type = 'table'"), 8);
+            let tables = count_rows(&memory_db(), "sqlite_master WHERE type = 'table'");
+            assert_eq!(
+                count_rows(&bound, "sqlite_master WHERE type = 'table'"),
+                tables
+            );
 
             let dumped = memory_db();
             let literal = upsert(&row).to_literal_sql().expect("literal");
@@ -580,7 +584,10 @@ mod tests {
             dumped.execute_batch(&literal).expect("literal insert");
             assert_eq!(record(&dumped, &row.node_id).title, title);
             assert_eq!(count_rows(&dumped, "items"), 1);
-            assert_eq!(count_rows(&dumped, "sqlite_master WHERE type = 'table'"), 8);
+            assert_eq!(
+                count_rows(&dumped, "sqlite_master WHERE type = 'table'"),
+                tables
+            );
         }
     }
 

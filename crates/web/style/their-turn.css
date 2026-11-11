@@ -1,0 +1,43 @@
+.their-turn .summary {
+  margin-bottom: var(--spacing-5);
+}
+
+.their-turn .summary-title {
+  margin: 0 0 var(--spacing-1);
+  font-size: var(--text-title);
+  font-weight: var(--font-weight-semibold);
+}
+
+.their-turn .summary-line {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.their-turn .notice {
+  margin: 0 0 var(--spacing-3);
+  color: var(--color-text);
+}
+
+.their-turn .row {
+  grid-template-columns: 20ch minmax(0, 1fr) minmax(0, 32ch) 6ch 4ch auto;
+  grid-template-areas: "repo title who usual age actions";
+}
+
+.row-usual {
+  grid-area: usual;
+  justify-self: end;
+}
+
+@media (width <= theme(--breakpoint-phone)) {
+  .their-turn .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title age"
+      "who who"
+      "repo actions";
+  }
+
+  .row-usual {
+    display: none;
+  }
+}

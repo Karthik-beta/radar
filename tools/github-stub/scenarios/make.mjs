@@ -209,7 +209,89 @@ function edge() {
   ];
 }
 
+function asked(number, hoursAgo, by, opts = {}) {
+  const at = `@-${hoursAgo}h`;
+  return spec(number, "pr", "review_requested", () => ({
+    by, requests: [ME], decision: "REVIEW_REQUIRED", ci: ok, updated: at,
+    timeline: [requested(`RRE_${number}`, at, by, ME)],
+    ...opts,
+  }), { turn: "me", reason: "review_requested", stage: "awaiting_review" });
+}
+
+function yourTurnEdge() {
+  return [
+    asked(51, 23, "alice"),
+    asked(52, 25, "bob"),
+    asked(53, 71, "carol", { head: "agent/fix-lexer", title: "Fix the lexer" }),
+    asked(54, 73, "dave"),
+    spec(55, "pr", "ci_activity", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: { oid: "badc0de", state: "FAILURE" }, updated: "@-2h",
+      timeline: [commit(c, "PRC_55", "@-2h", ME, "badc0de")],
+    }), { turn: "me", reason: "ci_failed", stage: "ci_failing" }),
+  ];
+}
+
+function yourTurnHostile() {
+  const img = asked(61, 5, "alice", { title: "<img src=x onerror=alert(1)>" });
+  const script = asked(62, 4, "bob", { title: "<script>window.__pwned = 1</script>" });
+  const link = asked(63, 3, "carol", { title: "A javascript: link" });
+  link.node.url = "javascript:alert(1)";
+  return [img, script, link];
+}
+
+function theirsOnly() {
+  return Array.from({ length: 7 }, (_, i) => {
+    const n = 600 + i;
+    return spec(n, "pr", "comment", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: ok, updated: `@-${i + 1}m`,
+      timeline: [comment(c, `IC_${n}_1`, "@-5h", "bob"), comment(c, `IC_${n}_2`, `@-${i + 1}m`, ME)],
+    }), { turn: "them", reason: null, stage: "awaiting_review" });
+  });
+}
+
+// My own PR where my comment is the last word, `days` days ago, so it waits on others.
+function waitingOn(number, days, opts = {}) {
+  const at = `@-${days}d`;
+  return spec(number, "pr", "comment", (c) => ({
+    decision: "REVIEW_REQUIRED", ci: ok, updated: at,
+    timeline: [comment(c, `IC_${number}_1`, at, ME)],
+    ...opts,
+  }), { turn: "them", reason: null, stage: "awaiting_review" });
+}
+
+function theirTurnMixed() {
+  const issue = spec(77, "issue", "comment", (c) => ({
+    title: "Issue I opened and commented on", updated: "@-3d",
+    timeline: [comment(c, "IC_77_1", "@-3d", ME)],
+  }), { turn: "them", reason: null, stage: null });
+  return [
+    waitingOn(71, 6, { title: "Waiting six days" }),
+    waitingOn(72, 8, { title: "Waiting eight days", head: "agent/fix-parser" }),
+    waitingOn(73, 13, { title: "Waiting thirteen days" }),
+    waitingOn(74, 15, { title: "Waiting fifteen days" }),
+    waitingOn(75, 2, { title: "Two reviewers asked", requests: ["alice", "bob"] }),
+    waitingOn(76, 1, { title: "No reviewer asked" }),
+    issue,
+    asked(78, 5, "erin"),
+  ];
+}
+
+function theirTurnHostile() {
+  return [
+    waitingOn(91, 9, { title: "<script>alert(1)</script>" }),
+    asked(92, 4, "frank"),
+  ];
+}
+
+function theirTurnWaiting(count, first) {
+  return Array.from({ length: count }, (_, i) => waitingOn(first + i, 1 + (i % 30)));
+}
+
+
 const kinds = {
+  "your-turn-edge": { specs: yourTurnEdge },
+  "your-turn-hostile": { specs: yourTurnHostile },
+  "your-turn-theirs-only": { specs: theirsOnly },
   "enrich-20": { specs: () => [...basic(), ...many(14, 1000)] },
   "enrich-edge": { specs: edge },
   "enrich-basic": { specs: basic },
@@ -235,7 +317,98 @@ const kinds = {
   },
   "enrich-body-marker": { specs: bodyMarker },
   "enrich-ci-step": { specs: ciStep },
+  "pipeline-all-stages": { specs: pipelineAllStages },
+  "pipeline-two-stages": { specs: pipelineTwoStages },
+  "pipeline-stage-move": { specs: () => pipelineAllStages({ moveToFailing: true }) },
+  "pipeline-recent": { specs: pipelineRecent },
+  "pipeline-hostile": { specs: pipelineHostile },
+  // R16 freshness lanes. `scenario` merges into the file, so a kind can set scopes, rate, and faults.
+  "fresh-ok": { specs: basic },
+  "fresh-budget": { specs: basic, scenario: { rate: { limit: 5000, remaining: 4750, reset: "@+40m" } } },
+  "scope-fixed-step": { specs: basic, scenario: { scopes: ["notifications", "read:user"] } },
+  "missing-scope": { specs: basic, scenario: { scopes: ["read:user"] } },
+  "no-scope-header": { specs: basic, scenario: { scopes: null } },
+  "dead-work": {
+    specs: basic,
+    faults: [{ match: "POST /graphql", status: 502 }],
+  },
+  "their-turn-mixed": { specs: theirTurnMixed },
+  "their-turn-none": { specs: () => [asked(81, 5, "alice"), asked(82, 6, "bob"), asked(83, 7, "carol"), asked(84, 8, "dave")] },
+  "their-turn-hostile": { specs: theirTurnHostile },
+  "their-turn-large": { specs: () => theirTurnWaiting(200, 700) },
 };
+
+// My own open pull requests, one per card. `created` sets the days in stage on first sync.
+function mine(number, stage, o = {}) {
+  const at = o.created ?? "@-10m";
+  const changes = stage === "changes_requested";
+  return spec(number, "pr", "author", (c) => ({
+    created: at,
+    updated: at,
+    draft: stage === "draft",
+    decision: stage === "approved" ? "APPROVED" : changes ? "CHANGES_REQUESTED" : "REVIEW_REQUIRED",
+    ci:
+      stage === "draft"
+        ? undefined
+        : stage === "ci_running"
+          ? { oid: "a11ce01", state: "PENDING" }
+          : stage === "ci_failing"
+            ? { oid: "badc0de", state: "FAILURE" }
+            : ok,
+    timeline: changes ? [review(c, `PRR_${number}`, at, "bob", "CHANGES_REQUESTED")] : [],
+    latest: changes
+      ? [{ id: `PRR_${number}`, state: "CHANGES_REQUESTED", at, url: `https://github.com/${c.repo}/pull/${number}#pullrequestreview-${number}`, author: actor("bob") }]
+      : [],
+    title: o.title,
+    head: o.head,
+    state: o.state,
+    extra: o.extra,
+  }), { stage });
+}
+
+function pipelineAllStages({ moveToFailing = false } = {}) {
+  return [
+    mine(60, "draft", { created: "@-8d", title: "Draft for eight days" }),
+    mine(61, moveToFailing ? "ci_failing" : "ci_running", { created: "@-10m", title: "CI running today" }),
+    mine(62, "ci_failing", { created: "@-25h", title: "CI failing for a day" }),
+    mine(63, "awaiting_review", { created: "@-6d", title: "Awaiting review six days" }),
+    mine(64, "awaiting_review", { created: "@-8d", title: "Awaiting review eight days" }),
+    mine(65, "awaiting_review", { created: "@-15d", title: "Awaiting review fifteen days" }),
+    mine(66, "changes_requested", { created: "@-73h", title: "Changes requested three days" }),
+    mine(67, "approved", { created: "@-74h", title: "Approved three days", head: "agent/fix-flake" }),
+  ];
+}
+
+function pipelineTwoStages() {
+  return [
+    mine(70, "draft", { created: "@-1h", title: "Only draft" }),
+    mine(71, "approved", { created: "@-2d", title: "Only approved" }),
+  ];
+}
+
+function pipelineRecent() {
+  const ended = (n, state, days, title) =>
+    mine(n, "approved", {
+      created: `@-${days + 2}d`,
+      title,
+      state,
+      extra: { closedAt: `@-${days}d`, mergedAt: state === "MERGED" ? `@-${days}d` : null },
+    });
+  return [
+    mine(80, "awaiting_review", { created: "@-1d", title: "Still open" }),
+    ended(81, "MERGED", 13, "Merged thirteen days ago"),
+    ended(82, "CLOSED", 3, "Closed three days ago"),
+    ended(83, "MERGED", 15, "Merged fifteen days ago"),
+  ];
+}
+
+function pipelineHostile() {
+  return [
+    mine(90, "awaiting_review", { created: "@-2d", title: "L".repeat(300) }),
+    mine(91, "awaiting_review", { created: "@-2d", title: "<img src=x onerror=alert(1)>" }),
+    mine(92, "awaiting_review", { created: "@-2d", title: "Bad link", extra: { url: "javascript:alert(1)" } }),
+  ];
+}
 
 // A search entry is one item the Search operation can return. Authored items are mine and `involves` adds items
 // others opened that name me. `ageDays` places `updatedAt` so the window lanes can tell 89 days from 91.
@@ -251,7 +424,7 @@ function found(number, kind, o = {}) {
   return kind === "pr" ? prNode(c, build) : issueNode(c, build);
 }
 
-function mine(count, first, kind, mark) {
+function minePages(count, first, kind, mark) {
   return Array.from({ length: count }, (_, i) => {
     const n = first + i;
     const at = kind === "pr" ? `@-${i + 1}m` : `@-${i + 1}h`;
@@ -280,8 +453,8 @@ function theirs(count, first) {
 }
 
 function backfill(prs, issues, others, sharedWithOthers, extra = {}) {
-  const authoredPrs = mine(prs, 1000, "pr", extra.mark);
-  const authored = [...authoredPrs, ...mine(issues, 2000, "issue", extra.mark)];
+  const authoredPrs = minePages(prs, 1000, "pr", extra.mark);
+  const authored = [...authoredPrs, ...minePages(issues, 2000, "issue", extra.mark)];
   return {
     authored,
     involves: [...authoredPrs.slice(0, sharedWithOthers), ...theirs(others, 3000)],
@@ -401,6 +574,7 @@ export function build(kind, now = Date.now()) {
     extends: "basic",
     notifications: { last_modified: "@-1m", etag: `"stub-${kind}"`, items: notifications },
     items,
+    ...(def.scenario ?? {}),
     ...(def.faults ? { faults: def.faults } : {}),
     _expect: {
       threads: specs.length,
