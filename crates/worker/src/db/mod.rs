@@ -9,6 +9,7 @@ pub mod events;
 pub mod feed;
 pub mod items;
 pub mod local_state;
+pub mod repo_stats;
 pub mod repos;
 pub mod rollups;
 pub mod rows;
@@ -35,12 +36,13 @@ pub(crate) mod testing {
     use super::items::ItemRow;
     use super::sql::{Param, Statement};
 
-    const MIGRATIONS: [&str; 5] = [
+    const MIGRATIONS: [&str; 6] = [
         include_str!("../../../../migrations/0001_init.sql"),
         include_str!("../../../../migrations/0003_item_extras.sql"),
         include_str!("../../../../migrations/0004_email_state.sql"),
         include_str!("../../../../migrations/0005_settings.sql"),
         include_str!("../../../../migrations/0006_feed_index.sql"),
+        include_str!("../../../../migrations/0010_events_by_item.sql"),
     ];
 
     pub fn memory_db() -> Connection {

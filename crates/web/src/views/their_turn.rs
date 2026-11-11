@@ -92,6 +92,7 @@ fn row_data(row: &TheirRow) -> RowData {
         title: row.title.clone(),
         agent: row.agent,
         who: Some(who_line(row.last_action.as_ref(), &row.waiting_on)),
+        usual_reply: row.usual_reply_secs,
         since: row.since,
     }
 }

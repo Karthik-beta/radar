@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use super::snooze_menu::SnoozeMenu;
 use super::triage_row::{RowData, TriageRow};
 use crate::a11y::{live_text, Announce};
-use crate::heat::Thresholds;
+use crate::heat::{age_short, Thresholds};
 use crate::keys::{self, Effect, Key, Mode, State};
 use crate::store::{use_store, Triage};
 use crate::url::GithubUrl;
@@ -34,7 +34,13 @@ impl ListKind {
     }
 }
 
-const USUAL_REPLY: &str = "-";
+/// "usually replies in 4d" when the repo has a median, a dash while it has none.
+pub fn usual_reply_text(secs: Option<i64>) -> String {
+    secs.map_or_else(
+        || "-".to_owned(),
+        |secs| format!("usually replies in {}", age_short(secs)),
+    )
+}
 
 /// The rows a triage view lists, and the list itself.
 pub struct TriageList {
@@ -122,6 +128,7 @@ pub fn triage_list(
                     {
                         let (row, th) = entry;
                         let id = row.id.clone();
+                        let usual = usual_reply_text(row.usual_reply);
                         let is = move |other: Option<ItemId>| other.as_ref() == Some(&id);
                         let (sel_id, snooze_id, leave_id) = (is.clone(), is.clone(), row.id.clone());
                         let open_menu = Signal::derive(move || snooze_id(snoozing.get()));
@@ -138,7 +145,7 @@ pub fn triage_list(
                                 selected=Signal::derive(move || sel_id(selected.get()))
                                 leaving=Signal::derive(move || store.is_leaving(&leave_id))
                             >
-                                {kind.usual_reply().then(|| view! { <span class="row-usual text-faint">{USUAL_REPLY}</span> })}
+                                {kind.usual_reply().then(|| view! { <span class="row-usual text-faint">{usual}</span> })}
                                 <span class="row-actions">
                                     <button
                                         type="button"
@@ -189,4 +196,15 @@ pub fn open_tab(url: &GithubUrl) {
         "_blank",
         "noopener,noreferrer",
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_usual_reply_shows_a_median_or_keeps_the_dash() {
+        assert_eq!(usual_reply_text(Some(3 * 86_400)), "usually replies in 3d");
+        assert_eq!(usual_reply_text(None), "-");
+    }
 }

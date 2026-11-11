@@ -11,6 +11,7 @@ pub mod ids;
 pub mod item;
 pub mod local_state;
 pub mod me;
+pub mod repo_stats;
 pub mod rollup;
 pub mod settings;
 pub mod stage;
