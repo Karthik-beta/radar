@@ -15,6 +15,7 @@ pub mod rollups;
 pub mod rows;
 pub mod sql;
 pub mod threads;
+pub mod trends;
 
 #[cfg(any(test, feature = "sql-dump"))]
 pub mod synthetic;
@@ -36,12 +37,13 @@ pub(crate) mod testing {
     use super::items::ItemRow;
     use super::sql::{Param, Statement};
 
-    const MIGRATIONS: [&str; 6] = [
+    const MIGRATIONS: [&str; 7] = [
         include_str!("../../../../migrations/0001_init.sql"),
         include_str!("../../../../migrations/0003_item_extras.sql"),
         include_str!("../../../../migrations/0004_email_state.sql"),
         include_str!("../../../../migrations/0005_settings.sql"),
         include_str!("../../../../migrations/0006_feed_index.sql"),
+        include_str!("../../../../migrations/0007_rollup_source.sql"),
         include_str!("../../../../migrations/0010_events_by_item.sql"),
     ];
 

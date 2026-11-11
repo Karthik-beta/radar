@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 
 use super::backfill::BackfillCursor;
 use super::config::ENRICH_BATCH;
+use super::history::HistoryKey;
 use crate::rollup::RollupKey;
 
 const MAIN_KEY: &str = "main";
@@ -105,6 +106,9 @@ pub enum WorkKind {
     PollNotifications,
     Enrich(EnrichBatch),
     BackfillPage(BackfillCursor),
+    /// Stored as a `backfill_page` row under a `seed.` key, so it shares that kind's
+    /// rate gate, freshness, and dead-row revival.
+    SeedHistory(HistoryKey),
     Rollup(RollupKey),
 }
 
@@ -122,7 +126,7 @@ impl WorkKind {
         match self {
             Self::PollNotifications => SyncKind::PollNotifications,
             Self::Enrich(_) => SyncKind::Enrich,
-            Self::BackfillPage(_) => SyncKind::BackfillPage,
+            Self::BackfillPage(_) | Self::SeedHistory(_) => SyncKind::BackfillPage,
             Self::Rollup(_) => SyncKind::Rollup,
         }
     }
@@ -132,6 +136,7 @@ impl WorkKind {
             Self::PollNotifications => MAIN_KEY.to_owned(),
             Self::Enrich(batch) => batch.key(),
             Self::BackfillPage(cursor) => cursor.key(),
+            Self::SeedHistory(key) => key.key(),
             Self::Rollup(key) => key.key(),
         }
     }
@@ -156,6 +161,9 @@ impl WorkKind {
         let work = match kind {
             SyncKind::PollNotifications if key == MAIN_KEY => Self::PollNotifications,
             SyncKind::Rollup => Self::Rollup(RollupKey::parse(key).ok_or_else(bad_key)?),
+            SyncKind::BackfillPage if HistoryKey::is_seed_key(key) => {
+                Self::SeedHistory(HistoryKey::parse(key).ok_or_else(bad_key)?)
+            }
             SyncKind::BackfillPage => {
                 Self::BackfillPage(BackfillCursor::parse(key).ok_or_else(bad_key)?)
             }
@@ -312,6 +320,7 @@ mod tests {
                 after: Some("Y3Vyc29yOjI=".into()),
             }),
             WorkKind::Rollup(RollupKey::Nightly),
+            WorkKind::SeedHistory(HistoryKey::first(Timestamp(1_794_052_800))),
         ] {
             let c = kind.columns();
             let back = WorkKind::from_columns(c.kind.as_str(), &c.key, c.payload.as_deref());

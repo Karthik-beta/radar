@@ -7,14 +7,30 @@ use super::sql::{Param, Statement};
 
 /// A week folded in twice adds up, so an event that arrives late for a rolled
 /// week is not lost. `repos_touched` keeps the larger count, because two
-/// distinct counts cannot be added.
+/// distinct counts cannot be added. A seeded row is an estimate from GitHub's
+/// history, so the first real fold replaces it.
 const UPSERT: &str = "INSERT INTO rollups_weekly (week_start, prs_opened, prs_merged, \
-     repos_touched, events) VALUES (?1, ?2, ?3, ?4, ?5) \
+     repos_touched, events, source) VALUES (?1, ?2, ?3, ?4, ?5, 'rolled') \
+     ON CONFLICT (week_start) DO UPDATE SET \
+     prs_opened = CASE WHEN source = 'seeded' THEN excluded.prs_opened \
+       ELSE prs_opened + excluded.prs_opened END, \
+     prs_merged = CASE WHEN source = 'seeded' THEN excluded.prs_merged \
+       ELSE prs_merged + excluded.prs_merged END, \
+     repos_touched = CASE WHEN source = 'seeded' THEN excluded.repos_touched \
+       ELSE MAX(repos_touched, excluded.repos_touched) END, \
+     events = CASE WHEN source = 'seeded' THEN excluded.events \
+       ELSE events + excluded.events END, \
+     source = 'rolled'";
+
+/// Pages of one seeded week add up. A rolled row is never touched, because its
+/// counts come from real events.
+const SEED: &str = "INSERT INTO rollups_weekly (week_start, prs_opened, prs_merged, \
+     repos_touched, events, source) VALUES (?1, ?2, ?3, ?4, 0, 'seeded') \
      ON CONFLICT (week_start) DO UPDATE SET \
      prs_opened = prs_opened + excluded.prs_opened, \
      prs_merged = prs_merged + excluded.prs_merged, \
-     repos_touched = MAX(repos_touched, excluded.repos_touched), \
-     events = events + excluded.events";
+     repos_touched = MAX(repos_touched, excluded.repos_touched) \
+     WHERE source = 'seeded'";
 
 const OLDEST_BEFORE: &str = "SELECT MIN(occurred_at) AS at FROM events WHERE occurred_at < ?1";
 
@@ -52,6 +68,18 @@ pub fn upsert(row: &RollupRow) -> Statement {
             Param::Int(i64::from(totals.prs_merged)),
             Param::Int(i64::from(totals.repos_touched)),
             Param::Int(i64::from(totals.events)),
+        ],
+    }
+}
+
+pub fn seed(week: WeekStart, totals: RollupTotals) -> Statement {
+    Statement {
+        sql: SEED,
+        params: vec![
+            Param::ts(week.timestamp()),
+            Param::Int(i64::from(totals.prs_opened)),
+            Param::Int(i64::from(totals.prs_merged)),
+            Param::Int(i64::from(totals.repos_touched)),
         ],
     }
 }
@@ -128,6 +156,33 @@ mod tests {
         assert_eq!(rows[0]["events"], 12);
         assert_eq!(rows[0]["prs_opened"], 6);
         assert_eq!(rows[0]["repos_touched"], 4);
+    }
+
+    #[test]
+    fn a_fold_replaces_a_seeded_week_instead_of_adding_to_it() {
+        let conn = memory_db();
+        conn.execute(
+            "INSERT INTO rollups_weekly (week_start, prs_opened, prs_merged, repos_touched, \
+             events, source) VALUES (?1, 9, 9, 9, 0, 'seeded')",
+            [FIRST_MONDAY],
+        )
+        .expect("seeded");
+        exec(
+            &conn,
+            &upsert(&RollupRow {
+                week_start: week(),
+                totals: totals(10),
+            }),
+        )
+        .expect("fold");
+        let rows = query_json(
+            &conn,
+            "SELECT prs_opened, repos_touched, source FROM rollups_weekly",
+            &[],
+        );
+        assert_eq!(rows[0]["prs_opened"], 3);
+        assert_eq!(rows[0]["repos_touched"], 1);
+        assert_eq!(rows[0]["source"], "rolled");
     }
 
     #[test]

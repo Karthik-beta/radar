@@ -6,4 +6,5 @@ pub mod pipeline;
 pub mod repos;
 pub mod sign_in;
 pub mod their_turn;
+pub mod trends;
 pub mod your_turn;

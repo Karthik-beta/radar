@@ -7,6 +7,7 @@ mod email_health;
 mod enrich;
 mod gate;
 mod handlers;
+mod history;
 mod poll;
 pub(crate) mod scheduler;
 mod state;
@@ -130,6 +131,7 @@ impl Syncer {
         let started = Date::now().as_millis();
         let phase_before = observed.poll_phase.clone();
         let done_before = observed.backfill_done_at;
+        let seeded_before = observed.history_seeded_at;
         let Handled {
             outcome,
             finished_from,
@@ -170,6 +172,12 @@ impl Syncer {
             .filter(|_| sync.backfill_done_at != done_before)
         {
             writes.push(store::save_backfill_done(at));
+        }
+        if let Some(at) = sync
+            .history_seeded_at
+            .filter(|_| sync.history_seeded_at != seeded_before)
+        {
+            writes.push(store::save_history_seeded(at));
         }
         writes.push(store::save_state(&sync));
         for write in &writes {
@@ -288,6 +296,11 @@ impl Syncer {
         }
         sync.backfill_done_at = sql
             .exec(store::SELECT_BACKFILL_DONE, None)?
+            .to_array::<store::RawKv>()?
+            .first()
+            .and_then(store::RawKv::parse_backfill_done);
+        sync.history_seeded_at = sql
+            .exec(store::SELECT_HISTORY_SEEDED, None)?
             .to_array::<store::RawKv>()?
             .first()
             .and_then(store::RawKv::parse_backfill_done);

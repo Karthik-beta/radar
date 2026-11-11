@@ -16,4 +16,5 @@ pub mod rollup;
 pub mod settings;
 pub mod stage;
 pub mod sync_status;
+pub mod trends;
 pub mod turn;

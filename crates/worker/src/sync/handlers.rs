@@ -5,6 +5,7 @@ use worker::Env;
 
 use super::backfill;
 use super::enrich;
+use super::history;
 use super::poll;
 use super::scheduler::UnitOutcome;
 use super::state::SyncState;
@@ -36,5 +37,6 @@ pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timesta
         WorkKind::PollNotifications => poll::run(env, state).await,
         WorkKind::Enrich(batch) => enrich::run(batch, env, state, now).await.into(),
         WorkKind::BackfillPage(cursor) => backfill::run(cursor, env, state, now).await.into(),
+        WorkKind::SeedHistory(key) => history::run(key, env, state, now).await.into(),
     }
 }

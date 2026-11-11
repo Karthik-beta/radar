@@ -10,6 +10,7 @@ pub enum Tab {
     Merged,
     Feed,
     Repos,
+    Trends,
 }
 
 /// `Counters` are the four tabs of ADR 0003, each with a count. `More` is the
@@ -29,6 +30,7 @@ const TABS: [(Tab, &str, &str, NavGroup); 6] = [
     (Tab::Merged, "Merged", "/merged", NavGroup::Counters),
     (Tab::Feed, "Feed", "/feed", NavGroup::More),
     (Tab::Repos, "Repos", "/repos", NavGroup::More),
+    (Tab::Trends, "Trends", "/trends", NavGroup::More),
 ];
 
 impl Tab {
@@ -65,6 +67,7 @@ impl Tab {
             Tab::Merged => views::merged::READY,
             Tab::Feed => views::feed::READY,
             Tab::Repos => views::repos::READY,
+            Tab::Trends => views::trends::READY,
         }
     }
 
@@ -75,7 +78,7 @@ impl Tab {
             Tab::TheirTurn => Some(counters.their_turn),
             Tab::Pipeline => Some(counters.open_prs),
             Tab::Merged => Some(counters.merged_this_month),
-            Tab::Feed | Tab::Repos => None,
+            Tab::Feed | Tab::Repos | Tab::Trends => None,
         }
     }
 
@@ -132,7 +135,7 @@ mod tests {
             .collect();
         assert_eq!(labels, ["Your turn", "Their turn", "Pipeline", "Merged"]);
         let more: Vec<_> = Tab::in_group(NavGroup::More).collect();
-        assert_eq!(more, [Tab::Feed, Tab::Repos]);
+        assert_eq!(more, [Tab::Feed, Tab::Repos, Tab::Trends]);
     }
 
     #[test]
@@ -148,5 +151,6 @@ mod tests {
             .collect();
         assert_eq!(counts, [Some(1), Some(2), Some(3), Some(4)]);
         assert_eq!(Tab::Feed.count(&counters), None);
+        assert_eq!(Tab::Trends.count(&counters), None);
     }
 }

@@ -18,6 +18,7 @@ pub enum Protected {
     Feed,
     Repos,
     Freshness,
+    Trends,
     Dismiss(ItemId),
     Snooze(ItemId),
 }
@@ -34,6 +35,7 @@ impl Endpoint {
             "/api/feed" => (Method::Get, Self::Protected(Protected::Feed)),
             "/api/freshness" => (Method::Get, Self::Protected(Protected::Freshness)),
             "/api/repos" => (Method::Get, Self::Protected(Protected::Repos)),
+            "/api/trends" => (Method::Get, Self::Protected(Protected::Trends)),
             _ => match item_action(path) {
                 Some(action) => (Method::Post, Self::Protected(action)),
                 None => return Some(Self::NotFound),
@@ -98,6 +100,14 @@ mod tests {
         assert_eq!(
             Endpoint::parse(&get, "/api/repos"),
             protected(Protected::Repos)
+        );
+        assert_eq!(
+            Endpoint::parse(&get, "/api/trends"),
+            protected(Protected::Trends)
+        );
+        assert_eq!(
+            Endpoint::parse(&Method::Post, "/api/trends"),
+            Some(Endpoint::WrongMethod)
         );
         assert_eq!(
             Endpoint::parse(&post, "/api/items/PR_1/dismiss"),
