@@ -15,21 +15,56 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 ## Status
 
-Updated 2026-11-06. The operator paused the program here. `HANDOFF.md`, a local file that git ignores, holds the session notes for resuming.
+Updated 2026-11-11. Every R is merged. Radar is not deployed yet. The operator items below must be done first.
 
 | R | State | Evidence |
 | --- | --- | --- |
 | R01 | Merged | `e3c9504`, Karthik-beta/radar#5 |
-| R02 | Waiting on the operator | Karthik-beta/radar#8 is open. The Free-plan spike run, its `results/tail-*.jsonl`, and the ADR 0002 and ADR 0005 `## Spike result` sections are still to do. R08 cannot start before R02 merges |
+| R02 | Merged | `47a7d79`, Karthik-beta/radar#8 |
 | R03 | Merged | `2fa9e60`, Karthik-beta/radar#7 |
 | R04 | Merged | `8380043`, Karthik-beta/radar#11 |
 | R05 | Merged | `beb4c93`, Karthik-beta/radar#10 |
 | R06 | Merged | `6db186f`, Karthik-beta/radar#9 |
-| R07 | Merged | `d625d15`, Karthik-beta/radar#12. The `cpuTime` perf box and real GitHub OAuth wait on O2, O3, and O3b. The Worker grew 83.4 KB gzipped over trunk, above the 60 KB rule, and the root accepted it because most of it is R04 and R06 code that R07 first reaches |
-| R08 to R24 | Not started | Each depends on the one before. R08 depends on R02 |
+| R07 | Merged | `d625d15`, Karthik-beta/radar#12. The `cpuTime` perf box and real GitHub OAuth wait on O2, O3, and O3b |
+| R08 | Merged | `4c42951`, Karthik-beta/radar#19 |
+| R09 | Merged | `c39d265`, Karthik-beta/radar#21 |
+| R10 | Merged | `b0b7e9d`, Karthik-beta/radar#22 |
+| R11 | Merged | `eb0c288`, Karthik-beta/radar#25 |
+| R12 | Merged | `97d8c80`, Karthik-beta/radar#23 |
+| R13 to R16 | Merged | `06af485`, Karthik-beta/radar#26, one PR for the four views. ADR 0007 replaces `leptos_router` with `crates/web/src/route.rs` |
+| R17 | Merged | `b25961b`, Karthik-beta/radar#27. ADR 0008 (`faint` `#808490`) is Proposed until the operator accepts the value |
+| R18 | Merged | `683f24a`, Karthik-beta/radar#20 |
+| R19 | Merged | Backend `4184eb2`, Karthik-beta/radar#24. The freshness panel row is in `b25961b` |
+| R20 to R24 | Merged | `b25961b`, Karthik-beta/radar#27, one PR with R17 |
 | R25 | Merged | `ef8f55b`, Karthik-beta/radar#13 |
 
-Open operator items: O1 to O6. R07 needs O2, O3, and O3b before sign-in works on Cloudflare.
+Budgets. ADR 0009 raises the UI budget to 300 KB gzipped. At `b25961b` the UI is 252.5 KB and the Worker is 332.8 KB of 400 KB.
+
+Verification gaps. To ship faster, R13 to R24 ran their unit boxes, every gate, and a short live smoke on the stubs. The ten live lanes per R, the perf probes, Lighthouse, and the review videos did not run.
+
+### Open operator items
+
+- O1 to O6 from the program checklist, including the OAuth Apps "Radar", "Radar dev", and "Radar preview".
+- The secrets `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `TOKEN_KEY`, `SESSION_KEY`, and `ALLOWED_USER_ID`, also with `--env preview`. R23 needs `WEBHOOK_SECRET` and `AGENT_TOKEN`. R24 needs `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+- Apply migrations 0001 to 0010 to `radar` and `radar-preview`, deploy the preview, and read `cpuTime` for the R07 perf box.
+- Accept or veto the `faint` value in ADR 0008, then run `node scripts/tokens-to-wiki.mjs <wiki-checkout>` and push the wiki.
+
+### Plan problems found while building
+
+- R09. The D1 check selects `unread`, which ADR 0002 does not have. Lane 5 (burst) contradicts the P2 replay rule. R08's placeholder reads `/rate_limit`, but R09 says Enrich logs and succeeds. `sync_state.last_modified` is unused, because the poll phase holds it.
+- R12. `recent` and `merged_this_month` cover only the user's own pull requests. The plan did not say. The Origin check must run before the session check.
+- R17. The freshness panel has no URL, so `scripts/audit-a11y.mjs` audits `/merged` as its fourth view. The plan named ADR 0007 for the contrast record, but 0007 went to client routing, so the contrast record is 0008.
+- R18. The 304 lane needs R09.
+- R24. The plan says R24 depends on R23, but it needs only R10's event model.
+
+### Follow-ups
+
+- The Worker passes non-GitHub `url` values, such as `javascript:`, to the UI, and the UI refuses to link them. Validate them at the Enrich boundary instead.
+- Rerun R18's forged-email lane on `main`: a 5 s interval, a 304, and at most one extra poll per forged email.
+- R10. More than 50 new timeline nodes between two syncs drop the oldest feed events without a log.
+- R11. GitHub search caps at 1,000 results. Partition by month if a backfill ever reaches it.
+- R24. The `send_alerts` last success lives only in memory, so the freshness panel shows "Never" after the Durable Object restarts.
+- Lazy-load the More views into a second wasm if first load matters more than build time (ADR 0009).
 
 ## Program checklist
 
