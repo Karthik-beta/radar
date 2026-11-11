@@ -332,6 +332,12 @@ const kinds = {
     specs: basic,
     faults: [{ match: "POST /graphql", status: 502 }],
   },
+  // R17: every view has rows, the token lacks the notifications scope, and the search backfill fails.
+  "a11y-all-views": {
+    specs: () => [...basic(), ...theirTurnMixed(), ...pipelineAllStages()],
+    scenario: { scopes: ["read:user"] },
+    faults: [{ match: "POST /graphql", status: 502, graphql: { q: "is:pr author" } }],
+  },
   "their-turn-mixed": { specs: theirTurnMixed },
   "their-turn-none": { specs: () => [asked(81, 5, "alice"), asked(82, 6, "bob"), asked(83, 7, "carol"), asked(84, 8, "dave")] },
   "their-turn-hostile": { specs: theirTurnHostile },

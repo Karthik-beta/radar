@@ -1,4 +1,5 @@
 use domain::api::{Budget, Freshness};
+use domain::email_health::EmailHealth;
 use domain::ids::Timestamp;
 use domain::sync_status::SyncKind;
 
@@ -89,6 +90,58 @@ pub fn source_when(last_ok: Option<Timestamp>, now: i64) -> String {
         Some(at) => format!("{} ago", age_compact(now - at.0)),
         None => "Never".to_owned(),
     }
+}
+
+/// The panel's email row value.
+pub fn email_when(health: &EmailHealth, now: i64) -> String {
+    let (last, idle) = match health {
+        EmailHealth::Flowing { last_email_at } => (Some(*last_email_at), false),
+        EmailHealth::Idle { last_email_at } => (*last_email_at, true),
+        EmailHealth::Silent { last_email_at, .. } => (*last_email_at, false),
+    };
+    match (last, idle) {
+        (None, _) => "No email yet".to_owned(),
+        (Some(at), true) => format!(
+            "last received {} ago, nothing newer on GitHub",
+            age_compact(now - at.0)
+        ),
+        (Some(at), false) => format!("last received {} ago", age_compact(now - at.0)),
+    }
+}
+
+/// The silent-email banner text, or `None` unless email is `Silent`.
+pub fn email_silent_words(health: &EmailHealth, now: i64) -> Option<String> {
+    let EmailHealth::Silent {
+        last_email_at,
+        threads_missed,
+    } = health
+    else {
+        return None;
+    };
+    let threads = if *threads_missed == 1 {
+        "1 thread changed".to_owned()
+    } else {
+        format!("{threads_missed} threads changed")
+    };
+    Some(match last_email_at {
+        Some(at) => format!(
+            "No notification email for {} while {threads}",
+            duration_words(now - at.0)
+        ),
+        None => format!("No notification email has arrived yet while {threads}"),
+    })
+}
+
+/// "6 seconds", "1 minute", "3 hours", "2 days".
+fn duration_words(secs: i64) -> String {
+    let secs = secs.max(0);
+    let (n, unit) = match secs {
+        0..=59 => (secs, "second"),
+        60..=3_599 => (secs / 60, "minute"),
+        3_600..=86_399 => (secs / 3_600, "hour"),
+        _ => (secs / 86_400, "day"),
+    };
+    format!("{n} {unit}{}", if n == 1 { "" } else { "s" })
 }
 
 pub fn source_name(kind: SyncKind) -> &'static str {
@@ -276,5 +329,72 @@ mod tests {
     fn sync_label_clock_pads_to_two_digits() {
         assert_eq!(clock(14, 5), "14:05");
         assert_eq!(clock(0, 0), "00:00");
+    }
+
+    #[test]
+    fn email_row_reads_age_or_no_email_yet() {
+        let at = Timestamp(1_000);
+        assert_eq!(
+            email_when(&EmailHealth::Flowing { last_email_at: at }, 1_003),
+            "last received 3s ago"
+        );
+        assert_eq!(
+            email_when(
+                &EmailHealth::Idle {
+                    last_email_at: Some(at)
+                },
+                1_000 + 3 * 3_600
+            ),
+            "last received 3h ago, nothing newer on GitHub"
+        );
+        assert_eq!(
+            email_when(
+                &EmailHealth::Idle {
+                    last_email_at: None
+                },
+                1_000
+            ),
+            "No email yet"
+        );
+        assert_eq!(
+            email_when(
+                &EmailHealth::Silent {
+                    last_email_at: None,
+                    threads_missed: 2
+                },
+                1_000
+            ),
+            "No email yet"
+        );
+    }
+
+    #[test]
+    fn email_banner_words_name_the_quiet_time_and_missed_threads() {
+        let silent = |last: Option<i64>, n| EmailHealth::Silent {
+            last_email_at: last.map(Timestamp),
+            threads_missed: n,
+        };
+        assert_eq!(
+            email_silent_words(&silent(Some(1_000), 1), 1_006).as_deref(),
+            Some("No notification email for 6 seconds while 1 thread changed")
+        );
+        assert_eq!(
+            email_silent_words(&silent(Some(0), 3), 90_000).as_deref(),
+            Some("No notification email for 1 day while 3 threads changed")
+        );
+        assert_eq!(
+            email_silent_words(&silent(None, 3), 5).as_deref(),
+            Some("No notification email has arrived yet while 3 threads changed")
+        );
+        assert_eq!(
+            email_silent_words(
+                &EmailHealth::Idle {
+                    last_email_at: None
+                },
+                5
+            ),
+            None
+        );
+        assert_eq!(duration_words(60), "1 minute");
     }
 }

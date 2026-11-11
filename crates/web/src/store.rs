@@ -148,6 +148,7 @@ pub struct Store {
     load: RwSignal<Load>,
     now: RwSignal<f64>,
     notice: RwSignal<Option<&'static str>>,
+    announcement: RwSignal<String>,
     pending: RwSignal<HashMap<ItemId, Pending>>,
     leaving: RwSignal<HashSet<ItemId>>,
     in_flight: StoredValue<bool>,
@@ -173,6 +174,7 @@ pub fn provide_store() -> Store {
         load,
         now: RwSignal::new(now_ms()),
         notice: RwSignal::new(None),
+        announcement: RwSignal::new(String::new()),
         pending,
         leaving,
         in_flight: StoredValue::new(false),
@@ -208,6 +210,15 @@ impl Store {
     /// The last triage failure, cleared by the next triage.
     pub fn notice(&self) -> Signal<Option<&'static str>> {
         self.notice.into()
+    }
+
+    /// What the visually hidden live region says after a triage action.
+    pub fn announcement(&self) -> Signal<String> {
+        self.announcement.into()
+    }
+
+    pub fn announce(&self, text: String) {
+        self.announcement.set(text);
     }
 
     /// Whether the row is sliding out. Reactive.

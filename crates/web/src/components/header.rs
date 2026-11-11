@@ -14,7 +14,7 @@ pub fn Header() -> impl IntoView {
     view! {
         <header class="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-(--gutter) py-3">
             <span class="font-semibold">"Radar"</span>
-            <nav aria-label="Primary" class="-m-1 flex gap-1 p-1 phone-down:order-3 phone-down:w-full phone-down:overflow-x-auto">
+            <nav aria-label="Views" class="-m-1 flex gap-1 p-1 phone-down:order-3 phone-down:w-full phone-down:overflow-x-auto">
                 {Tab::ALL
                     .into_iter()
                     .map(|tab| {

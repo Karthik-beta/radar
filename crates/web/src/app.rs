@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+use crate::a11y::document_title;
 use crate::auth::{self, AuthState};
 use crate::components::banner::Banner;
 use crate::components::header::Header;
@@ -35,7 +36,23 @@ fn Shell() -> impl IntoView {
     let location = use_location();
     let path = location.path();
     let route = Memo::new(move |_| path.with(|path| Route::parse(path)));
+    let store = crate::store::use_store();
+    Effect::new(move |_| {
+        let title = match route.get() {
+            Route::Tab(tab) => {
+                let count = store
+                    .dashboard()
+                    .with(|d| d.as_ref().map(|d| tab.count(&d.counters)));
+                document_title(tab, count)
+            }
+            Route::SignIn | Route::NotFound => "Radar".to_owned(),
+        };
+        document().set_title(&title);
+    });
     view! {
+        <div class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-live>
+            {move || store.announcement().get()}
+        </div>
         <Header/>
         <Banner/>
         <main class="px-(--gutter) py-6">
