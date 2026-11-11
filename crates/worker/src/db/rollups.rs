@@ -34,13 +34,16 @@ const SEED: &str = "INSERT INTO rollups_weekly (week_start, prs_opened, prs_merg
 
 const OLDEST_BEFORE: &str = "SELECT MIN(occurred_at) AS at FROM events WHERE occurred_at < ?1";
 
+/// Counts only my events on my authored pull requests, as `db/trends.rs` does,
+/// so a rolled week matches the live chart. `DELETE_WEEK` still removes every
+/// event in the week.
 const WEEK_TOTALS: &str = "SELECT COUNT(*) AS events, \
      COALESCE(SUM(kind = 'opened' AND item_node_id IN \
-       (SELECT node_id FROM items WHERE kind = 'pr')), 0) AS prs_opened, \
+       (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1)), 0) AS prs_opened, \
      COALESCE(SUM(kind = 'merged' AND item_node_id IN \
-       (SELECT node_id FROM items WHERE kind = 'pr')), 0) AS prs_merged, \
+       (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1)), 0) AS prs_merged, \
      COUNT(DISTINCT repo) AS repos_touched \
-     FROM events WHERE occurred_at >= ?1 AND occurred_at < ?2";
+     FROM events WHERE actor_is_me = 1 AND occurred_at >= ?1 AND occurred_at < ?2";
 
 const DELETE_WEEK: &str = "DELETE FROM events WHERE occurred_at >= ?1 AND occurred_at < ?2";
 
@@ -197,23 +200,45 @@ mod tests {
     }
 
     fn seed(conn: &rusqlite::Connection, id: &str, repo: &str, kind: &str, item: &str, at: i64) {
+        seed_by(conn, id, repo, kind, item, at, true);
+    }
+
+    fn seed_by(
+        conn: &rusqlite::Connection,
+        id: &str,
+        repo: &str,
+        kind: &str,
+        item: &str,
+        at: i64,
+        mine: bool,
+    ) {
         conn.execute(
             "INSERT INTO events (id, item_node_id, repo, kind, actor_login, actor_is_me, \
              actor_is_bot, occurred_at, source, ingested_at) \
-             VALUES (?1, ?2, ?3, ?4, 'alice', 0, 0, ?5, 'poll', 0)",
-            rusqlite::params![id, item, repo, kind, at],
+             VALUES (?1, ?2, ?3, ?4, 'alice', ?6, 0, ?5, 'poll', 0)",
+            rusqlite::params![id, item, repo, kind, at, i64::from(mine)],
         )
         .expect("event");
     }
 
     fn seed_pr(conn: &rusqlite::Connection, node_id: &str) {
+        seed_pr_by(conn, node_id, true);
+    }
+
+    fn seed_pr_by(conn: &rusqlite::Connection, node_id: &str, mine: bool) {
         let mut row = crate::db::synthetic::items(8)
             .expect("items")
             .into_iter()
             .find(|row| row.item_ref.kind == domain::ids::ItemKind::Pr)
             .expect("a pull request");
         row.node_id = node_id.to_owned();
+        row.item_ref.number = 1000 + u32::from(mine);
         exec(conn, &crate::db::items::upsert(&row)).expect("item");
+        conn.execute(
+            "UPDATE items SET authored_by_me = ?2 WHERE node_id = ?1",
+            rusqlite::params![node_id, i64::from(mine)],
+        )
+        .expect("authorship");
     }
 
     #[test]
@@ -234,6 +259,33 @@ mod tests {
         assert_eq!(rows[0]["repos_touched"], 2);
         exec(&conn, &delete_week(week())).expect("delete");
         assert_eq!(count_rows(&conn, "events"), 1);
+    }
+
+    #[test]
+    fn totals_leave_out_other_peoples_work() {
+        let conn = memory_db();
+        seed_pr(&conn, "PR_1");
+        seed_pr_by(&conn, "PR_2", false);
+        let day = 86_400;
+        let start = FIRST_MONDAY;
+        seed(&conn, "a", "o/one", "opened", "PR_1", start);
+        seed(&conn, "b", "o/two", "opened", "PR_2", start + day);
+        seed(&conn, "c", "o/two", "merged", "PR_2", start + day);
+        seed_by(&conn, "d", "o/three", "opened", "PR_1", start + day, false);
+        seed_by(
+            &conn,
+            "e",
+            "o/three",
+            "commented",
+            "I_1",
+            start + day,
+            false,
+        );
+        let rows = query_json(&conn, WEEK_TOTALS, &week_totals(week()).params);
+        assert_eq!(rows[0]["events"], 3);
+        assert_eq!(rows[0]["prs_opened"], 1);
+        assert_eq!(rows[0]["prs_merged"], 0);
+        assert_eq!(rows[0]["repos_touched"], 2);
     }
 
     #[test]

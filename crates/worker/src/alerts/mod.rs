@@ -93,6 +93,7 @@ pub async fn dispatch(db: &D1Database, env: &Env, now: Timestamp) -> UnitOutcome
     for (id, why) in &skipped {
         console_log!("alert event={} outcome=skipped why={why:?}", id.as_str());
     }
+    let mut failed = None;
     for outgoing in &sends {
         let sent = telegram::send(&base, &config, &outgoing.text).await;
         let outcome = if sent.is_ok() { "sent" } else { "failed" };
@@ -104,6 +105,7 @@ pub async fn dispatch(db: &D1Database, env: &Env, now: Timestamp) -> UnitOutcome
             Ok(()) => alerts::record_sent(&outgoing.event, now),
             Err(err) => {
                 console_log!("alert event={} error={err}", outgoing.event.as_str());
+                failed.get_or_insert_with(|| err.to_string());
                 alerts::record_failed(&outgoing.event, now)
             }
         };
@@ -111,12 +113,22 @@ pub async fn dispatch(db: &D1Database, env: &Env, now: Timestamp) -> UnitOutcome
             return retry(format!("d1 write: {err}"));
         }
     }
-    let follow_ups = if more {
-        vec![WorkKind::SendAlerts]
-    } else {
-        vec![]
-    };
-    UnitOutcome::Done { follow_ups }
+    after_sends(failed, more)
+}
+
+/// A failed send returns `Retry` after its row is recorded, so the scheduler
+/// backs off and re-admits the row while attempts remain. Otherwise the alert
+/// would wait for the next Enrich run and could outlive `MAX_AGE_SECS`.
+pub fn after_sends(failed: Option<String>, more: bool) -> UnitOutcome {
+    match failed {
+        Some(error) => UnitOutcome::Retry {
+            error: format!("telegram send: {error}"),
+        },
+        None if more => UnitOutcome::Done {
+            follow_ups: vec![WorkKind::SendAlerts],
+        },
+        None => UnitOutcome::Done { follow_ups: vec![] },
+    }
 }
 
 #[cfg(test)]
@@ -153,6 +165,26 @@ mod tests {
                 visible: true,
             },
         }
+    }
+
+    #[test]
+    fn a_failed_send_retries_and_a_clean_batch_follows_up_only_when_more_wait() {
+        assert_eq!(
+            after_sends(Some("429".into()), true),
+            UnitOutcome::Retry {
+                error: "telegram send: 429".into()
+            }
+        );
+        assert_eq!(
+            after_sends(None, true),
+            UnitOutcome::Done {
+                follow_ups: vec![WorkKind::SendAlerts]
+            }
+        );
+        assert_eq!(
+            after_sends(None, false),
+            UnitOutcome::Done { follow_ups: vec![] }
+        );
     }
 
     #[test]

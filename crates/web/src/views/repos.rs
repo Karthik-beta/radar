@@ -67,7 +67,7 @@ pub fn Repos() -> impl IntoView {
             {move || match status.get() {
                 Status::Loading => view! { <p class="text-muted">"Loading."</p> }.into_any(),
                 Status::Failed => {
-                    view! { <p class="text-muted" role="alert">"Could not load the repositories. Radar will try again."</p> }
+                    view! { <p class="text-muted" role="alert">"Could not load the repositories. Reload to try again."</p> }
                         .into_any()
                 }
                 Status::Ready(cards) if cards.is_empty() => {

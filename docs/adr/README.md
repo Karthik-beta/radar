@@ -6,7 +6,7 @@ Each record captures one decision: the context, what we chose, and what we rejec
 | --- | --- | --- |
 | [0001](0001-tech-stack.md) | Tech stack | Superseded in part by 0005 |
 | [0002](0002-architecture.md) | Architecture | Accepted |
-| [0003](0003-design.md) | Visual design | Superseded in part by 0008 |
+| [0003](0003-design.md) | Visual design | Accepted |
 | [0004](0004-brand-assets.md) | Brand assets and self-hosted fonts | Accepted |
 | [0005](0005-rust.md) | Rust everywhere | Superseded in part by 0006 |
 | [0006](0006-ui-components.md) | UI components and Tailwind | Accepted |

@@ -85,13 +85,26 @@ pub fn Feed() -> impl IntoView {
                     status.set(Status::Ready);
                 }
                 Err(ApiError::Unauthorized) => store.refresh(),
-                Err(_) => status.set(Status::Failed),
+                Err(_) => {
+                    if before.is_none() {
+                        events.set(Vec::new());
+                    }
+                    status.set(Status::Failed);
+                }
             }
         });
     };
     Effect::new(move |_| {
         filter.track();
         fetch(None);
+    });
+    let address = location.path();
+    Effect::new(move |_| {
+        address.track();
+        let current = FeedFilter::from_address();
+        if filter.get_untracked() != current {
+            filter.set(current);
+        }
     });
     let choose = move |chosen: FeedFilter| {
         location.navigate(&chosen.href());
@@ -220,7 +233,7 @@ pub fn Feed() -> impl IntoView {
                 <p class="text-muted">"Loading."</p>
             </Show>
             <Show when=move || status.get() == Status::Failed>
-                <p class="text-muted" role="alert">"Could not load the feed. Radar will try again."</p>
+                <p class="text-muted" role="alert">"Could not load the feed. Reload to try again."</p>
             </Show>
             <Show when=move || events.with(Vec::is_empty) && status.get() == Status::Ready>
                 <p class="empty-state" data-empty>
@@ -247,7 +260,7 @@ pub fn Feed() -> impl IntoView {
             <ul class="rows" aria-label="Activity">
                 <For
                     each=move || events.get().into_iter().enumerate()
-                    key=|(_, fe)| fe.event.id.as_str().to_owned()
+                    key=|(index, fe)| (*index, fe.event.id.as_str().to_owned())
                     let:entry
                 >
                     {

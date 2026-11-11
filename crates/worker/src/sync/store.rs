@@ -10,8 +10,10 @@ use super::state::{SyncState, Throttle};
 use super::work::{RowState, WorkError, WorkKind, WorkRow};
 use crate::db::{Param, Statement};
 
-pub const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS work (
+macro_rules! work_table {
+    ($name:literal) => {
+        concat!(
+            "CREATE TABLE ", $name, " (
   kind TEXT NOT NULL CHECK (kind IN ('poll_notifications', 'enrich', 'backfill_page', 'rollup', 'send_alerts')),
   key TEXT NOT NULL CHECK (key <> ''),
   payload TEXT,
@@ -21,7 +23,14 @@ CREATE TABLE IF NOT EXISTS work (
   last_error TEXT,
   PRIMARY KEY (kind, key)
 );
-CREATE TABLE IF NOT EXISTS sync_state (
+"
+        )
+    };
+}
+
+pub const SCHEMA: &str = concat!(
+    work_table!("IF NOT EXISTS work"),
+    "CREATE TABLE IF NOT EXISTS sync_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   last_modified TEXT,
   next_poll_at INTEGER,
@@ -43,7 +52,31 @@ CREATE TABLE IF NOT EXISTS kv (
   key TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL
 );
-";
+"
+);
+
+/// `CREATE TABLE IF NOT EXISTS` leaves a `work` table made by an older build with
+/// its old `kind` CHECK, which rejects newer kinds. This rebuilds the table and
+/// copies its rows. It runs once, then records the version, and a crash before
+/// the last statement only repeats it.
+pub const UPGRADE_WORK: &str = concat!(
+    "DROP TABLE IF EXISTS work_new;
+",
+    work_table!("work_new"),
+    "INSERT INTO work_new (kind, key, payload, due_at, attempts, dead, last_error)
+  SELECT kind, key, payload, due_at, attempts, dead, last_error FROM work;
+DROP TABLE work;
+ALTER TABLE work_new RENAME TO work;
+INSERT INTO kv (key, value) VALUES ('schema_version', '2')
+  ON CONFLICT (key) DO UPDATE SET value = excluded.value;
+"
+);
+
+pub const SELECT_SCHEMA_VERSION: &str = "SELECT value FROM kv WHERE key = 'schema_version'";
+
+pub fn needs_upgrade(stored: Option<&RawKv>) -> bool {
+    stored.and_then(|kv| kv.value.parse::<i64>().ok()) != Some(2)
+}
 
 const POLL_PHASE_KEY: &str = "poll_phase";
 const BACKFILL_DONE_KEY: &str = "backfill_done_at";
@@ -297,6 +330,65 @@ mod tests {
             NodeId::parse("I_a").unwrap(),
         ];
         WorkKind::Enrich(EnrichBatch::new(ids).unwrap())
+    }
+
+    const OLD_WORK: &str = "CREATE TABLE work (
+  kind TEXT NOT NULL CHECK (kind IN ('poll_notifications', 'enrich', 'backfill_page', 'rollup')),
+  key TEXT NOT NULL CHECK (key <> ''),
+  payload TEXT,
+  due_at INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  dead INTEGER NOT NULL DEFAULT 0 CHECK (dead IN (0, 1)),
+  last_error TEXT,
+  PRIMARY KEY (kind, key)
+);
+INSERT INTO work (kind, key, due_at, attempts, last_error)
+  VALUES ('rollup', 'nightly', 7, 2, 'boom');";
+
+    fn stored_version(conn: &Connection) -> Option<RawKv> {
+        query_json(conn, SELECT_SCHEMA_VERSION, &[])
+            .into_iter()
+            .next()
+            .map(|m| serde_json::from_value(Value::Object(m)).unwrap())
+    }
+
+    #[test]
+    fn an_old_work_table_is_rebuilt_with_its_rows_and_accepts_new_kinds() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(OLD_WORK).unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+        let insert = "INSERT INTO work (kind, key, due_at) VALUES ('send_alerts', 'main', 0)";
+        assert!(conn.execute(insert, []).is_err());
+        assert!(needs_upgrade(stored_version(&conn).as_ref()));
+        conn.execute_batch(UPGRADE_WORK).unwrap();
+        assert!(!needs_upgrade(stored_version(&conn).as_ref()));
+        conn.execute(insert, []).unwrap();
+        let kept = query_json(
+            &conn,
+            "SELECT attempts, last_error FROM work WHERE kind = 'rollup'",
+            &[],
+        );
+        assert_eq!(kept[0]["attempts"], 2);
+        assert_eq!(kept[0]["last_error"], "boom");
+        assert_eq!(count_rows(&conn, "work"), 2);
+        assert_eq!(
+            count_rows(&conn, "sqlite_master WHERE name = 'work_new'"),
+            0
+        );
+    }
+
+    #[test]
+    fn the_upgrade_is_safe_to_repeat() {
+        let conn = open();
+        conn.execute_batch(UPGRADE_WORK).unwrap();
+        conn.execute(
+            "INSERT INTO work (kind, key, due_at) VALUES ('send_alerts', 'main', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(UPGRADE_WORK).unwrap();
+        assert_eq!(count_rows(&conn, "work"), 1);
+        assert!(!needs_upgrade(stored_version(&conn).as_ref()));
     }
 
     #[test]

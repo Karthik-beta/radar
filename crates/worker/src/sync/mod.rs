@@ -61,6 +61,8 @@ impl DurableObject for Syncer {
         let syncer = Self { state, env };
         if let Err(err) = syncer.exec_sql(store::SCHEMA, Vec::new()) {
             console_error!("syncer schema failed: {err}");
+        } else if let Err(err) = syncer.upgrade_schema() {
+            console_error!("syncer schema upgrade failed: {err}");
         }
         syncer
     }
@@ -266,6 +268,19 @@ impl Syncer {
             }
             None => storage.delete_alarm().await,
         }
+    }
+
+    fn upgrade_schema(&self) -> Result<()> {
+        let stored = self
+            .state
+            .storage()
+            .sql()
+            .exec(store::SELECT_SCHEMA_VERSION, None)?
+            .to_array::<store::RawKv>()?;
+        if store::needs_upgrade(stored.first()) {
+            self.exec_sql(store::UPGRADE_WORK, Vec::new())?;
+        }
+        Ok(())
     }
 
     fn load(&self) -> Result<(Vec<WorkRow>, SyncState)> {
