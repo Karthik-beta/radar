@@ -67,10 +67,16 @@ pub async fn dispatch(db: &D1Database, env: &Env, now: Timestamp) -> UnitOutcome
         console_log!("alerts off");
         return UnitOutcome::Done { follow_ups: vec![] };
     };
-    let base = read_setting(env, API_BASE_VAR)
-        .map(|v| v.trim().to_owned())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| DEFAULT_API_BASE.to_owned());
+    let base = match read_setting(env, API_BASE_VAR).filter(|v| !v.trim().is_empty()) {
+        None => DEFAULT_API_BASE.to_owned(),
+        Some(raw) => match telegram::allowed_base(&raw) {
+            Some(base) => base,
+            None => {
+                console_log!("alerts off: ignored TELEGRAM_API_BASE");
+                return UnitOutcome::Done { follow_ups: vec![] };
+            }
+        },
+    };
 
     let since = Timestamp(now.0.saturating_sub(MAX_AGE_SECS));
     let rows = match alerts::candidates(since).prepare(db) {

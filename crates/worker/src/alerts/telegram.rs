@@ -22,6 +22,19 @@ impl std::fmt::Display for SendError {
     }
 }
 
+/// The only destinations the alert POST may reach: Telegram's API, or a
+/// loopback stub during development. Anything else turns alerts off.
+pub fn allowed_base(raw: &str) -> Option<String> {
+    let base = raw.trim().trim_end_matches('/');
+    if base == "https://api.telegram.org" {
+        return Some(base.to_owned());
+    }
+    let (host, port) = base.strip_prefix("http://")?.split_once(':')?;
+    let loopback = matches!(host, "127.0.0.1" | "localhost");
+    let port_ok = (1..=5).contains(&port.len()) && port.bytes().all(|b| b.is_ascii_digit());
+    (loopback && port_ok).then(|| base.to_owned())
+}
+
 pub fn endpoint(base: &str, config: &TelegramConfig) -> String {
     format!(
         "{}/bot{}/sendMessage",
@@ -70,6 +83,30 @@ mod tests {
         TelegramConfig {
             token: "tok".into(),
             chat_id: "42".into(),
+        }
+    }
+
+    #[test]
+    fn only_telegram_or_a_loopback_stub_is_allowed() {
+        assert_eq!(
+            allowed_base("https://api.telegram.org/").as_deref(),
+            Some("https://api.telegram.org")
+        );
+        assert_eq!(
+            allowed_base("http://127.0.0.1:9003").as_deref(),
+            Some("http://127.0.0.1:9003")
+        );
+        assert!(allowed_base("http://localhost:9003").is_some());
+        for bad in [
+            "https://api.example.com",
+            "http://api.telegram.org",
+            "https://api.telegram.org.evil.test",
+            "http://127.0.0.1",
+            "http://127.0.0.1:9003/path",
+            "http://10.0.0.1:9003",
+            "",
+        ] {
+            assert_eq!(allowed_base(bad), None, "{bad}");
         }
     }
 
