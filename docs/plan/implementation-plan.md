@@ -57,6 +57,7 @@ Verification gaps. To ship faster, R13 to R24 ran their unit boxes, every gate, 
 - R17. The freshness panel has no URL, so `scripts/audit-a11y.mjs` audits `/merged` as its fourth view. The plan named ADR 0007 for the contrast record, but 0007 went to client routing, so the contrast record is 0008.
 - R18. The 304 lane needs R09.
 - R24. The plan says R24 depends on R23, but it needs only R10's event model.
+- R27. The Worker grows 23.8 KB gzipped over trunk, to 369.0 KB, against the 15 KB rule. The root accepts it, because the 400 KB budget holds and a smaller R27 would drop the repo refresh or the deep timeline paging. R28 and R29 share the 31 KB left. If R28 would pass 400 KB, it computes the stats in the UI from rows the API returns instead. R27 also adds `ImportKey::Start`, `migrations/0012_repo_node_id.sql`, and a 10 s pace for import and refresh units, which the 500 calls an hour cap needed.
 
 ### Follow-ups
 
