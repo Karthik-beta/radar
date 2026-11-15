@@ -8,7 +8,7 @@ F14 adds a Stats page with 12 months of detail and a comparison of this year wit
 
 Radar keeps one row per contribution fact, for good, in new D1 tables. Raw events from other people still roll up and are deleted after 180 days.
 
-**What counts.** An external repo is a repo whose owner login is not my login. Repos owned by an organisation I belong to count as external. Every table stores all my PRs and reviews with an `external` flag, and F14's metrics filter on it. A later change to the rule needs no new data.
+**What counts.** An external repo is a repo whose owner login is not my login. Repos owned by an organisation I belong to count as external. Every table stores all my PRs and reviews with an `external` flag, and F14's metrics use it. Most count external repos only, and a metric that F14 defines as a comparison, such as S2's external against own reviews, splits on it. A later change to the rule needs no new data.
 
 **New tables, never pruned.**
 
