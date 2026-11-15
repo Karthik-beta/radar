@@ -13,6 +13,7 @@ Each record captures one decision: the context, what we chose, and what we rejec
 | [0007](0007-client-routing.md) | Client routing without leptos_router | Accepted |
 | [0008](0008-faint-contrast.md) | Faint text contrast | Proposed |
 | [0009](0009-ui-size-budget.md) | UI size budget | Accepted |
+| [0010](0010-contribution-facts.md) | Contribution facts kept for good | Proposed |
 
 ## Add a record
 
