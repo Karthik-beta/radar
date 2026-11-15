@@ -104,7 +104,7 @@ Every number on the page comes from D1. The data is kept for good ([ADR 0010](ad
 | S3 | **Trust** | Repos with a first merged PR in the period. Repeat repos, with 2 or more merged PRs. A repo ranking by merge rate, median first response, and my merged count. Merges into repos with 1,000 or more stars. Languages I contributed in, from each repo's primary language |
 | S4 | **Agents** | Merge rate, time to merge, and changes-requested share for PRs from `agent/*` branches against PRs from other branches |
 | S5 | **Output** | PRs opened and merged per week or month with a rolling 4-week average. Best week and best month. Streak of weeks with at least one merged PR. Distinct repos per week. The contribution heatmap from F8 |
-| S6 | **Waiting** | Median time my PRs spend in each stage: CI running, CI failing, awaiting review, changes requested, approved. Total days my open PRs waited on maintainers against days they waited on me. Data starts the day stage history ships |
+| S6 | **Waiting** | Median time my PRs spend in each stage: CI running, CI failing, awaiting review, changes requested, approved. Total days my open PRs waited on maintainers against days they waited on me. Data starts the day stage and turn history ships |
 | S7 | **Shape** | Merge rate by PR size, in buckets by lines changed (under 50, 50 to 199, 200 to 499, 500 or more). Issues I opened or commented on that a merged PR of mine closed |
 | S8 | **Habits** | When I work, as a day-of-week by hour grid of my own events, in `settings.utc_offset_minutes`. Progress toward `settings.goal_merged_per_month` when it is set. Milestones reached in the period: first merge in a new repo, 50th and 100th merged PR, first merge into a repo with 1,000 or more stars |
 
@@ -191,7 +191,8 @@ The email handler, the 10-minute cron, and the webhook endpoint each call `kick(
 | `rollups_weekly` | week, PRs opened, PRs merged, repos touched | Trends, Stats heatmap |
 | `pr_facts` | PR node ID, repo, external, opened / merged / closed, first response, changes-requested rounds, CI failures, size, agent branch. Kept for good | Stats |
 | `review_facts` | review node ID, repo, external, PR author, state, submitted at. Kept for good | Stats |
-| `stage_changes` | item, stage, at. Kept for good | Stats waiting times |
+| `pr_transitions` | item, stage, turn, at. Kept for good | Stats waiting times |
+| `own_events` | my events the weekly rollup folded, with the `events` columns. Kept for good | Stats habits |
 | `pr_issue_links` | PR, issue it closes, whether I opened or commented on the issue. Kept for good | Stats issue to PR |
 | `local_state` | item ID, dismissed-until | Dismiss / snooze |
 | `auth` | GitHub user ID, encrypted token, granted scopes | Background sync |
@@ -247,7 +248,7 @@ V1 ("Your turn" + pipeline, live from email triggers) is four milestones away; e
 4. **M3: Email push.** Email Routing to the Email Worker, header parsing, forwarding, Syncer kicks, coalescing. *Done when* a test mention appears within 2 minutes.
 5. **M4: Insight.** Activity feed, repo cards, trends, nightly rollup. *Done when* the feed, repo cards, and trends show my real data on the preview deploy.
 6. **M5: Agent era (optional).** Webhooks on my forks, `agent/*` branch lane, agent check-in API, phone alerts. *Done when* a push to an `agent/` branch on a fork shows in the Agents view within 2 minutes and a mention reaches my phone through Telegram.
-7. **M6: Stats.** Contribution facts, the one-time history import, stage history, then the Stats page (F14). *Done when* the Stats page shows 12 months of my real data on the preview deploy and the import has filled my history back to my account's creation.
+7. **M6: Stats.** Contribution facts, the one-time history import, stage and turn history, then the Stats page (F14). *Done when* the Stats page shows 12 months of my real data on the preview deploy and the import has filled my history back to my account's creation.
 
 **Risks**
 
