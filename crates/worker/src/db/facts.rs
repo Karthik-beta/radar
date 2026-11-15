@@ -7,7 +7,7 @@ use domain::activity::ReviewState;
 pub use domain::facts::{
     ClosingIssue, FactSource, IssueLink, PrFact, ReviewFact, Side, Transition,
 };
-use domain::ids::Login;
+use domain::ids::{Login, Timestamp};
 use domain::stage::Stage;
 use serde::Serialize;
 
@@ -122,6 +122,40 @@ const UPSERT_REVIEWS: &str = "INSERT INTO review_facts (review_id, repo, externa
      pr_author_login = excluded.pr_author_login, state = excluded.state, \
      submitted_at = excluded.submitted_at, source = excluded.source \
      WHERE excluded.source = 'live' OR review_facts.source = 'imported'";
+
+/// A later page of an imported pull request's timeline found its first human
+/// reply. A live row keeps its own.
+const SET_IMPORTED_FIRST_RESPONSE: &str = "UPDATE pr_facts SET first_response_at = ?2, \
+     first_response_login = ?3 WHERE node_id = ?1 AND source = 'imported' \
+     AND (first_response_at IS NULL OR first_response_at > ?2)";
+
+const SET_ACCOUNT_CREATED: &str = "UPDATE import_state SET account_created_at = ?1 WHERE id = 1";
+const SET_FACTS_IMPORTED: &str = "UPDATE import_state SET facts_imported_at = ?1 WHERE id = 1";
+
+pub fn set_imported_first_response(pr_node_id: &str, at: Timestamp, login: &Login) -> Statement {
+    Statement {
+        sql: SET_IMPORTED_FIRST_RESPONSE,
+        params: vec![
+            Param::text(pr_node_id),
+            Param::ts(at),
+            Param::text(login.as_str()),
+        ],
+    }
+}
+
+pub fn set_account_created(at: Timestamp) -> Statement {
+    Statement {
+        sql: SET_ACCOUNT_CREATED,
+        params: vec![Param::ts(at)],
+    }
+}
+
+pub fn mark_imported(at: Timestamp) -> Statement {
+    Statement {
+        sql: SET_FACTS_IMPORTED,
+        params: vec![Param::ts(at)],
+    }
+}
 
 /// Everything one batch learned for the fact tables.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

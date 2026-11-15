@@ -21,7 +21,9 @@ export function answerHistory(scenario, variables) {
   const from = Date.parse(vars.from);
   const to = Date.parse(vars.to);
   const { remaining, reset } = scenario.rate;
-  const resetAt = new Date(typeof reset === "number" ? reset * 1000 : Date.parse(reset)).toISOString();
+  const resetAt = new Date(typeof reset === "number" ? reset * 1000 : Date.parse(reset))
+    .toISOString()
+    .replace(/\.\d+Z$/, "Z");
   const all = (scenario.history?.pull_requests ?? []).filter((pr) => {
     const at = Date.parse(pr.occurred_at);
     return at >= from && at < to;

@@ -1,0 +1,17 @@
+query RepoMeta($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Repository {
+      id
+      nameWithOwner
+      stargazerCount
+      primaryLanguage {
+        name
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+}

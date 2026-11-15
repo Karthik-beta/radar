@@ -81,10 +81,16 @@ pub fn needs_upgrade(stored: Option<&RawKv>) -> bool {
 const POLL_PHASE_KEY: &str = "poll_phase";
 const BACKFILL_DONE_KEY: &str = "backfill_done_at";
 const HISTORY_SEEDED_KEY: &str = "history_seeded_at";
+pub const FACTS_IMPORTED_KEY: &str = "facts_imported_at";
+pub const REPOS_WEEK_KEY: &str = "repos_refreshed_week";
+pub const PACED_UNTIL_KEY: &str = "import_paced_until";
 
 pub const SELECT_PHASE: &str = "SELECT value FROM kv WHERE key = 'poll_phase'";
 pub const SELECT_BACKFILL_DONE: &str = "SELECT value FROM kv WHERE key = 'backfill_done_at'";
 pub const SELECT_HISTORY_SEEDED: &str = "SELECT value FROM kv WHERE key = 'history_seeded_at'";
+pub const SELECT_FACTS_IMPORTED: &str = "SELECT value FROM kv WHERE key = 'facts_imported_at'";
+pub const SELECT_REPOS_WEEK: &str = "SELECT value FROM kv WHERE key = 'repos_refreshed_week'";
+pub const SELECT_PACED_UNTIL: &str = "SELECT value FROM kv WHERE key = 'import_paced_until'";
 
 pub const SELECT_ROWS: &str =
     "SELECT kind, key, payload, due_at, attempts, dead, last_error FROM work";
@@ -170,6 +176,9 @@ impl RawState {
             poll_phase: PollPhase::default(),
             backfill_done_at: None,
             history_seeded_at: None,
+            facts_imported_at: None,
+            repos_refreshed_week: None,
+            paced_until: None,
         }
     }
 }
@@ -208,6 +217,15 @@ pub fn save_history_seeded(at: Timestamp) -> Statement {
             Param::text(HISTORY_SEEDED_KEY),
             Param::text(at.0.to_string()),
         ],
+    }
+}
+
+/// A time kept in the `kv` table under `key`, one of the `*_KEY` constants.
+pub fn save_time(key: &'static str, at: Timestamp) -> Statement {
+    Statement {
+        sql: "INSERT INTO kv (key, value) VALUES (?1, ?2) \
+              ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params: vec![Param::text(key), Param::text(at.0.to_string())],
     }
 }
 
@@ -491,6 +509,9 @@ INSERT INTO work (kind, key, due_at, attempts, last_error)
             poll_phase: PollPhase::default(),
             backfill_done_at: None,
             history_seeded_at: None,
+            facts_imported_at: None,
+            repos_refreshed_week: None,
+            paced_until: None,
         };
         exec(&conn, &save_state(&saved)).unwrap();
         assert_eq!(state(&conn), saved);
@@ -517,6 +538,27 @@ INSERT INTO work (kind, key, due_at, attempts, last_error)
             value: "yesterday".into(),
         };
         assert_eq!(bad.parse_backfill_done(), None);
+    }
+
+    #[test]
+    fn import_markers_are_kept_apart_in_the_kv_table() {
+        let conn = open();
+        let read = |select: &str| {
+            query_json(&conn, select, &[])
+                .into_iter()
+                .next()
+                .map(|m| serde_json::from_value::<RawKv>(Value::Object(m)).unwrap())
+                .and_then(|kv| kv.parse_backfill_done())
+        };
+        assert_eq!(read(SELECT_FACTS_IMPORTED), None);
+        exec(&conn, &save_time(FACTS_IMPORTED_KEY, Timestamp(10))).unwrap();
+        exec(&conn, &save_time(REPOS_WEEK_KEY, Timestamp(345_600))).unwrap();
+        exec(&conn, &save_time(PACED_UNTIL_KEY, Timestamp(30))).unwrap();
+        exec(&conn, &save_time(PACED_UNTIL_KEY, Timestamp(40))).unwrap();
+        assert_eq!(read(SELECT_FACTS_IMPORTED), Some(Timestamp(10)));
+        assert_eq!(read(SELECT_REPOS_WEEK), Some(Timestamp(345_600)));
+        assert_eq!(read(SELECT_PACED_UNTIL), Some(Timestamp(40)));
+        assert_eq!(count_rows(&conn, "kv"), 3);
     }
 
     fn phase(conn: &Connection) -> Option<PollPhase> {

@@ -1,0 +1,32 @@
+query ImportReviews($ids: [ID!]!, $login: String!, $after: String) {
+  nodes(ids: $ids) {
+    ... on PullRequest {
+      id
+      number
+      repository {
+        nameWithOwner
+      }
+      author {
+        __typename
+        login
+      }
+      reviews(author: $login, first: 100, after: $after) {
+        nodes {
+          id
+          state
+          createdAt
+          submittedAt
+        }
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+}

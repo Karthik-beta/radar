@@ -6,6 +6,7 @@ use worker::Env;
 use super::backfill;
 use super::enrich;
 use super::history;
+use super::import;
 use super::poll;
 use super::scheduler::UnitOutcome;
 use super::state::SyncState;
@@ -30,14 +31,24 @@ impl From<UnitOutcome> for Handled {
 }
 
 /// Each GitHub call is awaited before the next starts, so no two requests for the
-/// token overlap (P5).
-pub async fn run(kind: &WorkKind, env: &Env, state: &mut SyncState, now: Timestamp) -> Handled {
+/// token overlap (P5). `import_rows_left` says whether another `import.` row is queued.
+pub async fn run(
+    kind: &WorkKind,
+    env: &Env,
+    state: &mut SyncState,
+    now: Timestamp,
+    import_rows_left: bool,
+) -> Handled {
     match kind {
         WorkKind::Rollup(key) => crate::rollup::run_unit(*key, env, now).await.into(),
         WorkKind::PollNotifications => poll::run(env, state).await,
         WorkKind::Enrich(batch) => enrich::run(batch, env, state, now).await.into(),
         WorkKind::BackfillPage(cursor) => backfill::run(cursor, env, state, now).await.into(),
         WorkKind::SeedHistory(key) => history::run(key, env, state, now).await.into(),
+        WorkKind::ImportFacts(key) => import::run(key, env, state, now, import_rows_left)
+            .await
+            .into(),
+        WorkKind::RefreshRepos(page) => import::refresh(page, env, state, now).await.into(),
         WorkKind::SendAlerts => send_alerts(env, now).await.into(),
     }
 }

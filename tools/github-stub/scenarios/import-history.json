@@ -1,0 +1,92 @@
+{
+  "extends": "basic",
+  "notifications": { "last_modified": "@-2m", "etag": "\"stub-import-1\"", "items": [] },
+  "search": { "authored": [], "involves": [] },
+  "history": { "pull_requests": [] },
+  "graphql": {
+    "Viewer": { "data": { "viewer": { "login": "karthik", "databaseId": 1001, "createdAt": "2024-03-10T08:00:00Z" } } }
+  },
+  "import": {
+    "repos": {
+      "octo/widgets": { "id": "R_widgets", "stars": 1200, "language": "Rust" },
+      "octo/bulk": { "id": "R_bulk", "stars": 45, "language": "TypeScript" },
+      "karthik/radar": { "id": "R_radar", "stars": 12, "language": "Rust" },
+      "rust-lang/rust": { "id": "R_rust", "stars": 99000, "language": "Rust" }
+    },
+    "prs": [
+      {
+        "id": "PR_deep",
+        "repo": "octo/widgets",
+        "number": 700,
+        "created_at": "2026-02-01T09:00:00Z",
+        "merged_at": "2026-02-10T09:00:00Z",
+        "closed_at": "2026-02-10T09:00:00Z",
+        "additions": 120,
+        "deletions": 30,
+        "changed_files": 7,
+        "head_ref": "fix/deep-timeline",
+        "changes_requested": 2,
+        "closing": [{ "repo": "octo/widgets", "number": 650 }],
+        "timeline": [
+          { "login": "ci-bot", "type": "Bot", "at": "2026-02-01T09:05:00Z", "repeat": 30 },
+          { "login": "karthik", "type": "User", "at": "2026-02-02T09:00:00Z", "repeat": 14 },
+          { "login": "maint", "type": "User", "at": "2026-02-03T12:00:00Z", "review": true },
+          { "login": "other", "type": "User", "at": "2026-02-04T12:00:00Z" }
+        ]
+      },
+      {
+        "id": "PR_agent",
+        "repo": "karthik/radar",
+        "number": 31,
+        "created_at": "2026-03-04T10:00:00Z",
+        "merged_at": "2026-03-04T12:00:00Z",
+        "closed_at": "2026-03-04T12:00:00Z",
+        "additions": 14,
+        "deletions": 2,
+        "changed_files": 1,
+        "head_ref": "agent/fix-ci",
+        "changes_requested": 0,
+        "closing": [{ "repo": "karthik/radar", "number": 30 }],
+        "timeline": []
+      },
+      {
+        "id": "PR_open",
+        "repo": "rust-lang/rust",
+        "number": 120001,
+        "created_at": "2026-09-20T10:00:00Z",
+        "merged_at": null,
+        "closed_at": null,
+        "additions": 300,
+        "deletions": 40,
+        "changed_files": 12,
+        "head_ref": "perf/faster",
+        "changes_requested": 1,
+        "closing": [],
+        "timeline": [{ "login": "reviewer", "type": "User", "at": "2026-09-21T10:00:00Z", "review": true }]
+      }
+    ],
+    "generate_prs": [
+      { "count": 30, "prefix": "PR_y24_", "repo": "octo/widgets", "first_number": 100, "from": "2024-04-01T00:00:00Z", "to": "2024-12-15T00:00:00Z", "responder": "maint" },
+      { "count": 1500, "prefix": "PR_bulk_", "repo": "octo/bulk", "first_number": 1000, "from": "2025-04-01T00:00:00Z", "to": "2025-06-30T23:00:00Z", "responder": "bulk-maint" },
+      { "count": 20, "prefix": "PR_own25_", "repo": "karthik/radar", "first_number": 1, "from": "2025-08-01T00:00:00Z", "to": "2025-11-30T00:00:00Z", "responder": null },
+      { "count": 10, "prefix": "PR_y26_", "repo": "octo/widgets", "first_number": 800, "from": "2026-01-10T00:00:00Z", "to": "2026-10-30T00:00:00Z", "responder": "maint" }
+    ],
+    "reviewed": [
+      {
+        "id": "PR_thrice",
+        "repo": "rust-lang/rust",
+        "number": 119000,
+        "author": "alice",
+        "reviews": [
+          { "id": "PRR_thrice_1", "state": "CHANGES_REQUESTED", "submitted_at": "2026-05-01T10:00:00Z" },
+          { "id": "PRR_thrice_2", "state": "COMMENTED", "submitted_at": "2026-05-03T10:00:00Z" },
+          { "id": "PRR_thrice_3", "state": "APPROVED", "submitted_at": "2026-05-05T10:00:00Z" }
+        ]
+      }
+    ],
+    "generate_reviewed": [
+      { "count": 5, "prefix": "PR_rv24_", "repo": "octo/widgets", "author": "bob", "first_number": 400, "from": "2024-05-01T00:00:00Z", "to": "2024-11-01T00:00:00Z" },
+      { "count": 120, "prefix": "PR_rv25_", "repo": "octo/widgets", "author": "bob", "first_number": 2000, "from": "2025-02-01T00:00:00Z", "to": "2025-11-30T00:00:00Z" }
+    ]
+  }
+}

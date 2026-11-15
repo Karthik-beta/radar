@@ -197,6 +197,16 @@ Boot one with `--scenario generated/<kind>` after saving its output under `scena
 | `facts-live` | Eight pull requests of mine in `octo/widgets` and `karthik/radar`, one on an `agent/` branch, two closing issues, an issue I opened, and someone else's pull request that I reviewed. |
 | `facts-live-turn` | `facts-live` after a maintainer answers on #305, so its turn moves to me while it stays in awaiting review. |
 
+## Import scenarios
+
+`import.mjs` answers the five R27 history import operations from `scenario.import`: `ImportPrs`, `ImportTimeline`, `ImportReviewedPrs`, `ImportReviews`, and `RepoMeta`. `import.repos` maps `owner/name` to `{id, stars, language}`. `import.prs` lists my pull requests, and each entry of `import.generate_prs` adds `count` more, spread evenly from `from` to `to`, with one review by `responder` two hours after each opens. `import.reviewed` lists other people's pull requests with my `reviews`, and `import.generate_reviewed` adds more. A timeline entry is `{login, type, at, review, repeat}`, and `repeat` makes that many entries one minute apart.
+
+`ImportPrs` reads `author:<login>` and `created:<from>..<to>` from `q`. Like GitHub, `issueCount` counts every match and the pages stop after the first 1,000. Timeline pages hold 20 entries, reviewed lists and review lists 100. A cursor is `base64("<kind>:<offset>")`. The log entry carries `variables` and `nodes`, so `variables.q` shows each range the import asked for. `importTotals(scenario)` gives the pull request and review counts a full import should store.
+
+| Scenario | What it holds |
+| --- | --- |
+| `import-history` | An account created on 2024-03-10. 30 pull requests in 2024, 1,500 in the second quarter of 2025 and 20 more in my own repo, and 13 in 2026, 1,563 in all. `PR_deep` gets its first human reply on its third timeline page. 120 reviewed pull requests in 2025, and `PR_thrice`, which I reviewed three times. 128 reviews in all. No notification threads, and empty `Search` and `ContributionHistory` answers. |
+
 ## Tests
 
 `node --test "tools/**/*.test.mjs"`

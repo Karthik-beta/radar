@@ -8,6 +8,7 @@ mod enrich;
 mod gate;
 mod handlers;
 mod history;
+mod import;
 mod poll;
 pub(crate) mod scheduler;
 mod state;
@@ -16,6 +17,7 @@ pub(crate) mod work;
 
 use domain::api::Freshness;
 use domain::ids::Timestamp;
+use domain::rollup::WeekStart;
 use domain::sync_status::SyncStatus;
 use serde_json::json;
 use worker::js_sys::{Date as JsDate, Number};
@@ -111,7 +113,10 @@ impl Syncer {
     async fn run_alarm(&self) -> Result<()> {
         let (rows, sync) = self.load()?;
         let unit = match plan(&rows, &sync, now()) {
-            Decision::Run(row) => self.run_unit(row, sync).await,
+            Decision::Run(row) => {
+                let left = import::rows_left(&rows, &row.kind);
+                self.run_unit(row, sync, left).await
+            }
             _ => Ok(()),
         };
         // Re-arm even when the unit failed to save, or the Syncer would sleep until the next cron.
@@ -126,7 +131,12 @@ impl Syncer {
         unit
     }
 
-    async fn run_unit(&self, row: WorkRow, mut observed: SyncState) -> Result<()> {
+    async fn run_unit(
+        &self,
+        row: WorkRow,
+        mut observed: SyncState,
+        import_rows_left: bool,
+    ) -> Result<()> {
         let kind = row.kind.clone();
         let (name, key) = (kind.kind().as_str(), kind.key());
         console_log!("unit start kind={name} key={key}");
@@ -134,10 +144,11 @@ impl Syncer {
         let phase_before = observed.poll_phase.clone();
         let done_before = observed.backfill_done_at;
         let seeded_before = observed.history_seeded_at;
+        let imported_before = observed.facts_imported_at;
         let Handled {
             outcome,
             finished_from,
-        } = handlers::run(&kind, &self.env, &mut observed, now()).await;
+        } = handlers::run(&kind, &self.env, &mut observed, now(), import_rows_left).await;
         let done_at = now();
         // Kicks run while the unit awaits GitHub, so write onto a fresh read.
         let (rows, mut sync) = self.load()?;
@@ -181,6 +192,17 @@ impl Syncer {
         {
             writes.push(store::save_history_seeded(at));
         }
+        if let Some(at) = sync
+            .facts_imported_at
+            .filter(|_| sync.facts_imported_at != imported_before)
+        {
+            writes.push(store::save_time(store::FACTS_IMPORTED_KEY, at));
+        }
+        if kind.is_paced() {
+            let until = Timestamp(done_at.0.saturating_add(config::IMPORT_SPACING_SECS));
+            sync.paced_until = Some(until);
+            writes.push(store::save_time(store::PACED_UNTIL_KEY, until));
+        }
         writes.push(store::save_state(&sync));
         for write in &writes {
             self.exec(write)?;
@@ -214,9 +236,16 @@ impl Syncer {
     async fn kick(&self, reason: KickReason) -> Result<()> {
         let at = now();
         let (rows, mut sync) = self.load()?;
+        let week_before = sync.repos_refreshed_week;
         let upserts = scheduler::kick(reason, &rows, &mut sync, at);
         for row in &upserts {
             self.exec(&store::upsert(row))?;
+        }
+        if let Some(week) = sync
+            .repos_refreshed_week
+            .filter(|_| sync.repos_refreshed_week != week_before)
+        {
+            self.exec(&store::save_time(store::REPOS_WEEK_KEY, week.timestamp()))?;
         }
         self.exec(&store::save_state(&sync))?;
         console_log!(
@@ -319,6 +348,17 @@ impl Syncer {
             .to_array::<store::RawKv>()?
             .first()
             .and_then(store::RawKv::parse_backfill_done);
+        let time = |select: &str| -> Result<Option<Timestamp>> {
+            Ok(sql
+                .exec(select, None)?
+                .to_array::<store::RawKv>()?
+                .first()
+                .and_then(store::RawKv::parse_backfill_done))
+        };
+        sync.facts_imported_at = time(store::SELECT_FACTS_IMPORTED)?;
+        sync.paced_until = time(store::SELECT_PACED_UNTIL)?;
+        sync.repos_refreshed_week =
+            time(store::SELECT_REPOS_WEEK)?.and_then(|at| WeekStart::new(at).ok());
         Ok((rows, sync))
     }
 

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use domain::ids::Timestamp;
+use domain::rollup::WeekStart;
 use domain::sync_status::{DeadWork, DeferCause, Rate, SyncKind, SyncStatus};
 
 use super::gate::{gate, Gate};
@@ -38,6 +39,14 @@ pub struct SyncState {
     /// When the last year of contribution history was seeded. Kept in the `kv` table.
     /// The nightly kick queues a seed only while it is unset.
     pub history_seeded_at: Option<Timestamp>,
+    /// When the history import finished, with no `import.` row left. Kept in the
+    /// `kv` table and in D1's `import_state`. The nightly kick starts an import
+    /// only while it is unset.
+    pub facts_imported_at: Option<Timestamp>,
+    /// The week the nightly kick last queued the repo refresh. Kept in the `kv` table.
+    pub repos_refreshed_week: Option<WeekStart>,
+    /// No import or repo refresh unit runs before this time. Kept in the `kv` table.
+    pub paced_until: Option<Timestamp>,
 }
 
 impl SyncState {
@@ -47,6 +56,7 @@ impl SyncState {
         self.poll_phase.clone_from(&unit.poll_phase);
         self.backfill_done_at = unit.backfill_done_at.or(self.backfill_done_at);
         self.history_seeded_at = unit.history_seeded_at.or(self.history_seeded_at);
+        self.facts_imported_at = unit.facts_imported_at.or(self.facts_imported_at);
         self.next_poll_at = unit.next_poll_at;
         self.rate = unit.rate;
         self.scopes.clone_from(&unit.scopes);

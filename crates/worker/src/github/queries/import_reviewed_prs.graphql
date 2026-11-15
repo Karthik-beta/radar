@@ -1,0 +1,22 @@
+query ImportReviewedPrs($from: DateTime!, $to: DateTime!, $after: String) {
+  viewer {
+    contributionsCollection(from: $from, to: $to) {
+      pullRequestReviewContributions(first: 100, after: $after) {
+        nodes {
+          pullRequest {
+            id
+          }
+        }
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+}
