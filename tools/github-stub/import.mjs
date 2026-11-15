@@ -291,7 +291,8 @@ export function answerImportReviews(scenario, variables) {
 }
 
 // `ids` answer through `nodes`. When `byName` is true, `q` holds `repo:owner/name` qualifiers and the
-// matching repos answer through `search`, as a repository search does.
+// matching repos answer through `search`, as a repository search does. A repo with `fork: true` answers
+// only when `q` holds `fork:true` or `fork:only`, as on GitHub.
 export function answerRepoMeta(scenario, variables) {
   const model = importModel(scenario);
   const byId = new Map(Object.keys(model.repos).map((name) => [repoNode(model, name).id, name]));
@@ -300,7 +301,10 @@ export function answerRepoMeta(scenario, variables) {
   let count = nodes.filter(Boolean).length;
   if (variables?.byName) {
     const wanted = [...String(variables.q ?? "").matchAll(/repo:(\S+)/g)].map((m) => m[1].toLowerCase());
-    const found = Object.keys(model.repos).filter((name) => wanted.includes(name.toLowerCase()));
+    const forks = /(^|\s)fork:(true|only)(\s|$)/.test(String(variables.q ?? ""));
+    const found = Object.keys(model.repos).filter(
+      (name) => wanted.includes(name.toLowerCase()) && (forks || !model.repos[name].fork),
+    );
     data.search = { nodes: found.map((name) => repoNode(model, name)) };
     count += found.length;
   }

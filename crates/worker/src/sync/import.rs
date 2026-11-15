@@ -465,10 +465,12 @@ type StoredRepo = (RepoName, Option<String>);
 /// How many of `stored` one `RepoMeta` request covers, and its variables.
 /// Repos with a node ID go to `nodes(ids:)`. Repos without one go to a
 /// repository search by `repo:` qualifiers, which GitHub caps at 256
-/// characters, so the page ends at the last repo that fits.
+/// characters, so the page ends at the last repo that fits. Repository search
+/// leaves forks out unless the query says `fork:true`.
 fn refresh_request(stored: &[StoredRepo]) -> (usize, Value) {
+    const FORKS: &str = "fork:true ";
     let mut ids = Vec::new();
-    let mut q = String::new();
+    let mut q = String::from(FORKS);
     let mut taken = 0;
     for (name, id) in stored {
         match id {
@@ -483,7 +485,11 @@ fn refresh_request(stored: &[StoredRepo]) -> (usize, Value) {
         }
         taken += 1;
     }
-    let q = q.trim_end();
+    let q = if q.len() == FORKS.len() {
+        ""
+    } else {
+        q.trim_end()
+    };
     (
         taken,
         json!({ "ids": ids, "q": q, "byName": !q.is_empty() }),

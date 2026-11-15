@@ -121,6 +121,16 @@ test("RepoMeta searches repos by name when byName is set", () => {
   assert.equal(answerRepoMeta(scenario, { ids: [], q: "", byName: false }).body.data.search, undefined);
 });
 
+test("RepoMeta finds a fork by name only when the query asks for forks", () => {
+  const withFork = {
+    ...scenario,
+    import: { repos: { "karthik/tool": { id: "R_tool", stars: 1, language: "Go", fork: true } } },
+  };
+  const ask = (q) => answerRepoMeta(withFork, { ids: [], q, byName: true }).body.data.search.nodes.map((n) => n.id);
+  assert.deepEqual(ask("repo:karthik/tool"), []);
+  assert.deepEqual(ask("fork:true repo:karthik/tool"), ["R_tool"]);
+});
+
 test("a pending review does not move a reviewed pull request out of its year", () => {
   const withPending = {
     ...scenario,

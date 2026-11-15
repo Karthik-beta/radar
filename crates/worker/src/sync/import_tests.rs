@@ -653,7 +653,7 @@ fn a_repo_without_a_node_id_is_refreshed_by_name_and_keeps_its_id() {
     ];
     let (taken, vars) = refresh_request(&stored);
     assert_eq!(taken, 2);
-    assert_eq!(vars["q"], "repo:octo/legacy");
+    assert_eq!(vars["q"], "fork:true repo:octo/legacy");
     assert_eq!(vars["byName"], true);
     assert_eq!(vars["ids"], json!(["R_2"]));
     let data: Node = parse(json!({
@@ -702,6 +702,7 @@ fn repos_without_a_node_id_fill_one_search_of_256_characters_and_the_page_ends_t
     let (taken, vars) = refresh_request(&stored);
     let q = vars["q"].as_str().expect("query");
     assert!(q.len() <= 256, "{}", q.len());
+    assert!(q.starts_with("fork:true repo:"), "{q}");
     assert!(taken > 0 && taken < IMPORT_PAGE);
     assert_eq!(q.matches("repo:").count(), taken);
     let next = format!("repo:{} ", stored[taken].0);
@@ -709,6 +710,18 @@ fn repos_without_a_node_id_fill_one_search_of_256_characters_and_the_page_ends_t
         q.len() + 1 + next.len() > 257,
         "the next repo would not fit"
     );
+}
+
+#[test]
+fn the_name_search_includes_forks_and_is_empty_without_nameless_repos() {
+    let one = vec![(repo("karthik/fork-of-tool"), None)];
+    let (_, vars) = refresh_request(&one);
+    assert_eq!(vars["q"], "fork:true repo:karthik/fork-of-tool");
+    assert_eq!(vars["byName"], true);
+    let with_ids = vec![(repo("octo/widgets"), Some("R_widgets".to_owned()))];
+    let (_, vars) = refresh_request(&with_ids);
+    assert_eq!(vars["q"], "");
+    assert_eq!(vars["byName"], false);
 }
 
 #[test]
