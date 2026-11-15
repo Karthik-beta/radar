@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { answerEnrich } from "./enrich.mjs";
+import { answerEnrich, withFactFields } from "./enrich.mjs";
 import { build, seedSql, threadIds } from "./scenarios/make.mjs";
 import { analyzeDocument, createStub, resolveTimes } from "./server.mjs";
 
@@ -116,4 +116,48 @@ test("the stub answers Enrich as one POST /graphql and logs the alias count", as
   } finally {
     server.close();
   }
+});
+
+test("a pull request without the fact fields gets defaults, and an issue is left alone", () => {
+  const pr = {
+    __typename: "PullRequest",
+    timelineItems: { nodes: [{ id: "R1", state: "CHANGES_REQUESTED" }] },
+    latestReviews: { nodes: [{ id: "R1", state: "CHANGES_REQUESTED" }, { id: "R2", state: "APPROVED" }] },
+  };
+  const filled = withFactFields(pr);
+  assert.deepEqual(filled.closingIssuesReferences, { nodes: [] });
+  assert.equal(filled.reviews.totalCount, 1);
+  const dated = withFactFields({
+    __typename: "PullRequest",
+    timelineItems: { nodes: [{ id: "R1", state: "APPROVED", at: "@-1h" }, { id: "C1", at: "@-2h" }] },
+    latestReviews: { nodes: [{ id: "R1", state: "APPROVED", at: "@-1h", submittedAt: "@-30m" }] },
+  });
+  assert.equal(dated.timelineItems.nodes[0].submittedAt, "@-1h");
+  assert.equal("submittedAt" in dated.timelineItems.nodes[1], false);
+  assert.equal(dated.latestReviews.nodes[0].submittedAt, "@-30m");
+  assert.equal(typeof filled.additions, "number");
+  assert.equal(withFactFields({ ...pr, additions: 99 }).additions, 99);
+  const issue = { __typename: "Issue", id: "I_1" };
+  assert.equal(withFactFields(issue), issue);
+});
+
+test("facts-live has eight pull requests of mine, an agent head, two closing issues, and a turn step", () => {
+  const items = Object.values(build("facts-live").items);
+  const mine = items.filter((n) => n.__typename === "PullRequest" && n.author.login === "karthik");
+  assert.equal(mine.length, 8);
+  const owners = new Set(mine.map((n) => new URL(n.url).pathname.split("/")[1]));
+  assert.deepEqual([...owners].sort(), ["karthik", "octo"]);
+  assert.deepEqual(mine.filter((n) => n.headRefName.startsWith("agent/")).map((n) => n.number), [312]);
+  const closing = mine.flatMap((n) => n.closingIssuesReferences?.nodes ?? []);
+  assert.deepEqual(closing.map((c) => `${c.repository.nameWithOwner}#${c.number}`).sort(), [
+    "karthik/radar#5",
+    "octo/widgets#310",
+  ]);
+  const before = build("facts-live").items["octo/widgets#305"].timelineItems.nodes;
+  const turned = build("facts-live-turn");
+  const after = turned.items["octo/widgets#305"].timelineItems.nodes;
+  assert.equal(after.length, before.length + 1);
+  assert.equal(after.at(-1).actor.login, "maint");
+  const row = turned._expect.rows.find((r) => r.number === 305);
+  assert.deepEqual([row.stage, row.turn], ["awaiting_review", "me"]);
 });

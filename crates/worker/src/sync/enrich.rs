@@ -6,6 +6,10 @@
 use domain::activity::{Activity, ActivityKind, Actor, ActorKind, ReviewState};
 use domain::classify::classify;
 use domain::event::{CiOutcome, Event, EventActor, EventId, EventKind};
+use domain::facts::{
+    is_external, issue_links, pr_fact, transition, ClosingIssue, FactSource, KnownItem, PrDetails,
+    PrFact, ReviewFact, Side, Transition,
+};
 use domain::ids::{ItemKind, ItemRef, Login, RepoName, Timestamp};
 use domain::item::{Ci, CiState, Item, ItemState, ReviewDecision};
 use domain::stage::Stage;
@@ -17,6 +21,7 @@ use super::work::{EnrichBatch, WorkKind};
 use crate::auth;
 use crate::db::batch::{self, MeRecord, Stored, StoredRecord, Thread, ThreadRecord};
 use crate::db::events::{self, EventRow, EventSource};
+use crate::db::facts::Facts;
 use crate::db::items::{self, ItemMeta, ItemRow};
 use crate::db::Statement;
 use crate::github::enrich_query::{build_enrich_query, enrich_variables, Target};
@@ -38,6 +43,17 @@ pub enum Outcome {
 pub struct Enriched {
     pub row: ItemRow,
     pub events: Vec<Event>,
+    pub facts: ItemFacts,
+}
+
+/// The contribution facts one item gives. The issue links wait for the whole
+/// batch, so this holds the closing issues instead.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ItemFacts {
+    pub pr: Option<PrFact>,
+    pub reviews: Vec<ReviewFact>,
+    pub transition: Option<Transition>,
+    pub closing: Vec<ClosingIssue>,
 }
 
 /// Everything a unit writes, decided before any write.
@@ -45,6 +61,7 @@ pub struct Enriched {
 pub struct Planned {
     pub items: Vec<ItemRow>,
     pub events: Vec<Event>,
+    pub facts: Facts,
     pub gone: Vec<String>,
 }
 
@@ -59,6 +76,8 @@ const ASSIGN_REASON: &str = "assign";
 struct Entry {
     id: String,
     at: Timestamp,
+    /// A review's `submittedAt`, which can differ from when it was started.
+    submitted_at: Option<Timestamp>,
     actor: Actor,
     what: What,
     url: Option<String>,
@@ -119,6 +138,7 @@ fn entry(node: &TimelineNode) -> Option<Entry> {
     let simple = |id: &String, at: Timestamp, who: Option<&ActorNode>, what: What| Entry {
         id: id.clone(),
         at,
+        submitted_at: None,
         actor: actor(who),
         what,
         url: None,
@@ -131,6 +151,7 @@ fn entry(node: &TimelineNode) -> Option<Entry> {
         },
         TimelineNode::PullRequestReview(n) => Entry {
             url: Some(n.url.clone()),
+            submitted_at: n.submitted_at,
             ..simple(
                 &n.id,
                 n.at,
@@ -153,6 +174,7 @@ fn entry(node: &TimelineNode) -> Option<Entry> {
         TimelineNode::PullRequestCommit(n) => Entry {
             id: n.id.clone(),
             at: n.commit.at,
+            submitted_at: None,
             actor: Actor {
                 login: n
                     .commit
@@ -235,6 +257,7 @@ fn parts(node: &ItemNode) -> Parts<'_> {
                     entries.push(Entry {
                         id: review.id.clone(),
                         at: review.at,
+                        submitted_at: review.submitted_at,
                         actor: actor(review.author.as_ref()),
                         what: What::Review(review_state(review.state)),
                         url: Some(review.url.clone()),
@@ -547,7 +570,167 @@ pub fn classify_node(
             ));
         }
     }
-    Enriched { row, events }
+    let stale = stored.is_some_and(|s| p.updated_at < s.updated_at);
+    let facts = if stale {
+        ItemFacts::default()
+    } else {
+        item_facts(node, &item, &row, &p.entries, &events, stored, me, now)
+    };
+    Enriched { row, events, facts }
+}
+
+/// The facts for a pull request. The first response looks at every timeline
+/// item the query returned, not only the ones since the last sync. A snapshot
+/// older than the stored item gives no facts, because the item upsert drops it.
+#[allow(clippy::too_many_arguments)]
+fn item_facts(
+    node: &ItemNode,
+    item: &Item,
+    row: &ItemRow,
+    entries: &[Entry],
+    events: &[Event],
+    stored: Option<&Stored>,
+    me: &Login,
+    now: Timestamp,
+) -> ItemFacts {
+    let ItemNode::PullRequest(pr) = node else {
+        return ItemFacts::default();
+    };
+    let repo = &item.item_ref.repo;
+    let reviews = entries
+        .iter()
+        .filter_map(|e| match e.what {
+            What::Review(state) if e.actor.login == *me && state != ReviewState::Pending => {
+                Some(ReviewFact {
+                    review_id: e.id.clone(),
+                    repo: repo.clone(),
+                    external: is_external(repo, me),
+                    pr_number: pr.number,
+                    pr_author_login: item.author.login.clone(),
+                    state,
+                    submitted_at: e.submitted_at.unwrap_or(e.at),
+                    source: FactSource::Live,
+                })
+            }
+            _ => None,
+        })
+        .collect();
+    // A review answers when it is submitted, which can be after other replies
+    // made while it was pending. The `events` table keeps `createdAt`, as R10 dates it.
+    let seen: Vec<Event> = entries
+        .iter()
+        .map(|e| Event {
+            id: EventId::for_node(&e.id),
+            item: pr.id.clone(),
+            repo: repo.clone(),
+            kind: event_kind(&e.what),
+            actor: Some(event_actor(&e.actor, me)),
+            occurred_at: e.submitted_at.unwrap_or(e.at),
+        })
+        .chain(
+            events
+                .iter()
+                .filter(|e| e.kind == EventKind::CiFailed)
+                .cloned(),
+        )
+        .collect();
+    let details = PrDetails {
+        node_id: pr.id.clone(),
+        merged_at: pr.merged_at,
+        head_ref: pr.head_ref.clone(),
+        additions: pr.additions,
+        deletions: pr.deletions,
+        changed_files: pr.changed_files,
+        changes_requested: pr.changes_requested.total,
+    };
+    let fact = pr_fact(item, &details, &seen, me);
+    let moved = fact.as_ref().and(row.stage).and_then(|stage| {
+        let previous = stored.and_then(|s| s.stage.map(|was| (was, s.turn)));
+        let stage_moved = previous.is_none_or(|(was, _)| was != stage);
+        let dated = if stage_moved {
+            row.stage_since
+        } else {
+            row.since
+        };
+        transition(
+            &pr.id,
+            previous,
+            (stage, Side::from(row.turn)),
+            transition_at(dated, stored, now),
+        )
+    });
+    let closing = fact
+        .as_ref()
+        .map(|_| {
+            pr.closing_issues
+                .iter()
+                .filter_map(|c| {
+                    RepoName::parse(&c.repository.name)
+                        .ok()
+                        .map(|repo| ClosingIssue {
+                            repo,
+                            number: c.number,
+                        })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    ItemFacts {
+        pr: fact,
+        reviews,
+        transition: moved,
+        closing,
+    }
+}
+
+/// When a change happened. A change that no timeline item dates after the last
+/// known change, such as a conversion to draft, happened by `now`, so the
+/// history never runs backward.
+fn transition_at(dated: Timestamp, stored: Option<&Stored>, now: Timestamp) -> Timestamp {
+    let Some(floor) = stored.map(|s| s.last_change()) else {
+        return dated;
+    };
+    if dated > floor {
+        dated
+    } else {
+        Timestamp(now.0.max(floor.0))
+    }
+}
+
+/// Gathers the facts of a batch. An issue a pull request closes is known as
+/// mine when the batch or D1 holds it, so the links read every row and event
+/// of the batch.
+pub fn batch_facts(per_item: Vec<ItemFacts>, rows: &[ItemRow], events: &[Event]) -> Facts {
+    let known: Vec<KnownItem> = rows
+        .iter()
+        .map(|r| KnownItem {
+            node_id: r.node_id.clone(),
+            repo: r.item_ref.repo.clone(),
+            number: r.item_ref.number,
+            kind: r.item_ref.kind,
+            authored_by_me: r.authored_by_me,
+        })
+        .collect();
+    let mut facts = Facts::default();
+    for item in per_item {
+        if let Some(pr) = &item.pr {
+            facts
+                .links
+                .extend(issue_links(&pr.node_id, &item.closing, &known, events));
+        }
+        facts.prs.extend(item.pr);
+        facts.reviews.extend(item.reviews);
+        facts.transitions.extend(item.transition);
+    }
+    facts.issues = known
+        .into_iter()
+        .filter(|i| i.kind == ItemKind::Issue)
+        .map(|i| ClosingIssue {
+            repo: i.repo,
+            number: i.number,
+        })
+        .collect();
+    facts
 }
 
 /// Maps every thread to its alias. A response that leaves out an alias is not
@@ -560,6 +743,7 @@ pub fn plan(
     now: Timestamp,
 ) -> Result<Planned, MissingAlias> {
     let mut planned = Planned::default();
+    let mut per_item = Vec::new();
     for (index, thread) in threads.iter().enumerate() {
         let (_, repo) = data
             .aliases
@@ -571,22 +755,26 @@ pub fn plan(
             .find(|s| s.repo == thread.item.repo && s.number == thread.item.number);
         match outcome(thread, repo.as_ref(), known, me, now) {
             Outcome::Enriched(enriched) => {
-                let Enriched { row, events } = *enriched;
+                let Enriched { row, events, facts } = *enriched;
                 planned.items.push(row);
                 planned.events.extend(events);
+                per_item.push(facts);
             }
             Outcome::Gone => planned.gone.push(thread.id.clone()),
         }
     }
+    planned.facts = batch_facts(per_item, &planned.items, &planned.events);
     Ok(planned)
 }
 
-/// The statements that store classified items: one upsert per item, then one
-/// insert for every event. An event whose id is already stored is left alone, so
-/// an item written twice keeps each timeline node once.
+/// The statements that store classified items: one upsert per item, one insert
+/// for every event, then one statement per fact table. An event whose id is
+/// already stored is left alone, so an item written twice keeps each timeline
+/// node once. The facts come last, so they see the events of this batch.
 pub fn writes(
     rows: &[ItemRow],
     events: &[Event],
+    facts: &Facts,
     source: EventSource,
     now: Timestamp,
 ) -> Vec<Statement> {
@@ -598,6 +786,7 @@ pub fn writes(
             .collect();
         statements.push(events::insert_many(&event_rows));
     }
+    statements.extend(facts.statements());
     statements
 }
 
@@ -678,7 +867,13 @@ pub async fn run(
     for id in &planned.gone {
         console_log!("enrich.gone thread={id}");
     }
-    let statements = writes(&planned.items, &planned.events, EventSource::Poll, now);
+    let statements = writes(
+        &planned.items,
+        &planned.events,
+        &planned.facts,
+        EventSource::Poll,
+        now,
+    );
     if let Err(err) = crate::db::run(&db, statements).await {
         return retry(format!("d1 write: {err}"));
     }

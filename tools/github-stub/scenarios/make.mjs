@@ -409,6 +409,84 @@ function alertsMarkup() {
   return [mentioned(130, { title: "*bold* <b>x</b> [a](b) `code` _it_" })];
 }
 
+// R26 contribution facts: eight pull requests I authored across an external repo, a repo I own, and an `agent/`
+// branch, two issues they close, one pull request by someone else that I reviewed, and the issue I opened.
+// `turned` is the second step: a maintainer answers on #305, so its turn moves to me while it stays in review.
+const OWN = "karthik/radar";
+const size = (additions, deletions, changedFiles) => ({ additions, deletions, changedFiles });
+const closes = (...issues) => ({
+  closingIssuesReferences: { nodes: issues.map(([repo, number]) => ({ number, repository: { nameWithOwner: repo } })) },
+});
+const ended = (state, at) => ({ closedAt: at, mergedAt: state === "MERGED" ? at : null });
+const awaiting = { turn: "them", reason: null, stage: "awaiting_review" };
+
+function factsLive({ turned = false } = {}) {
+  return [
+    spec(301, "pr", "author", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: ok, created: "@-2d", updated: "@-3h",
+      timeline: [
+        comment(c, "IC_301_1", "@-6h", "dependabot[bot]", "Bot"),
+        comment(c, "IC_301_2", "@-5h", ME),
+        review(c, "PRR_301", "@-3h", "maint", "COMMENTED"),
+      ],
+      latest: [{ id: "PRR_301", state: "COMMENTED", at: "@-3h", url: `https://github.com/${c.repo}/pull/301#pullrequestreview-301`, author: actor("maint") }],
+      extra: size(12, 3, 2),
+    }), { turn: "me", reason: "replied", stage: "awaiting_review" }),
+    spec(302, "pr", "author", (c) => ({
+      decision: "APPROVED", ci: ok, created: "@-5d", updated: "@-1d", state: "MERGED",
+      timeline: [review(c, "PRR_302", "@-2d", "maint", "APPROVED")],
+      extra: { ...size(120, 40, 7), ...closes(["octo/widgets", 310]), ...ended("MERGED", "@-1d") },
+    }), { turn: "them", reason: null, stage: "merged" }),
+    spec(303, "pr", "author", (c) => ({
+      decision: "CHANGES_REQUESTED", ci: ok, created: "@-4d", updated: "@-2h",
+      timeline: [
+        review(c, "PRR_303_1", "@-3d", "bob", "CHANGES_REQUESTED"),
+        commit(c, "PRC_303", "@-2d", ME, "c0ffee1"),
+        review(c, "PRR_303_2", "@-2h", "bob", "CHANGES_REQUESTED"),
+      ],
+      latest: [{ id: "PRR_303_2", state: "CHANGES_REQUESTED", at: "@-2h", url: `https://github.com/${c.repo}/pull/303#pullrequestreview-3032`, author: actor("bob") }],
+      extra: { ...size(30, 10, 3), reviews: { totalCount: 2 } },
+    }), { turn: "me", reason: "changes_requested", stage: "changes_requested" }),
+    spec(304, "pr", "author", () => ({
+      draft: true, created: "@-1d", updated: "@-1d", timeline: [], extra: size(5, 0, 1),
+    }), { turn: "them", reason: null, stage: "draft" }),
+    spec(305, "pr", "author", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: ok, created: "@-3d", updated: turned ? "@-5m" : "@-1h",
+      timeline: [
+        comment(c, "IC_305_1", "@-1h", ME),
+        ...(turned ? [comment(c, "IC_305_2", "@-5m", "maint")] : []),
+      ],
+      extra: size(8, 8, 2),
+    }), turned ? { turn: "me", reason: "replied", stage: "awaiting_review" } : awaiting),
+    spec(311, "pr", "author", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: ok, created: "@-2d", updated: "@-2h",
+      timeline: [comment(c, "IC_311_1", "@-2h", ME)],
+      extra: { ...size(60, 6, 4), ...closes([OWN, 5]) },
+    }), awaiting, { repo: OWN }),
+    spec(312, "pr", "author", (c) => ({
+      decision: "REVIEW_REQUIRED", ci: { oid: "badc0de", state: "FAILURE" }, created: "@-1d", updated: "@-30m",
+      head: "agent/fix-flake",
+      timeline: [commit(c, "PRC_312", "@-30m", ME, "badc0de")],
+      extra: size(3, 1, 1),
+    }), { turn: "me", reason: "ci_failed", stage: "ci_failing" }, { repo: OWN }),
+    spec(313, "pr", "author", () => ({
+      decision: null, ci: ok, created: "@-6d", updated: "@-4d", state: "MERGED", timeline: [],
+      extra: { ...size(200, 150, 12), ...ended("MERGED", "@-4d") },
+    }), { turn: "them", reason: null, stage: "merged" }, { repo: OWN }),
+    spec(320, "pr", "review_requested", (c) => ({
+      by: "alice", decision: "APPROVED", ci: ok, created: "@-2d", updated: "@-40m",
+      timeline: [review(c, "PRR_320", "@-40m", ME, "APPROVED")],
+      latest: [{ id: "PRR_320", state: "APPROVED", at: "@-40m", url: `https://github.com/${c.repo}/pull/320#pullrequestreview-320`, author: actor(ME) }],
+    }), { turn: "them", reason: null, stage: "approved" }),
+    spec(5, "issue", "author", (c) => ({
+      created: "@-9d", updated: "@-9d", timeline: [],
+    }), { turn: "them", reason: null, stage: null }, { repo: OWN }),
+    spec(310, "issue", "comment", (c) => ({
+      by: "alice", created: "@-8d", updated: "@-7d", timeline: [comment(c, "IC_310_1", "@-7d", ME)],
+    }), { turn: "them", reason: null, stage: null }),
+  ];
+}
+
 const kinds = {
   "your-turn-edge": { specs: yourTurnEdge },
   "your-turn-hostile": { specs: yourTurnHostile },
@@ -470,6 +548,8 @@ const kinds = {
   "their-turn-hostile": { specs: theirTurnHostile },
   "their-turn-large": { specs: () => theirTurnWaiting(200, 700) },
   "repo-cards": { specs: repoCards },
+  "facts-live": { specs: () => factsLive() },
+  "facts-live-turn": { specs: () => factsLive({ turned: true }) },
 };
 
 // My own open pull requests, one per card. `created` sets the days in stage on first sync.

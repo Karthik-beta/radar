@@ -10,13 +10,14 @@ use serde_json::json;
 use worker::{console_log, Env};
 
 use super::config::ENRICH_BATCH;
-use super::enrich::{classify_node, writes};
+use super::enrich::{batch_facts, classify_node, writes};
 use super::scheduler::UnitOutcome;
 use super::state::SyncState;
 use super::work::WorkKind;
 use crate::auth;
 use crate::db::batch::{self, MeRecord, Stored, StoredRecord, ThreadReason};
 use crate::db::events::EventSource;
+use crate::db::facts::Facts;
 use crate::db::items::ItemRow;
 use crate::github::enrich_response::ItemNode;
 use crate::github::search::{PageInfo, SearchData, SEARCH_QUERY};
@@ -254,6 +255,7 @@ fn repo_of(url: &str) -> Option<RepoName> {
 pub struct Page {
     pub items: Vec<ItemRow>,
     pub events: Vec<Event>,
+    pub facts: Facts,
     /// Nodes whose url did not name a repository.
     pub skipped: Vec<String>,
 }
@@ -267,6 +269,7 @@ pub fn plan_page(
     now: Timestamp,
 ) -> Page {
     let mut page = Page::default();
+    let mut per_item = Vec::new();
     for node in nodes {
         let Some(repo) = repo_of(node.url()) else {
             page.skipped.push(node.id().to_owned());
@@ -280,7 +283,9 @@ pub fn plan_page(
         let enriched = classify_node(node, &repo, reason, known, me, now);
         page.items.push(enriched.row);
         page.events.extend(enriched.events);
+        per_item.push(enriched.facts);
     }
+    page.facts = batch_facts(per_item, &page.items, &page.events);
     page
 }
 
@@ -382,7 +387,13 @@ pub async fn run(
         for id in &planned.skipped {
             console_log!("sync.backfill skipped node={id}");
         }
-        let statements = writes(&planned.items, &planned.events, EventSource::Backfill, now);
+        let statements = writes(
+            &planned.items,
+            &planned.events,
+            &planned.facts,
+            EventSource::Backfill,
+            now,
+        );
         if let Err(err) = crate::db::run(&db, statements).await {
             return retry(format!("d1 write: {err}"));
         }

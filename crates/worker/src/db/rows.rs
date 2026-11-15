@@ -1,6 +1,7 @@
 use std::fmt;
 
 use domain::activity::{ActorKind, ReviewState};
+use domain::facts::{FactSource, Side};
 use domain::ids::{IdError, ItemKind, Timestamp};
 use domain::item::{CiState, ItemState, ReviewDecision};
 use domain::settings::SettingsFallback;
@@ -138,6 +139,16 @@ tagged!(Reason {
     Reason::Mentioned => "mentioned",
     Reason::Assigned => "assigned",
     Reason::Replied => "replied",
+});
+
+tagged!(Side {
+    Side::Me => "me",
+    Side::Them => "them",
+});
+
+tagged!(FactSource {
+    FactSource::Live => "live",
+    FactSource::Imported => "imported",
 });
 
 tagged!(Stage {

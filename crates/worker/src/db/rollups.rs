@@ -50,6 +50,15 @@ const WEEK_TOTALS: &str = "SELECT \
      (SELECT COUNT(DISTINCT repo) FROM events WHERE actor_is_me = 1 \
         AND occurred_at >= ?1 AND occurred_at < ?2) AS repos_touched";
 
+/// My events, and the `ci_failed` events on my pull requests, outlive the
+/// week's delete. `ci_failed` rows carry no actor, so they need the second
+/// condition, and a reader of my own actions filters on `actor_is_me = 1`.
+const KEEP_MINE: &str = "INSERT INTO own_events SELECT * FROM events \
+     WHERE (actor_is_me = 1 OR (kind = 'ci_failed' AND item_node_id IN \
+       (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1))) \
+     AND occurred_at >= ?1 AND occurred_at < ?2 \
+     ON CONFLICT (id) DO NOTHING";
+
 const DELETE_WEEK: &str = "DELETE FROM events WHERE occurred_at >= ?1 AND occurred_at < ?2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -112,6 +121,13 @@ pub fn oldest_before(cutoff: domain::ids::Timestamp) -> Statement {
 pub fn week_totals(week: WeekStart) -> Statement {
     Statement {
         sql: WEEK_TOTALS,
+        params: vec![Param::ts(week.timestamp()), Param::ts(week.end())],
+    }
+}
+
+pub fn keep_mine(week: WeekStart) -> Statement {
+    Statement {
+        sql: KEEP_MINE,
         params: vec![Param::ts(week.timestamp()), Param::ts(week.end())],
     }
 }
@@ -334,5 +350,123 @@ mod tests {
             &oldest_before(Timestamp(5_000_000)).params,
         );
         assert!(rows[0]["at"].is_null());
+    }
+
+    fn fold_week(conn: &rusqlite::Connection) {
+        let stmt = week_totals(week());
+        let row = query_json(conn, stmt.sql, &stmt.params).remove(0);
+        let totals: RollupTotals =
+            serde_json::from_value(serde_json::Value::Object(row)).expect("totals");
+        for stmt in crate::rollup::fold(week(), totals) {
+            exec(conn, &stmt).expect("statement");
+        }
+    }
+
+    fn ids(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
+        query_json(conn, &format!("SELECT id FROM {table} ORDER BY id"), &[])
+            .into_iter()
+            .filter_map(|row| row["id"].as_str().map(str::to_owned))
+            .collect()
+    }
+
+    fn seed_ci_failed(conn: &rusqlite::Connection, id: &str, item: &str, at: i64) {
+        conn.execute(
+            "INSERT INTO events (id, item_node_id, repo, kind, actor_login, actor_is_me, \
+             actor_is_bot, occurred_at, source, ingested_at) \
+             VALUES (?1, ?2, 'o/one', 'ci_failed', NULL, 0, 0, ?3, 'poll', 0)",
+            rusqlite::params![id, item, at],
+        )
+        .expect("ci event");
+    }
+
+    #[test]
+    fn fold_copies_my_events_before_the_delete() {
+        let conn = memory_db();
+        let day = 86_400;
+        seed(&conn, "a", "o/one", "commented", "I_1", FIRST_MONDAY + day);
+        seed(
+            &conn,
+            "b",
+            "o/two",
+            "committed",
+            "PR_9",
+            FIRST_MONDAY + 2 * day,
+        );
+        seed(
+            &conn,
+            "later",
+            "o/two",
+            "commented",
+            "I_1",
+            FIRST_MONDAY + 8 * day,
+        );
+        let before = query_json(&conn, "SELECT * FROM events WHERE id = 'a'", &[]);
+
+        fold_week(&conn);
+
+        assert_eq!(ids(&conn, "own_events"), ["a", "b"]);
+        assert_eq!(ids(&conn, "events"), ["later"]);
+        let copied = query_json(&conn, "SELECT * FROM own_events WHERE id = 'a'", &[]);
+        assert_eq!(copied, before);
+        let rows = query_json(&conn, "SELECT events FROM rollups_weekly", &[]);
+        assert_eq!(rows[0]["events"], 2);
+        fold_week(&conn);
+        assert_eq!(count_rows(&conn, "own_events"), 2);
+    }
+
+    #[test]
+    fn fold_copies_ci_failures_on_my_prs() {
+        let conn = memory_db();
+        seed_pr(&conn, "PR_mine");
+        seed_pr_by(&conn, "PR_theirs", false);
+        seed_ci_failed(&conn, "ci:mine", "PR_mine", FIRST_MONDAY + 10);
+        seed_ci_failed(&conn, "ci:theirs", "PR_theirs", FIRST_MONDAY + 10);
+        seed_ci_failed(&conn, "ci:unknown", "PR_gone", FIRST_MONDAY + 10);
+
+        fold_week(&conn);
+
+        assert_eq!(ids(&conn, "own_events"), ["ci:mine"]);
+        assert_eq!(count_rows(&conn, "events"), 0);
+        assert_eq!(count_rows(&conn, "rollups_weekly"), 0);
+    }
+
+    #[test]
+    fn fold_keeps_no_other_events() {
+        let conn = memory_db();
+        seed_pr(&conn, "PR_mine");
+        seed_by(
+            &conn,
+            "m",
+            "o/one",
+            "merged",
+            "PR_mine",
+            FIRST_MONDAY + 10,
+            false,
+        );
+        seed_by(
+            &conn,
+            "c",
+            "o/one",
+            "commented",
+            "PR_mine",
+            FIRST_MONDAY + 20,
+            false,
+        );
+        seed_by(
+            &conn,
+            "r",
+            "o/two",
+            "reviewed",
+            "PR_x",
+            FIRST_MONDAY + 30,
+            false,
+        );
+
+        fold_week(&conn);
+
+        assert_eq!(count_rows(&conn, "own_events"), 0);
+        assert_eq!(count_rows(&conn, "events"), 0);
+        let rows = query_json(&conn, "SELECT prs_merged FROM rollups_weekly", &[]);
+        assert_eq!(rows[0]["prs_merged"], 1);
     }
 }

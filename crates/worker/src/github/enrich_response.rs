@@ -166,8 +166,29 @@ pub struct LatestReview {
     pub id: String,
     pub state: ReviewStateNode,
     pub at: Timestamp,
+    /// Null while a review is pending.
+    #[serde(rename = "submittedAt")]
+    pub submitted_at: Option<Timestamp>,
     pub url: String,
     pub author: Option<ActorNode>,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct Count {
+    #[serde(rename = "totalCount")]
+    pub total: u32,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct NameWithOwner {
+    #[serde(rename = "nameWithOwner")]
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+pub struct ClosingIssueNode {
+    pub number: u32,
+    pub repository: NameWithOwner,
 }
 
 #[derive(Debug, PartialEq, Deserialize)]
@@ -228,6 +249,12 @@ pub struct PrNode {
     pub merged_at: Option<Timestamp>,
     pub head_ref: String,
     pub review_decision: Option<Decision>,
+    pub additions: u32,
+    pub deletions: u32,
+    pub changed_files: u32,
+    pub closing_issues: Nodes<ClosingIssueNode>,
+    /// Reviews in state `CHANGES_REQUESTED`, from every reviewer.
+    pub changes_requested: Count,
     pub author: Option<ActorNode>,
     pub assignees: Nodes<LoginNode>,
     pub review_requests: Nodes<ReviewRequestNode>,
@@ -285,6 +312,13 @@ struct RawItem {
     head_ref: Option<String>,
     #[serde(rename = "reviewDecision")]
     review_decision: Option<Decision>,
+    additions: Option<u32>,
+    deletions: Option<u32>,
+    #[serde(rename = "changedFiles")]
+    changed_files: Option<u32>,
+    #[serde(rename = "closingIssuesReferences")]
+    closing_issues: Option<Nodes<ClosingIssueNode>>,
+    reviews: Option<Count>,
     author: Option<ActorNode>,
     assignees: Nodes<LoginNode>,
     #[serde(rename = "reviewRequests")]
@@ -308,6 +342,11 @@ impl TryFrom<RawItem> for ItemNode {
                 review_requests: need(raw.review_requests, "reviewRequests")?,
                 latest_reviews: need(raw.latest_reviews, "latestReviews")?,
                 commits: need(raw.commits, "commits")?,
+                additions: need(raw.additions, "additions")?,
+                deletions: need(raw.deletions, "deletions")?,
+                changed_files: need(raw.changed_files, "changedFiles")?,
+                closing_issues: need(raw.closing_issues, "closingIssuesReferences")?,
+                changes_requested: need(raw.reviews, "reviews")?,
                 id: raw.id,
                 number: raw.number,
                 title: raw.title,
@@ -351,6 +390,7 @@ pub struct CommentNode {
 pub struct ReviewNode {
     pub id: String,
     pub at: Timestamp,
+    pub submitted_at: Option<Timestamp>,
     pub url: String,
     pub state: ReviewStateNode,
     pub actor: Option<ActorNode>,
@@ -407,6 +447,8 @@ struct RawTimeline {
     typename: String,
     id: Option<String>,
     at: Option<Timestamp>,
+    #[serde(rename = "submittedAt")]
+    submitted_at: Option<Timestamp>,
     url: Option<String>,
     state: Option<ReviewStateNode>,
     actor: Option<ActorNode>,
@@ -437,6 +479,7 @@ impl TryFrom<RawTimeline> for TimelineNode {
             "PullRequestReview" => Self::PullRequestReview(ReviewNode {
                 id: need(raw.id, "id")?,
                 at: need(raw.at, "at")?,
+                submitted_at: raw.submitted_at,
                 url: need(raw.url, "url")?,
                 state: need(raw.state, "state")?,
                 actor: raw.actor,
@@ -577,6 +620,11 @@ mod tests {
             "reviewRequests",
             "latestReviews",
             "commits",
+            "additions",
+            "deletions",
+            "changedFiles",
+            "closingIssuesReferences",
+            "reviews",
             "timelineItems",
             "id",
             "updatedAt",

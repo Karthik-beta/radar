@@ -70,6 +70,11 @@ impl Pr {
             "isDraft": false, "createdAt": ago(3 * 24 * 60), "updatedAt": ago(5),
             "closedAt": null, "mergedAt": null, "headRefName": "feature/x",
             "reviewDecision": self.decision,
+            "additions": 12, "deletions": 3, "changedFiles": 2,
+            "closingIssuesReferences": {"nodes": [
+                {"number": 5, "repository": {"nameWithOwner": "karthik/radar"}}
+            ]},
+            "reviews": {"totalCount": 0},
             "author": {"login": self.author, "__typename": "User"},
             "assignees": {"nodes": []}, "reviewRequests": {"nodes": []},
             "latestReviews": {"nodes": self.latest}, "commits": {"nodes": commits},
@@ -108,8 +113,10 @@ fn stored(ci: Option<CiState>, stage: Option<Stage>, updated_minutes_ago: i64) -
         node_id: "PR_1".to_owned(),
         ci_state: ci,
         stage,
+        turn: domain::facts::Side::Them,
         stage_since: Timestamp(NOW.0 - 7200),
         updated_at: Timestamp(NOW.0 - updated_minutes_ago * 60),
+        last_transition_at: None,
     }
 }
 
@@ -473,4 +480,207 @@ fn a_bad_login_in_the_response_becomes_the_ghost() {
         .events
         .iter()
         .all(|e| e.actor.as_ref().is_none_or(|a| a.login.as_str() == "ghost")));
+}
+
+#[test]
+fn my_pull_request_gives_a_fact_a_first_transition_and_its_closing_issues() {
+    let pr = Pr::by(
+        "karthik",
+        vec![
+            comment("IC_1", 300, "dependabot[bot]", "Bot"),
+            comment("IC_2", 200, "karthik", "User"),
+            review("PRR_1", 100, "maint", "COMMENTED"),
+        ],
+    );
+    let done = enrich(&pr, "author", None);
+    let fact = done.facts.pr.as_ref().expect("a fact");
+    assert!(fact.external);
+    assert_eq!(
+        (fact.additions, fact.deletions, fact.changed_files),
+        (12, 3, 2)
+    );
+    assert_eq!(fact.first_response_at, Some(Timestamp(NOW.0 - 100 * 60)));
+    assert_eq!(
+        fact.first_response_login.as_ref().map(Login::as_str),
+        Some("maint")
+    );
+    let moved = done.facts.transition.as_ref().expect("first sight");
+    assert_eq!(Some(moved.stage), done.row.stage);
+    assert_eq!(
+        done.facts.closing,
+        [domain::facts::ClosingIssue {
+            repo: RepoName::parse("karthik/radar").expect("repo"),
+            number: 5,
+        }]
+    );
+    assert!(done.facts.reviews.is_empty());
+}
+
+#[test]
+fn a_turn_change_inside_awaiting_review_is_a_transition_and_no_change_is_none() {
+    let waiting = Pr::by("karthik", vec![comment("IC_1", 60, "karthik", "User")]);
+    let first = enrich(&waiting, "author", None);
+    assert_eq!(first.row.stage, Some(Stage::AwaitingReview));
+    assert_eq!(first.row.turn, Turn::Them);
+    let mut known = stored(Some(CiState::Passing), Some(Stage::AwaitingReview), 60);
+    assert_eq!(
+        enrich(&waiting, "author", Some(&known)).facts.transition,
+        None
+    );
+
+    let answered = Pr::by(
+        "karthik",
+        vec![
+            comment("IC_1", 60, "karthik", "User"),
+            comment("IC_2", 5, "maint", "User"),
+        ],
+    );
+    known.turn = domain::facts::Side::Them;
+    let turned = enrich(&answered, "comment", Some(&known));
+    assert_eq!(turned.row.stage, Some(Stage::AwaitingReview));
+    let moved = turned.facts.transition.expect("a turn change");
+    assert_eq!(moved.turn, domain::facts::Side::Me);
+    assert_eq!(moved.at, turned.row.since);
+}
+
+#[test]
+fn my_review_on_someone_elses_pull_request_is_a_review_fact_and_no_pr_fact() {
+    let pr = Pr::by(
+        "alice",
+        vec![
+            review("PRR_9", 30, "karthik", "APPROVED"),
+            review("PRR_8", 20, "bob", "APPROVED"),
+        ],
+    );
+    let done = enrich(&pr, "review_requested", None);
+    assert_eq!(done.facts.pr, None);
+    assert_eq!(done.facts.transition, None);
+    assert!(done.facts.closing.is_empty());
+    let reviews: Vec<(&str, &str, ReviewState)> = done
+        .facts
+        .reviews
+        .iter()
+        .map(|r| (r.review_id.as_str(), r.pr_author_login.as_str(), r.state))
+        .collect();
+    assert_eq!(reviews, [("PRR_9", "alice", ReviewState::Approved)]);
+}
+
+#[test]
+fn writes_add_one_statement_per_fact_table_and_apply_in_order() {
+    let mine = enrich(
+        &Pr::by("karthik", vec![review("PRR_1", 100, "maint", "COMMENTED")]),
+        "author",
+        None,
+    );
+    let mut theirs = enrich(
+        &Pr::by("alice", vec![review("PRR_9", 30, "karthik", "APPROVED")]),
+        "review_requested",
+        None,
+    );
+    theirs.row.node_id = "PR_2".to_owned();
+    theirs.row.item_ref.number = 2;
+    let rows = [mine.row.clone(), theirs.row.clone()];
+    let events: Vec<Event> = mine.events.iter().chain(&theirs.events).cloned().collect();
+    let facts = batch_facts(vec![mine.facts, theirs.facts], &rows, &events);
+    let without = writes(&rows, &events, &Facts::default(), EventSource::Poll, NOW);
+    let with = writes(&rows, &events, &facts, EventSource::Poll, NOW);
+    assert_eq!(with.len(), without.len() + 4);
+
+    let conn = crate::db::testing::memory_db();
+    for stmt in &with {
+        crate::db::testing::exec(&conn, stmt).expect("statement");
+    }
+    for (table, rows) in [
+        ("pr_facts", 1),
+        ("review_facts", 1),
+        ("pr_transitions", 1),
+        ("pr_issue_links", 1),
+    ] {
+        assert_eq!(
+            crate::db::testing::count_rows(&conn, table),
+            rows,
+            "{table}"
+        );
+    }
+}
+
+#[test]
+fn a_snapshot_older_than_the_stored_item_gives_no_facts() {
+    let pr = Pr::by(
+        "karthik",
+        vec![review("PRR_1", 100, "karthik", "COMMENTED")],
+    );
+    let newer = stored(Some(CiState::Passing), Some(Stage::Draft), 1);
+    let done = enrich(&pr, "author", Some(&newer));
+    assert_eq!(done.facts, ItemFacts::default());
+    let older = stored(Some(CiState::Passing), Some(Stage::Draft), 60);
+    assert!(enrich(&pr, "author", Some(&older)).facts.pr.is_some());
+}
+
+#[test]
+fn a_review_fact_takes_submitted_at_and_falls_back_to_created_at() {
+    let mut submitted = review("PRR_9", 30, "karthik", "APPROVED");
+    submitted["submittedAt"] = json!(ago(10));
+    let pr = Pr::by(
+        "alice",
+        vec![submitted, review("PRR_8", 20, "karthik", "COMMENTED")],
+    );
+    let done = enrich(&pr, "review_requested", None);
+    let at: Vec<(&str, Timestamp)> = done
+        .facts
+        .reviews
+        .iter()
+        .map(|r| (r.review_id.as_str(), r.submitted_at))
+        .collect();
+    assert_eq!(
+        at,
+        [
+            ("PRR_9", Timestamp(NOW.0 - 600)),
+            ("PRR_8", Timestamp(NOW.0 - 1200)),
+        ]
+    );
+}
+
+#[test]
+fn an_undated_stage_change_is_dated_now_and_never_before_the_last_change() {
+    let pr = Pr::by("karthik", Vec::new());
+    let was_draft = stored(Some(CiState::Passing), Some(Stage::Draft), 60);
+    let done = enrich(&pr, "author", Some(&was_draft));
+    assert_eq!(done.row.stage, Some(Stage::AwaitingReview));
+    assert!(done.row.stage_since < was_draft.stage_since);
+    let moved = done.facts.transition.expect("a stage change");
+    assert_eq!(moved.at, NOW);
+
+    let later = Stored {
+        last_transition_at: Some(Timestamp(NOW.0 + 60)),
+        ..was_draft
+    };
+    let moved = enrich(&pr, "author", Some(&later))
+        .facts
+        .transition
+        .expect("a stage change");
+    assert_eq!(moved.at, Timestamp(NOW.0 + 60));
+}
+
+#[test]
+fn first_response_uses_review_submission_time() {
+    let mut started_early = review("PRR_1", 300, "maint", "COMMENTED");
+    started_early["submittedAt"] = json!(ago(10));
+    let pr = Pr::by(
+        "karthik",
+        vec![started_early, comment("IC_1", 100, "bob", "User")],
+    );
+    let done = enrich(&pr, "author", None);
+    let fact = done.facts.pr.expect("a fact");
+    assert_eq!(fact.first_response_at, Some(Timestamp(NOW.0 - 100 * 60)));
+    assert_eq!(
+        fact.first_response_login.as_ref().map(Login::as_str),
+        Some("bob")
+    );
+    let review_event = done
+        .events
+        .iter()
+        .find(|e| e.id.as_str() == "PRR_1")
+        .expect("the review event");
+    assert_eq!(review_event.occurred_at, Timestamp(NOW.0 - 300 * 60));
 }

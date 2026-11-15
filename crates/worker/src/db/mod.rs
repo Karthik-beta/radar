@@ -8,6 +8,7 @@ pub mod batch;
 pub mod dashboard;
 pub mod email_state;
 pub mod events;
+pub mod facts;
 pub mod feed;
 pub mod items;
 pub mod local_state;
@@ -39,7 +40,7 @@ pub(crate) mod testing {
     use super::items::ItemRow;
     use super::sql::{Param, Statement};
 
-    const MIGRATIONS: [&str; 9] = [
+    const MIGRATIONS: [&str; 10] = [
         include_str!("../../../../migrations/0001_init.sql"),
         include_str!("../../../../migrations/0003_item_extras.sql"),
         include_str!("../../../../migrations/0004_email_state.sql"),
@@ -49,6 +50,7 @@ pub(crate) mod testing {
         include_str!("../../../../migrations/0008_agent_work.sql"),
         include_str!("../../../../migrations/0009_alerts.sql"),
         include_str!("../../../../migrations/0010_events_by_item.sql"),
+        include_str!("../../../../migrations/0011_contribution_facts.sql"),
     ];
 
     pub fn memory_db() -> Connection {

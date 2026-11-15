@@ -12,6 +12,37 @@ function wholeSeconds(value) {
   return value;
 }
 
+// The R26 fact fields. A scenario that leaves them out gets a small pull request with no closing issues, and
+// `reviews.totalCount` counts its CHANGES_REQUESTED reviews in the timeline and latest reviews.
+export function withFactFields(node) {
+  if (!node || node.__typename !== "PullRequest") return node;
+  const reviews = [...(node.timelineItems?.nodes ?? []), ...(node.latestReviews?.nodes ?? [])].filter(
+    (n) => n && n.state === "CHANGES_REQUESTED",
+  );
+  const changesRequested = new Set(reviews.map((n) => n.id)).size;
+  const filled = {
+    additions: 10,
+    deletions: 2,
+    changedFiles: 1,
+    closingIssuesReferences: { nodes: [] },
+    reviews: { totalCount: changesRequested },
+    ...node,
+  };
+  if (node.timelineItems) {
+    filled.timelineItems = { ...node.timelineItems, nodes: node.timelineItems.nodes.map(withSubmittedAt) };
+  }
+  if (node.latestReviews) {
+    filled.latestReviews = { ...node.latestReviews, nodes: node.latestReviews.nodes.map(withSubmittedAt) };
+  }
+  return filled;
+}
+
+// A review the scenario leaves without `submittedAt` was submitted when it was created.
+function withSubmittedAt(review) {
+  if (!review || !("state" in review) || "submittedAt" in review) return review;
+  return { ...review, submittedAt: review.at };
+}
+
 function aliasCount(variables) {
   let count = 0;
   while (`o${count}` in variables) count += 1;
@@ -38,7 +69,7 @@ export function answerEnrich(scenario, variables) {
         message: `Could not resolve to an issue or pull request for ${key}.`,
       });
     } else {
-      data[alias] = { issueOrPullRequest: wholeSeconds(items[key]) };
+      data[alias] = { issueOrPullRequest: wholeSeconds(withFactFields(items[key])) };
     }
   }
   const { remaining, reset } = scenario.rate;

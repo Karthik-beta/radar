@@ -6,14 +6,17 @@ use serde::{Deserialize, Serialize};
 use super::rows::{tagged, Tagged};
 use super::sql::{Param, Statement};
 
+/// An event whose week the rollup already folded sits in `own_events`, so it
+/// is dropped here and the next fold never counts it twice.
 const INSERT: &str = "INSERT INTO events (id, item_node_id, repo, kind, review_state, \
      actor_login, actor_is_me, actor_is_bot, occurred_at, source, ingested_at) \
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11 \
+     WHERE NOT EXISTS (SELECT 1 FROM own_events WHERE own_events.id = ?1) \
      ON CONFLICT (id) DO NOTHING";
 
 /// One statement for any number of rows, so a batch of enriched items makes one
-/// call into D1 for its events. `?1` is a JSON array of `FlatEvent`. `WHERE true`
-/// keeps SQLite from reading `ON` as a join constraint.
+/// call into D1 for its events. `?1` is a JSON array of `FlatEvent`. The `WHERE`
+/// also keeps SQLite from reading `ON` as a join constraint.
 const INSERT_MANY: &str = "INSERT INTO events (id, item_node_id, repo, kind, review_state, \
      actor_login, actor_is_me, actor_is_bot, occurred_at, source, ingested_at) \
      SELECT json_extract(value, '$.id'), json_extract(value, '$.item_node_id'), \
@@ -21,7 +24,9 @@ const INSERT_MANY: &str = "INSERT INTO events (id, item_node_id, repo, kind, rev
      json_extract(value, '$.review_state'), json_extract(value, '$.actor_login'), \
      json_extract(value, '$.actor_is_me'), json_extract(value, '$.actor_is_bot'), \
      json_extract(value, '$.occurred_at'), json_extract(value, '$.source'), \
-     json_extract(value, '$.ingested_at') FROM json_each(?1) WHERE true \
+     json_extract(value, '$.ingested_at') FROM json_each(?1) \
+     WHERE NOT EXISTS (SELECT 1 FROM own_events \
+       WHERE own_events.id = json_extract(value, '$.id')) \
      ON CONFLICT (id) DO NOTHING";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -298,5 +303,55 @@ mod tests {
             Ok(row.occurred_at),
             Timestamp::parse_rfc3339("2026-11-02T10:15:00Z")
         );
+    }
+
+    fn fold_into_own_events(conn: &rusqlite::Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO own_events SELECT * FROM events WHERE id = ?1",
+            [id],
+        )
+        .expect("copy");
+        conn.execute("DELETE FROM events WHERE id = ?1", [id])
+            .expect("delete");
+    }
+
+    #[test]
+    fn an_event_already_in_own_events_is_skipped() {
+        let conn = memory_db();
+        let mine = EventRow {
+            actor_login: Some(Login::parse("karthik").expect("login")),
+            actor_is_me: true,
+            ..event(EventId::for_node("IC_mine"), EventKind::Commented)
+        };
+        exec(&conn, &insert(&mine)).expect("first sight");
+        fold_into_own_events(&conn, "IC_mine");
+
+        assert_eq!(exec(&conn, &insert(&mine)).expect("insert again"), 0);
+        assert_eq!(
+            exec(&conn, &insert_many(std::slice::from_ref(&mine))).expect("many again"),
+            0
+        );
+        assert_eq!(count_rows(&conn, "events"), 0);
+        assert_eq!(count_rows(&conn, "own_events"), 1);
+    }
+
+    #[test]
+    fn a_late_event_with_a_new_id_lands() {
+        let conn = memory_db();
+        let folded = event(EventId::for_node("IC_old"), EventKind::Commented);
+        exec(&conn, &insert(&folded)).expect("old");
+        fold_into_own_events(&conn, "IC_old");
+
+        let late = EventRow {
+            occurred_at: Timestamp(1001),
+            ..event(EventId::for_node("IC_late"), EventKind::Commented)
+        };
+        assert_eq!(exec(&conn, &insert(&late)).expect("late"), 1);
+        let late_many = event(EventId::for_node("IC_late_2"), EventKind::Commented);
+        assert_eq!(
+            exec(&conn, &insert_many(&[late_many])).expect("late many"),
+            1
+        );
+        assert_eq!(count_rows(&conn, "events"), 2);
     }
 }

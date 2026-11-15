@@ -45,11 +45,13 @@ struct Oldest {
     at: Option<i64>,
 }
 
-/// The statements that fold one week in, in the order D1 runs them. The delete
-/// always runs, so a week that writes no row still leaves the events table and
-/// the next unit moves on to the following week.
+/// The statements that fold one week in, in the order D1 runs them. My events
+/// move to `own_events` first. The delete always runs, so a week that writes no
+/// row still leaves the events table and the next unit moves on to the
+/// following week.
 pub fn fold(week: WeekStart, totals: RollupTotals) -> Vec<Statement> {
-    let mut statements = Vec::with_capacity(2);
+    let mut statements = Vec::with_capacity(3);
+    statements.push(rollups::keep_mine(week));
     if !totals.is_empty() {
         statements.push(rollups::upsert(&RollupRow {
             week_start: week,
@@ -303,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_week_folds_to_the_delete_alone() {
+    fn an_empty_week_folds_to_the_copy_and_the_delete() {
         let totals = RollupTotals {
             events: 0,
             prs_opened: 0,
@@ -311,11 +313,17 @@ mod tests {
             repos_touched: 0,
         };
         let w = week("2026-01-05");
-        assert_eq!(fold(w, totals), vec![rollups::delete_week(w)]);
+        assert_eq!(
+            fold(w, totals),
+            vec![rollups::keep_mine(w), rollups::delete_week(w)]
+        );
         let merged = RollupTotals {
             prs_merged: 1,
             ..totals
         };
-        assert_eq!(fold(w, merged).len(), 2);
+        let statements = fold(w, merged);
+        assert_eq!(statements.len(), 3);
+        assert_eq!(statements.first(), Some(&rollups::keep_mine(w)));
+        assert_eq!(statements.last(), Some(&rollups::delete_week(w)));
     }
 }

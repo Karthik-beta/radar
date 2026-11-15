@@ -57,9 +57,9 @@ pub fn median(values: &[i64]) -> Option<i64> {
     }
 }
 
-/// Seconds from opening to the first reply by a human who is not me. A bot, my
-/// own event, and anything dated before `opened_at` never count.
-pub fn first_response(opened_at: Timestamp, events: &[Event]) -> Option<i64> {
+/// The first reply by a human who is not me. A bot, my own event, and anything
+/// dated before `opened_at` never count.
+pub fn first_responder(opened_at: Timestamp, events: &[Event]) -> Option<&Event> {
     events
         .iter()
         .filter(|event| matches!(event.kind, EventKind::Commented | EventKind::Reviewed(_)))
@@ -69,10 +69,13 @@ pub fn first_response(opened_at: Timestamp, events: &[Event]) -> Option<i64> {
                 .as_ref()
                 .is_some_and(|actor| !actor.is_me && !actor.is_bot)
         })
-        .map(|event| event.occurred_at.0)
-        .filter(|at| *at >= opened_at.0)
-        .min()
-        .map(|at| at - opened_at.0)
+        .filter(|event| event.occurred_at.0 >= opened_at.0)
+        .min_by_key(|event| event.occurred_at.0)
+}
+
+/// Seconds from opening to the first reply, as `first_responder` picks it.
+pub fn first_response(opened_at: Timestamp, events: &[Event]) -> Option<i64> {
+    first_responder(opened_at, events).map(|event| event.occurred_at.0 - opened_at.0)
 }
 
 /// One card per repo, most recently active first. `responses` holds one
