@@ -3,7 +3,7 @@
 This plan builds Radar from an empty Cargo workspace to every feature in the [PRD](../prd.md), following ADRs [0001](../adr/0001-tech-stack.md) to [0005](../adr/0005-rust.md).
 It is for one operator, Karthik, and the subagents that work for him.
 The rule the program enforces is that Radar never writes to GitHub and never costs money, and that every PR proves its behavior on the real surface before it is handed over.
-PRs merge one at a time in the order R01, R02, R03, R04, R06, R05, R07, then R08 to R24 in number order. The next owner may start early work on a branch from a PR that waits on review, but never merges first. Each goes through its own pull request, an Opus owner, CodeRabbit review, and a squash merge to `main`. M0 is R01 to R07. M1 is R08 to R11. M2, the v1 release, is R12 to R17. M3 is R18 and R19. M4 is R20 to R22. M5 is R23 and R24. R25 is a docs fix that can run at any time.
+PRs merge one at a time in the order R01, R02, R03, R04, R06, R05, R07, then R08 to R24 in number order. The next owner may start early work on a branch from a PR that waits on review, but never merges first. Each goes through its own pull request, an Opus owner, CodeRabbit review, and a squash merge to `main`. M0 is R01 to R07. M1 is R08 to R11. M2, the v1 release, is R12 to R17. M3 is R18 and R19. M4 is R20 to R22. M5 is R23 and R24. R25 is a docs fix that can run at any time. M6 is R26 to R29, in that order, from [ADR 0010](../adr/0010-contribution-facts.md) and PRD F14.
 
 ## How to read this
 
@@ -15,7 +15,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 ## Status
 
-Updated 2026-11-11. Every R is merged. Radar is not deployed yet. The operator items below must be done first.
+Updated 2026-11-15. R01 to R25 are merged, and Radar runs at `radar.karthik.nz`. M6, R26 to R29, is planned and not started. Karthik-beta/radar#32 fixed the rollup stall that R26 builds on.
 
 | R | State | Evidence |
 | --- | --- | --- |
@@ -37,6 +37,7 @@ Updated 2026-11-11. Every R is merged. Radar is not deployed yet. The operator i
 | R19 | Merged | Backend `4184eb2`, Karthik-beta/radar#24. The freshness panel row is in `b25961b` |
 | R20 to R24 | Merged | `b25961b`, Karthik-beta/radar#27, one PR with R17 |
 | R25 | Merged | `ef8f55b`, Karthik-beta/radar#13 |
+| R26 to R29 | Planned | M6, [ADR 0010](../adr/0010-contribution-facts.md) |
 
 Budgets. ADR 0009 raises the UI budget to 300 KB gzipped. Per-R perf rules below that name 200 KB were the gates when those Rs ran, and ADR 0009 replaces that number. At `b25961b` the UI is 252.5 KB and the Worker is 332.8 KB of 400 KB.
 
@@ -60,7 +61,7 @@ Verification gaps. To ship faster, R13 to R24 ran their unit boxes, every gate, 
 ### Follow-ups
 
 - The Worker passes non-GitHub `url` values, such as `javascript:`, to the UI, and the UI refuses to link them. Validate them at the Enrich boundary instead.
-- Rerun R18's forged-email lane on `main`: a 5 s interval, a 304, and at most one extra poll per forged email.
+- Rerun R18's forged-email lane on `main` with a 5 s interval and a 304. Pass when each forged email causes at most one extra poll.
 - R10. More than 50 new timeline nodes between two syncs drop the oldest feed events without a log.
 - R11. GitHub search caps at 1,000 results. Partition by month if a backfill ever reaches it.
 - R24. The `send_alerts` last success lives only in memory, so the freshness panel shows "Never" after the Durable Object restarts.
@@ -93,12 +94,12 @@ Verification gaps. To ship faster, R13 to R24 ran their unit boxes, every gate, 
 
 - [ ] Spawn one Opus owner per PR, at high effort, with `subagent_type` `pstack:poteto-agent`. The owner is responsible for the PR from branch to merge. It reviews every diff its writers produce, answers every review comment, and performs the merge. The models follow `~/.claude/rules/pstack-models.md`.
 - [ ] The owner delegates code writing by difficulty and reviews the result before it is pushed.
-  - [ ] Opus writes the code where a subtle mistake is expensive. These are R02, R03, R07, R08, R12, and R23. R12 and R23 hold API auth, CSRF checks, and webhook verification.
-  - [ ] Sonnet, high effort, writes the feature PRs. These are R01, R04, R05, R06, R09 to R11, R13 to R18, R20 to R22, and R24.
+  - [ ] Opus writes the code where a subtle mistake is expensive. These are R02, R03, R07, R08, R12, R23, R26, and R27. R12 and R23 hold API auth, CSRF checks, and webhook verification. R26 and R27 write data that is kept for good, so a mistake there cannot be rolled back.
+  - [ ] Sonnet, high effort, writes the feature PRs. These are R01, R04, R05, R06, R09 to R11, R13 to R18, R20 to R22, R24, R28, and R29.
   - [ ] Haiku, high effort, writes the small mechanical PRs. These are R19 and R25.
   - [ ] Explorers that only read code run on Haiku. Swarm verification lanes run on Sonnet. Audits and verdicts run on Opus.
 - [ ] Follow this order. Each PR branches from `main` after the PR before it has merged.
-  - [ ] The order is R01, R02, R03, R04, R06, R05, R07, R08, R09, R10, R11, R12, R13, R14, R15, R16, R17, R18, R19, R20, R21, R22, R23, R24.
+  - [ ] The order is R01, R02, R03, R04, R06, R05, R07, R08, R09, R10, R11, R12, R13, R14, R15, R16, R17, R18, R19, R20, R21, R22, R23, R24, then M6 as R26, R27, R28, R29.
   - [ ] While a PR waits on review, the next owner may start on a branch from the waiting PR. It rebases onto `main` and retargets `main` as soon as that PR merges, and it never merges first.
   - [ ] R25 is a docs fix that branches from `main` and can run at any time.
   - [ ] R08 starts only after R02 has merged with its result in the ADRs.
@@ -107,10 +108,10 @@ Verification gaps. To ship faster, R13 to R24 ran their unit boxes, every gate, 
 - [ ] Hold the file boundaries. Two owners never edit the same file in parallel.
   - [ ] `crates/domain/**` belongs to R03. Later PRs add to it only in PR order, never in parallel.
   - [ ] `migrations/**` gains one new numbered file per PR, with the next free number on `main`. No PR edits an earlier migration.
-  - [ ] `crates/worker/src/sync/**` belongs to R08 to R11, which run in sequence. R20 edits the `Rollup` arm, R22 adds `WorkKind::SeedHistory`, and R24 adds `WorkKind::SendAlerts`, each only in PR order, and each owner tells the root before editing.
-  - [ ] `crates/web/src/views/**` gains one file per view PR. Shared components in `crates/web/src/components/**` change in R13, or later in PR order. Components copied from rust-ui live in `crates/web/src/components/ui/`, follow the rules in ADR 0006, and are added only by the PR that first uses them. R20 to R23 each add one `Tab` variant in `crates/web/src/components/tabs.rs`, in stack order.
+  - [ ] `crates/worker/src/sync/**` belongs to R08 to R11, which run in sequence. R20 edits the `Rollup` arm, R22 adds `WorkKind::SeedHistory`, R24 adds `WorkKind::SendAlerts`, R26 edits `enrich.rs`, and R27 adds `WorkKind::ImportFacts` and `WorkKind::RefreshRepos`, each only in PR order, and each owner tells the root before editing.
+  - [ ] `crates/web/src/views/**` gains one file per view PR. Shared components in `crates/web/src/components/**` change in R13, or later in PR order. Components copied from rust-ui live in `crates/web/src/components/ui/`, follow the rules in ADR 0006, and are added only by the PR that first uses them. R20 to R23 each add one `Tab` variant in `crates/web/src/components/tabs.rs`, in stack order, and R29 replaces `Trends` with `Stats`.
   - [ ] `tools/github-stub/**` belongs to R06. Later PRs add scenarios, extend `tools/github-stub/scenarios/make.mjs` (from R10), and teach `server.mjs` new queries, only in PR order.
-- [ ] Hold the review gate. R05, R07, R13, R14, R15, R16, R17, R19, R20, R21, R22, and R23 change what the operator sees or does. They wait for the operator's review in chat with screenshots and a video before merge.
+- [ ] Hold the review gate. R05, R07, R13, R14, R15, R16, R17, R19, R20, R21, R22, R23, and R29 change what the operator sees or does. They wait for the operator's review in chat with screenshots and a video before merge.
 
 ### PR mechanics, for every PR
 
@@ -1991,13 +1992,292 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
 - [x] The Opus owner squash-merged R25 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here. Merged as `ef8f55b` in Karthik-beta/radar#13.
 
+## Store contribution facts as they happen (R26)
+
+**Depends on.** R25, and the rollup fix in Karthik-beta/radar#32, merged as `0ecd2c3`. [ADR 0010](../adr/0010-contribution-facts.md) is the design.
+
+**Files.**
+
+- [ ] Create `migrations/0011_contribution_facts.sql`. It creates `pr_facts`, `review_facts`, `pr_transitions`, `pr_issue_links`, and `own_events` as ADR 0010 lists them, all `STRICT`, with an index on each time column the Stats page filters by. It adds `owned_by_me`, `stars`, `primary_language`, and `meta_refreshed_at` to `repos`, and `utc_offset_minutes INTEGER NOT NULL DEFAULT 0 CHECK (utc_offset_minutes BETWEEN -720 AND 840)` and `goal_merged_per_month INTEGER CHECK (goal_merged_per_month IS NULL OR goal_merged_per_month > 0)` to `settings`. `own_events` copies the column list and CHECKs of `events`. It also creates a one-row `import_state` table with `facts_imported_at INTEGER` and `account_created_at INTEGER`, both nullable, so the Stats API can read the import state from D1.
+- [ ] Create `crates/domain/src/facts.rs` and export it from `crates/domain/src/lib.rs`.
+- [ ] Create `crates/worker/src/db/facts.rs` and register it in `crates/worker/src/db/mod.rs`.
+- [ ] Edit `crates/worker/src/github/enrich_query.rs` and `crates/worker/src/github/enrich_response.rs` to read `additions`, `deletions`, `changedFiles`, `closingIssuesReferences(first: 5) { nodes { number repository { nameWithOwner } } }`, and `reviews(states: [CHANGES_REQUESTED]) { totalCount }` on pull requests.
+- [ ] Edit `crates/worker/src/sync/enrich.rs` to write the facts. This file belongs to R08 to R11, so the owner tells the root before editing.
+- [ ] Edit `crates/worker/src/rollup.rs` and `crates/worker/src/db/rollups.rs` to copy my events into `own_events` before `DELETE_WEEK`.
+- [ ] Edit `crates/worker/src/db/events.rs` so `INSERT` and `INSERT_MANY` skip an `id` that is already in `own_events`.
+- [ ] Edit `tools/github-stub/enrich.mjs` to answer the new fields, and create `tools/github-stub/scenarios/facts-live.json` with eight authored pull requests across an external repo, a repo I own, and an `agent/` branch, two closing issues, and a turn change inside awaiting review.
+
+**Build.**
+
+- [ ] Name the data shapes first. `PrFact { node_id, repo, external: bool, number, created_at, merged_at: Option<Time>, closed_at: Option<Time>, first_response_at: Option<Time>, first_response_login: Option<Login>, changes_requested_rounds: u32, ci_failures: u32, additions: u32, deletions: u32, changed_files: u32, agent: bool, source: FactSource }`, where `FactSource` is an enum with `Live` and `Imported`. `ReviewFact { review_id, repo, external, pr_number, pr_author_login, state: ReviewState, submitted_at, source }`. `Transition { item_node_id, stage: Stage, turn: Turn, at }`. `IssueLink { pr_node_id, issue_repo, issue_number, issue_authored_by_me, issue_commented_by_me }`. Put them in `crates/domain/src/facts.rs`.
+- [ ] Write `is_external(repo, my_login) -> bool` as one rule that every fact uses. A repo is external when its owner login, the part of `repo` before the slash, is not my login, compared without case.
+- [ ] Write `pr_fact(item, enriched, events, my_login) -> Option<PrFact>` as a pure function. It returns `None` for a pull request I did not author. It takes the first response from R21's `first_response` in `crates/domain/src/repo_stats.rs`, counts `ci_failed` events for the pull request in `events` and `own_events` together into `ci_failures`, takes `changes_requested_rounds` from the review `totalCount`, and sets `agent` when the head ref starts with `agent/`.
+- [ ] Write `transition(previous: Option<(Stage, Turn)>, next: (Stage, Turn), at) -> Option<Transition>`. It returns a row when the stage or the turn changed, and for the first sight of a pull request.
+- [ ] Write `issue_links(pr, closing, items, events) -> Vec<IssueLink>`. It sets `issue_authored_by_me` from `items` and `issue_commented_by_me` from a `commented` event by me on that issue, as far as Radar knows at write time. Each enrich of the pull request refreshes the row.
+- [ ] Enrich writes `pr_facts`, `pr_issue_links`, `pr_transitions`, and `review_facts` in the same D1 batch as its item upsert. Each table takes one `json_each` statement per batch, as `INSERT_MANY` does, so a batch stays a fixed number of D1 calls. `pr_facts` and `pr_issue_links` upsert on their keys, and the `pr_facts` upsert keeps `MAX(ci_failures, excluded.ci_failures)` so a count never drops. `pr_transitions` only inserts. `review_facts` upserts a `reviewed` timeline node by me, keyed by the review's node ID, with `source = 'live'`, and a live row replaces an imported one.
+- [ ] The rollup batch for a week runs `INSERT INTO own_events SELECT * FROM events WHERE (actor_is_me = 1 OR (kind = 'ci_failed' AND item_node_id IN (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1))) AND occurred_at >= ?1 AND occurred_at < ?2 ON CONFLICT (id) DO NOTHING` before the optional upsert and `DELETE_WEEK`, all in one D1 batch. `ci_failed` rows carry no actor, so they need the second condition. Every reader of my own actions, such as S8, filters `own_events` on `actor_is_me = 1`.
+- [ ] `INSERT` and `INSERT_MANY` in `crates/worker/src/db/events.rs` gain `AND NOT EXISTS (SELECT 1 FROM own_events WHERE own_events.id = <the row's id>)`, so an event that comes back after its week was folded is dropped.
+- [ ] No fact table stores a title, a body, or comment text (N5). Every new GraphQL field is read by a `query` (N2).
+
+**You see.**
+
+- [ ] The UI is unchanged. Every Stats screen arrives in R29.
+- [ ] After a sync of `facts-live`, `select count(*) from pr_facts` equals the authored pull requests in `items`, and the external flags match the repo owners.
+- [ ] A turn change while a pull request stays in awaiting review adds one `pr_transitions` row.
+- [ ] After the nightly rollup folds old weeks, `own_events` holds my folded events and `events` holds no row older than 180 days.
+
+**Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] `is_external` is false for `karthik/radar` and `Karthik/x` with login `karthik`, and true for `rust-lang/rust` and for an organisation repo. `pr_fact` returns `None` for a pull request by someone else and sets `agent` only for `agent/` heads. Run `cargo test -p domain facts`.
+- [ ] `transition` returns `None` when stage and turn are unchanged, a row when only the turn changes, a row when only the stage changes, and a row for the first sight. Run `cargo test -p domain facts`.
+- [ ] `db/facts.rs` gains `enrich_batch_writes_one_statement_per_table`, `a_live_review_replaces_an_imported_one`, and `transitions_only_insert`. `db/facts.rs` also gains `ci_failures_never_drop_after_a_rollup`. `db/rollups.rs` gains `fold_copies_my_events_before_the_delete`, `fold_copies_ci_failures_on_my_prs`, and `fold_keeps_no_other_events`. `db/events.rs` gains `an_event_already_in_own_events_is_skipped` and `a_late_event_with_a_new_id_lands`. Run `cargo test -p radar-worker facts`, `cargo test -p radar-worker rollup`, and `cargo test -p radar-worker events`, one filter each.
+- [ ] Migration `0011` applies on top of `0010` in `memory_db`, and every existing test still passes. Run `cargo test --workspace`.
+
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
+
+- [ ] Lane 1. Regression lane against trunk. Sign in on scenario `basic` at trunk and at head, then open Your turn, Their turn, Pipeline, Feed, Repos, and Trends. Save `facts-regression.png`. Pass when every view and `/api/dashboard` match at both SHAs and only head has the new tables.
+- [ ] Lane 2. Facts from a sync. Boot `facts-live`, sign in, and let the backfill finish. Save `facts-rows.png`. Pass when `pr_facts` has eight rows, the external flag is false only for the repo I own, the `agent/` pull request has `agent = 1`, and size and `changes_requested_rounds` equal the stub's values.
+- [ ] Lane 3. First response. In `facts-live`, one pull request gets a bot comment, then my own comment, then a maintainer review. Save `facts-first-response.png`. Pass when `first_response_at` and `first_response_login` name the maintainer review.
+- [ ] Lane 4. Transitions. Move one pull request through draft, CI running, awaiting review, and a turn change from `them` to `me` with `POST /__scenario` steps, kicking a sync after each. Save `facts-transitions.png`. Pass when `pr_transitions` holds one row per change in time order, including the turn-only change.
+- [ ] Lane 5. Issue links. Save `facts-issue-links.png`. Pass when the two closing issues appear in `pr_issue_links` with the stub's repo and number, and the issue I opened has `issue_authored_by_me = 1`.
+- [ ] Lane 6. Reviews I give. Add a review by me on someone else's pull request in the stub and sync. Save `facts-reviews.png`. Pass when `review_facts` has one row with the review's node ID, its state, and `source = 'live'`, and a second sync leaves one row.
+- [ ] Lane 7. Rollup keeps my events. Run scenario `feed-old` from R20 and fire the nightly cron until `rollup nothing to roll` appears in the log. Save `facts-own-events.png`. Pass when `own_events` holds every old event by me, `events` holds none older than 180 days, and `rollups_weekly` totals equal those before the change.
+- [ ] Lane 8. A folded event comes back. After lane 7, replay one folded event of mine through the stub and sync. Save `facts-no-double.png`. Pass when the event stays only in `own_events`, `events` has no row with its `id`, and a further nightly run changes no `rollups_weekly` row.
+- [ ] Lane 9. Read-only and no content. Boot `facts-live` with comment bodies containing `BODYMARK-9c1e`. Save `facts-read-only.png`. Pass when every stub `POST` goes to `/graphql` with a body that starts with `query`, and `BODYMARK-9c1e` appears in no D1 table and no log (N2, N5).
+- [ ] Lane 10. Migration on a copy of real data. Apply migrations 0001 to 0010, load the `backfill-150` end state, then apply `0011`. Save `facts-migration.png`. Pass when `0011` applies without error, existing rows are unchanged, and the next enrich fills `pr_facts` for every authored pull request.
+
+**Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] Metric. `cpuTime` per Enrich alarm for a full batch and per Rollup alarm, D1 statements per Enrich batch, and gzipped Worker size, at trunk and head.
+- [ ] Probe. Count D1 statements per Enrich batch from the `wrangler dev` log on `facts-live`, at trunk and head. On a preview deploy the operator approves, run `npx wrangler tail radar-preview --format json` through a full sync and one nightly rollup and read `cpuTime`. Run `node scripts/check-size.mjs` at both SHAs, interleaved.
+- [ ] Baseline. Record trunk's Enrich `cpuTime`, statements per batch, and Worker size first.
+- [ ] Rule. Fail when an Enrich batch adds more than 4 D1 statements over trunk, when a warm Enrich or Rollup alarm reports `cpuTime` above 7 ms or a cold one above 10 ms, or when the Worker grows more than 15 KB gzipped over trunk or passes 400 KB.
+
+**Review gate.** None. R26 changes no screen.
+
+**Merge.**
+
+- [ ] CI is green and CodeRabbit is clear on R26 at the exact head SHA, with no Critical or Major thread unresolved.
+- [ ] Root's clean swarm verdict at the exact head SHA.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R26 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+
+## Import contribution history and refresh repo details (R27)
+
+**Depends on.** R26.
+
+**Files.**
+
+- [ ] Create `crates/worker/src/github/queries/import_prs.graphql`, `import_timeline.graphql`, `import_reviewed_prs.graphql`, `import_reviews.graphql`, and `repo_meta.graphql`, each registered through `query_doc!`. Add `createdAt` to `crates/worker/src/github/queries/viewer.graphql`.
+- [ ] Create `crates/worker/src/sync/import.rs`, the handler for `WorkKind::ImportFacts` and `WorkKind::RefreshRepos`. Edit `crates/worker/src/sync/work.rs`, `handlers.rs`, `state.rs`, and `mod.rs` to add the kinds, the `facts_imported_at` and `repos_refreshed_week` markers, and the nightly enqueue. These files belong to R08 to R11, so the owner tells the root before editing.
+- [ ] Create `tools/github-stub/import.mjs` and `tools/github-stub/import.test.mjs`, and teach `tools/github-stub/server.mjs` the five queries.
+- [ ] Create `tools/github-stub/scenarios/import-history.json` with three years of history, one quarter whose search `issueCount` is 1,500, a pull request whose first human response is on its third timeline page, a reviewed list longer than 100 pull requests, and a pull request I reviewed three times.
+
+**Build.**
+
+- [ ] Name the data shapes first. `ImportKey` is an enum with `SearchRange { from: Date, to: Date, after: Option<Cursor> }`, `Timeline { pr: NodeId, after: Cursor }`, `ReviewedPrs { year: i32, after: Option<Cursor> }`, and `Reviews { prs: Vec<NodeId>, after: Option<Cursor> }`. Put it in `crates/worker/src/sync/work.rs` next to `HistoryKey`.
+- [ ] Store each `ImportFacts` unit as a `backfill_page` row under an `import.` key, and each `RefreshRepos` unit under a `repos.` key, as `SeedHistory` uses `seed.`. The deployed Syncer's `work` table keeps its old `kind` CHECK, so no new `kind` value is allowed. Both share `backfill_page`'s rate gate, freshness, and dead-row revival.
+- [ ] While `facts_imported_at` is unset and no `import.` row is in `work`, the nightly kick reads my `createdAt` once, stores it in `import_state.account_created_at`, and enqueues one `SearchRange` from January 1 to December 31 and one `ReviewedPrs` for each year from my account's first year to this year.
+- [ ] A `SearchRange` unit runs `search(type: ISSUE, query: "is:pr author:<login> created:<from>..<to>", first: 50)`. When `issueCount` is over 1,000, it enqueues the two halves of the range by date and writes nothing. Otherwise it writes one `pr_facts` row per node with `source = 'imported'` and `ON CONFLICT DO NOTHING`, plus `pr_issue_links`, and upserts each repository's owner, stars, and language. A node with no human response on its first 20 timeline items enqueues a `Timeline` unit. A next page enqueues the same range with `after`.
+- [ ] A `ReviewedPrs` unit reads `contributionsCollection(from, to) { pullRequestReviewContributions(first: 100) }` only to collect pull request IDs, enqueues `Reviews` units of up to 50 IDs, and enqueues its own next page with `after`. A `Reviews` unit reads `nodes(ids: [...]) { ... on PullRequest { reviews(author: <login>, first: 100) } }` and writes one `review_facts` row per review with `source = 'imported'`. A pull request with more reviews pages on in a follow-up unit.
+- [ ] After each unit, the Syncer sets `facts_imported_at` in its storage and in `import_state` only when no `import.` row remains in `work`. A dead `import.` row blocks the marker and shows on the freshness panel, as other dead rows do (N9).
+- [ ] Once per week, the nightly kick enqueues `RefreshRepos` units for every repo in `repos`, 50 to a `nodes` query in `repo_meta.graphql`, setting `stars`, `primary_language`, `owned_by_me`, and `meta_refreshed_at`. `repos_refreshed_week` stops a second run in the same week.
+- [ ] Every unit makes one GraphQL request, passes R06's `every_registered_document_is_a_query` test, and respects R08's rate-limit gate and the 500 calls an hour cap. If one alarm passes 7 ms of CPU, the page size drops from 50 to 25.
+
+**You see.**
+
+- [ ] The UI is unchanged, except dead import rows on the freshness panel.
+- [ ] After the import of `import-history`, `pr_facts` and `review_facts` hold every pull request and review in the stub, and the freshness panel shows no dead row.
+- [ ] A second nightly run sends no import query.
+- [ ] `repos` shows stars and a language for every repo, refreshed once a week.
+
+**Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] `sync/import.rs` gains `over_limit_range_splits_in_two`, `split_ranges_cover_the_year_without_overlap`, `one_range_and_one_reviewed_list_per_year`, `marker_waits_for_every_import_row`, `no_enqueue_while_an_import_row_remains`, and `a_second_night_enqueues_nothing`. Run `cargo test -p radar-worker import`.
+- [ ] `timeline_pages_until_a_human_answers` and `three_reviews_on_one_pr_make_three_rows` pass. Run `cargo test -p radar-worker import`.
+- [ ] `import.` and `repos.` keys round-trip through `Columns` as `backfill_page` rows. Run `cargo test -p radar-worker work`.
+- [ ] Every new document passes R06's `every_registered_document_is_a_query`. `tools/github-stub/import.test.mjs` passes with `node --test "tools/github-stub/*.test.mjs"`.
+
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
+
+- [ ] Lane 1. Regression lane against trunk. Sign in on `basic` at trunk and at head and open every view. Save `import-regression.png`. Pass when every view and `/api/dashboard` match at both SHAs.
+- [ ] Lane 2. Full import. Boot `import-history`, sign in, and fire the nightly cron until the log shows `facts_imported_at`. Save `import-complete.png`. Pass when `pr_facts` and `review_facts` counts equal the stub's totals and every imported row has `source = 'imported'`.
+- [ ] Lane 3. Over-limit range. Save `import-split.png`. Pass when the stub log shows the 1,500-result quarter queried once, then two half ranges, and the halves together return every pull request in that quarter once.
+- [ ] Lane 4. Deep timeline. Save `import-timeline.png`. Pass when the pull request whose first human response is on page 3 is queried with three cursors and its `first_response_at` matches the stub.
+- [ ] Lane 5. Reviewed list paging. Save `import-reviewed.png`. Pass when the reviewed list is read with `after` until it ends, and the pull request I reviewed three times has three `review_facts` rows.
+- [ ] Lane 6. Live rows win. Sync a live pull request first, then run the import over it. Save `import-live-wins.png`. Pass when its `pr_facts` row keeps `source = 'live'` and its live values.
+- [ ] Lane 7. Restart. Stop `wrangler dev` halfway through the import and start it with the same `--persist-to`. Save `import-resume.png`. Pass when no finished range is queried again and the import still completes with the counts from lane 2.
+- [ ] Lane 8. Budget gate. Boot `low-budget` during the import. Save `import-budget.png`. Pass when no import query reaches the stub before the reset, and the import resumes after it.
+- [ ] Lane 9. Repo refresh. Fire the nightly cron twice in one week and once in the next. Save `import-repos.png`. Pass when `repo_meta` queries run in the first and third runs only, 50 repos to a query, and `owned_by_me` is 1 only for my repos.
+- [ ] Lane 10. Read-only. Save `import-read-only.png`. Pass when every stub request is a `GET` to `/user` or `/notifications` or a `POST` to `/graphql` whose body starts with `query`, and no body text from the stub appears in D1 (N2, N5).
+
+**Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] Metric. GitHub requests for the whole `import-history` run, `cpuTime` per import alarm, and gzipped Worker size at trunk and head.
+- [ ] Probe. Count requests in the stub log for lane 2. On a preview deploy the operator approves, sign in with the real account, run `npx wrangler tail radar-preview --format json` through the import, and read `cpuTime` for every import alarm. Run `node scripts/check-size.mjs` at both SHAs, interleaved.
+- [ ] Baseline. Trunk has no import, so record only the trunk Worker size first.
+- [ ] Rule. Fail when the stub run takes more requests than one per search page, timeline page, reviewed page, and review page the stub serves, plus one per range split. Fail when the real-account import takes more than 400 requests in any hour, when a warm import alarm reports `cpuTime` above 7 ms or a cold one above 10 ms, or when the Worker grows more than 15 KB gzipped over trunk or passes 400 KB.
+
+**Review gate.** None. R27 changes no screen except dead rows on the existing freshness panel.
+
+**Merge.**
+
+- [ ] CI is green and CodeRabbit is clear on R27 at the exact head SHA, with no Critical or Major thread unresolved.
+- [ ] Root's clean swarm verdict at the exact head SHA.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R27 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+
+## Compute the stats and serve them (R28)
+
+**Depends on.** R27.
+
+**Files.**
+
+- [ ] Create `crates/domain/src/stats/` with `mod.rs`, `period.rs`, `lands.rs`, `reviews.rs`, `trust.rs`, `agents.rs`, `output.rs`, `waiting.rs`, `shape.rs`, and `habits.rs`, and export `stats` from `crates/domain/src/lib.rs`.
+- [ ] Create `crates/worker/src/db/stats.rs` and `crates/worker/src/api/stats.rs`, and add `Endpoint::Stats` to `crates/worker/src/api/route.rs`.
+- [ ] Create `scripts/gen-stats-fixture.mjs` and `scripts/gen-stats-fixture.test.mjs`. The script writes SQL for two years of facts, transitions, reviews, issue links, and my events, with known totals, for `npx wrangler d1 execute radar --local --file`.
+
+**Build.**
+
+- [ ] Name the data shapes first. `Period` is an enum with `Last12Months(Grain)` and `YearOverYear`, where `Grain` is `Week` or `Month`. `Stats { period, yoy_ready: bool, lands, reviews, trust, agents, output, waiting, shape, habits }`, one struct per F14 section S1 to S8. Every rate, median, or percentile is an `Option`, `None` when nothing is counted, so the page never shows a false 0 percent. Put them in `crates/domain/src/stats/`.
+- [ ] Every metric counts external repos only, unless F14 says otherwise, and never counts an open pull request as a failure. Percentiles use the nearest-rank method. Weeks start on Monday in UTC, as `rollup.rs` does. Months are calendar months in UTC, except S8, which shifts by `settings.utc_offset_minutes`.
+- [ ] S1 (Lands). Merge rate is merged over merged plus closed unmerged. Time to merge gives the median and 75th percentile in hours. Open pull requests older than 30 days are counted. The changes-requested share and the CI-failed share count pull requests with at least one. Monthly groups give, for each month, the share of pull requests opened that month merged within 30 days, and a month younger than 30 days is marked unfinished.
+- [ ] S2 (Reviews). Reviews per week or month split by state, the repos reviewed in, and external against own repos.
+- [ ] S3 (Trust). New repos are repos whose first merged pull request ever falls in the period. Repeat repos have 2 or more merged pull requests. The ranking sorts by merged count, then merge rate, then median first response. Star merges count merged pull requests into repos with `stars` of 1,000 or more. Languages count merged pull requests by `primary_language`.
+- [ ] S4 (Agents). The S1 merge rate, time to merge, and changes-requested share, split by `agent`.
+- [ ] S5 (Output). Opened and merged per week or month, a rolling 4-week mean of merged, the best week and month, the current and longest streak of weeks with a merge, distinct repos per week, and the heatmap. It reuses `build_trends` from `crates/domain/src/trends.rs`, so the numbers match Trends.
+- [ ] S6 (Waiting). The median time in each stage from consecutive `pr_transitions` rows, and the total days on each side from the `turn` of those rows. An open pull request counts up to now. A pull request with no transitions is left out, so imported history never counts.
+- [ ] S7 (Shape). Merge rate by lines changed in buckets under 50, 50 to 199, 200 to 499, and 500 or more, and the count of issues I opened or commented on that a merged pull request of mine closed.
+- [ ] S8 (Habits). A 7 by 24 grid of my events from `events` and `own_events`, shifted by `utc_offset_minutes`. Goal progress is merged this month against `goal_merged_per_month`. Milestones are a first merge in a new repo, the 50th and 100th merged pull request, and a first merge into a repo with 1,000 or more stars, each with its date.
+- [ ] `YearOverYear` gives each month of this year next to the same month of last year. `yoy_ready` is true when `import_state.facts_imported_at` is set and `import_state.account_created_at` is before January 1 of this year, as ADR 0010 says year over year works once the import finishes. Stage times, turn times, CI failures, and habits carry a flag when last year's months hold no data for them, as ADR 0010 says.
+- [ ] Write `GET /api/stats?period=12m&grain=week`, `grain=month`, or `period=yoy`. It requires a session, answers any other value with `400`, and reads D1 only, in one batch of indexed selects (N7).
+- [ ] Each section is a pure function from rows to its struct, tested on its own. `db/stats.rs` only selects rows.
+
+**You see.**
+
+- [ ] The UI is unchanged. The page arrives in R29.
+- [ ] `curl -b jar.txt /api/stats?period=12m&grain=month` returns all eight sections with the totals the fixture names.
+- [ ] `period=yoy` returns `yoy_ready: false` until `import_state.facts_imported_at` is set.
+- [ ] Empty sections return `null` values, never `0` rates or `NaN`.
+
+**Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] Each section module has tests for an empty input, one item, an open pull request that is not a failure, and a week and month boundary. Every external-only section leaves out an own repo, and S2 keeps own repos on their own side of its comparison. Run `cargo test -p domain stats`.
+- [ ] `percentile` returns `None` for an empty list and the nearest-rank value for 1, 2, 4, and 9 items. Monthly groups mark a month younger than 30 days unfinished. Run `cargo test -p domain stats`.
+- [ ] S6 counts a turn-only change and an open pull request up to `now`, and leaves out imported pull requests. S8 places an event at 23:30 UTC in the next day's column for `utc_offset_minutes = 60`. Run `cargo test -p domain stats`.
+- [ ] `api/stats.rs` answers `401` with no session, `400` for `period=all`, and one D1 batch per request. `scripts/gen-stats-fixture.test.mjs` passes. Run `cargo test -p radar-worker stats` and `node --test "scripts/*.test.mjs"`.
+
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
+
+- [ ] Lane 1. Regression lane against trunk. Sign in on `basic` at trunk and head and open every view. Save `stats-api-regression.png`. Pass when every view and `/api/dashboard` match at both SHAs and only head answers `/api/stats`.
+- [ ] Lane 2. Session and parameters. Run `curl -i` on `/api/stats` with no cookie, then with a session and `period=12m&grain=week`, `grain=month`, `period=yoy`, and `period=all`. Save `stats-api-params.png`. Pass when the answers are `401`, `200`, `200`, `200`, and `400`.
+- [ ] Lane 3. S1 against SQL. Load the fixture. Save `stats-api-lands.png`. Pass when merge rate, median, and 75th percentile equal values computed by hand from `select` queries on `pr_facts`.
+- [ ] Lane 4. S2 and S3. Save `stats-api-reviews-trust.png`. Pass when review counts by state, new repos, repeat repos, and star merges equal `select` counts, own repos are absent from S3, and S2's external and own review counts each equal their `select` count.
+- [ ] Lane 5. S4 and S7. Save `stats-api-agents-shape.png`. Pass when the agent and other splits and the four size buckets sum to the S1 totals.
+- [ ] Lane 6. S5 matches Trends. Save `stats-api-output.png`. Pass when weekly opened and merged in S5 equal `/api/trends` for every shared week.
+- [ ] Lane 7. S6. Save `stats-api-waiting.png`. Pass when the stage medians and the days on each side equal values computed from `pr_transitions` by hand for three named pull requests.
+- [ ] Lane 8. S8. Set `utc_offset_minutes` to 330 with `wrangler d1 execute`. Save `stats-api-habits.png`. Pass when the grid sums to the count of my events and each cell equals a shifted `select` count, and goal progress appears only after `goal_merged_per_month` is set.
+- [ ] Lane 9. Year over year. Load the fixture with `import_state.facts_imported_at` unset, then set it. Save `stats-api-yoy.png`. Pass when `yoy_ready` is false, then true, and each month pair equals `select` counts for both years.
+- [ ] Lane 10. Empty database. On a fresh `--persist-to` directory, call every period. Save `stats-api-empty.png`. Pass when every rate is `null`, every count is 0, and the JSON has no `NaN`.
+
+**Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] Metric. `/api/stats` p95 on `wrangler dev` with the two-year fixture, D1 `rows_read` per request, and gzipped Worker size at trunk and head.
+- [ ] Probe. Send 200 requests per period and take the p95. Read `rows_read` from the `meta` block of each select run with `wrangler d1 execute --json`. Run `node scripts/check-size.mjs` at both SHAs, interleaved.
+- [ ] Baseline. Trunk has no `/api/stats`, so record only the trunk Worker size first.
+- [ ] Rule. Fail when the p95 for any period is 150 ms or more, when one request reads more than 20,000 rows, or when the Worker grows more than 20 KB gzipped over trunk or passes 400 KB.
+
+**Review gate.** None. R28 changes no screen.
+
+**Merge.**
+
+- [ ] CI is green and CodeRabbit is clear on R28 at the exact head SHA, with no Critical or Major thread unresolved.
+- [ ] Root's clean swarm verdict at the exact head SHA.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R28 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+
+## Show the Stats page in place of Trends (R29)
+
+**Depends on.** R28.
+
+**Files.**
+
+- [ ] Create `crates/web/src/views/stats.rs` and delete `crates/web/src/views/trends.rs`. In `crates/web/src/components/tabs.rs`, replace the `Trends` variant with `Stats` at `/stats` in the quiet `More` group. In `crates/web/src/route.rs`, send `/trends` to the Stats view.
+- [ ] Create `crates/web/src/charts/lines.rs`, `crates/web/src/charts/grid.rs`, and `crates/web/src/charts/hbars.rs`, and keep `bars.rs` and `heatmap.rs`.
+- [ ] Create `crates/web/style/stats.css` and delete `crates/web/style/trends.css`. It uses only the custom properties generated from `design/tokens.json`.
+- [ ] Delete `crates/worker/src/api/trends.rs` and its route, since the Stats page is its only reader. `crates/worker/src/db/trends.rs` stays for S5.
+
+**Build.**
+
+- [ ] Fetch `/api/stats` on each period change. Keep the last answer per period in memory and paint it at once when switching back, then revalidate with one request and replace the sections when the answer differs, so a sync never leaves the page stale.
+- [ ] Open with a summary line at the title size, such as "31 merged in 12 months across 9 repos, 74 percent merge rate". Write "Nothing merged yet." when the totals are 0.
+- [ ] Put the period switch at the top, with Last 12 months (weekly or monthly) and This year vs last year. Show the second only when `yoy_ready` is true, and otherwise one grey line that says when it unlocks.
+- [ ] Draw the sections in F14 order, S1 to S8, each with a heading, its numbers, and at most two charts. Draw lines with `lines.rs`, the rankings, stage medians, and size buckets with `hbars.rs`, the habits grid with `grid.rs`, and the output bars and heatmap with the existing charts.
+- [ ] Use grey only, as ADR 0003 requires. This year and the main series use `text`, last year and secondary series use `faint`, gridlines use `line`, and labels use `muted`. Nothing uses `warm`, `hot`, or `red`.
+- [ ] Show a dash and a short reason, such as "No PRs closed yet", for every `null` value. A section with a data gap from ADR 0010 says so in one grey line.
+- [ ] Give each chart `role="img"`, an `aria-label` that states its totals, and a visually hidden table with the same numbers.
+- [ ] Lay the page out in one column at 375 px and two columns from the laptop breakpoint, with no horizontal scroll.
+- [ ] Keep the UI inside ADR 0009's 300 KB budget. If the build passes 285 KB, the owner stops and asks the operator whether to start the lazy-loaded second module that ADR 0009 names.
+
+**You see.**
+
+- [ ] A Stats tab replaces Trends, and `/trends` opens Stats.
+- [ ] The period switch changes every section, and year over year appears once two years of facts exist.
+- [ ] Every number on the page matches `/api/stats` for the same period.
+- [ ] The page is grey on graphite, readable at 375 px, and shows no `NaN`.
+
+**Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] `lines.rs`, `grid.rs`, and `hbars.rs` render the right number of marks for empty, one, and many points, and scale with `nice_max`. Run `cargo test -p web charts`.
+- [ ] The summary line and the dash text cover zero, one, and many, and `null` rates. Run `cargo test -p web stats`.
+- [ ] `tabs.rs` tests list `Stats` in the More group, and `route.rs` sends `/trends` and `/stats` to the same view. Run `cargo test -p web tabs` and `cargo test -p web route`, one filter each.
+- [ ] Removing `api/trends.rs` leaves every other route test passing. Run `cargo test --workspace`.
+
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
+
+- [ ] Lane 1. Regression lane against trunk. Open Your turn, Their turn, Pipeline, Feed, Repos, and Agents at trunk and head on `basic`. Save `stats-regression.png`. Pass when those views match and only Trends became Stats.
+- [ ] Lane 2. Happy path. Load the two-year fixture from R28 and open Stats. Save `stats-basic.png`. Pass when every section shows numbers equal to `/api/stats` for the default period.
+- [ ] Lane 3. Period switch. Switch weekly, monthly, and year over year. Save `stats-periods.png`. Pass when each switch updates every section, a second visit to a period paints from memory before its one revalidating request, a fact changed in D1 between visits shows after that request, and the URL keeps the period.
+- [ ] Lane 4. Year over year locked. Load one year of facts. Save `stats-yoy-locked.png`. Pass when the year over year choice is absent and the grey unlock line names the date.
+- [ ] Lane 5. Empty state. On a fresh `--persist-to` directory, open Stats. Save `stats-empty.png`. Pass when the summary reads "Nothing merged yet.", every rate shows a dash with a reason, and the page text has no `NaN`, `undefined`, or `null`.
+- [ ] Lane 6. Old links. Open `/trends` directly and from history. Save `stats-trends-link.png`. Pass when both show Stats with the Stats tab current.
+- [ ] Lane 7. Tokens only. Read `getComputedStyle` for every `fill` and `stroke` on the page. Save `stats-tokens.png`. Pass when each value equals one of `bg`, `surface`, `line`, `text`, `muted`, or `faint`, and none equals `warm`, `hot`, or `red`.
+- [ ] Lane 8. Accessibility. Read the page with the accessibility tree and run `node scripts/audit-a11y.mjs` on `/stats`. Save `stats-a11y.png`. Pass when every chart has `role="img"` with totals in its label, each hidden table equals its chart, chart marks are not tab stops, and the audit reports no violation.
+- [ ] Lane 9. Phone width. At 375 px width, open Stats. Save `stats-phone.png`. Pass when `document.documentElement.scrollWidth` is at most 375, the habits grid and heatmap fit, and every label is readable.
+- [ ] Lane 10. Keyboard. Use only the keyboard to open Stats through the More menu, change the period, and leave. Save `stats-keyboard.png`. Pass when every control has a visible focus ring, the switch works with arrow keys and enter, Tab never traps, and `prefers-reduced-motion` shows no animation.
+
+**Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
+
+- [ ] Metric. Gzipped UI size at trunk and head, time from opening Stats to the last section painted, and time to switch period, from the Performance API.
+- [ ] Probe. Alternate trunk and head three times for `node scripts/check-size.mjs`. In the browser with the two-year fixture, record `performance.now()` at the route change and when the S8 grid exists, 10 times, and the same for a period switch.
+- [ ] Baseline. Record trunk's gzipped UI and Worker size and its time to the Trends heatmap first.
+- [ ] Rule. Fail when the UI is more than 25 KB gzipped above trunk or above 300 KB, when the Worker passes 400 KB, when the median time to the last section is 1.5 s or more, or when a period switch takes 300 ms or more.
+
+**Review gate.** The operator reviews before merge.
+
+- [ ] Copy the lane 2, lane 3, and lane 9 screenshots into `artifacts/review/R29-review-stats.png`, `artifacts/review/R29-review-periods.png`, and `artifacts/review/R29-review-phone.png`.
+- [ ] Record a 30 to 60 second video of the Stats page at laptop and phone width, with a period switch, from a lane's `wrangler dev` session. Save it as `artifacts/review/R29-review.mp4`.
+- [ ] Post the screenshots and the video in chat. Stop at merge-ready. Wait for the operator's click.
+
+**Merge.**
+
+- [ ] CI is green and CodeRabbit is clear on R29 at the exact head SHA, with no Critical or Major thread unresolved.
+- [ ] Root's clean swarm verdict at the exact head SHA, and the operator has approved in chat.
+- [ ] Rebased onto `main` after the verdict, patch-id unchanged.
+- [ ] The Opus owner marked every changed file as Viewed with `node scripts/pr-mark-viewed.mjs <number>` and submitted a review with `gh pr review <number> --comment --body "<verdict and evidence>"`.
+- [ ] The Opus owner squash-merged R29 to `main` with `gh pr merge <number> --squash --delete-branch`. The merge SHA is recorded here.
+
 ## Close the program
 
 - [ ] Every box above is checked with its evidence.
-- [ ] Every R, R01 to R25, is merged to `main` through its own PR.
+- [ ] Every R, R01 to R29, is merged to `main` through its own PR.
 - [ ] M2 is done. The operator has used Radar daily for a week instead of github.com/notifications, and checks this box.
 - [ ] M4 is done. The feed, repo cards, and trends show the operator's real data on the preview deploy, and the operator checks this box.
 - [ ] M5 is done. A push to an `agent/` branch on a fork shows in the Agents view within 2 minutes, a mention reaches the operator's phone through Telegram, and the operator checks this box.
+- [ ] M6 is done. The Stats page shows 12 months of the operator's real data in production, the import has filled history back to the account's creation, and the operator checks this box.
 - [ ] Reply to the operator with the report `playbooks/autopilot-full.md` names, each PR with its verdict and merge SHA.
 
 ## Appendix A. Prototype evidence

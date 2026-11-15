@@ -1,6 +1,6 @@
 # 0010. Contribution facts kept for good
 
-Status: proposed, 2026-11-15.
+Status: accepted, 2026-11-15.
 
 F14 adds a Stats page with 12 months of detail and a comparison of this year with last year. Today Radar cannot hold that. N6 deletes `events` after 180 days and keeps only four weekly totals in `rollups_weekly`: PRs opened, PRs merged, repos touched, and events. Reviews I give, time to merge, time to first response, stage times, PR size, and when I work are all lost after 180 days. History before the 90-day backfill holds only the seeded weekly totals. The data must start collecting now, and in a shape that later metrics can reuse without another migration each time.
 
@@ -8,7 +8,7 @@ F14 adds a Stats page with 12 months of detail and a comparison of this year wit
 
 Radar keeps one row per contribution fact, for good, in new D1 tables. Raw events from other people still roll up and are deleted after 180 days.
 
-**What counts.** An external repo is a repo whose owner login is not my login. Repos owned by an organisation I belong to count as external. Every table stores all my PRs and reviews with an `external` flag, and F14's metrics filter on it. A later change to the rule needs no new data.
+**What counts.** An external repo is a repo whose owner login is not my login. Repos owned by an organisation I belong to count as external. Every table stores all my PRs and reviews with an `external` flag, and F14's metrics use it. Most count external repos only, and a metric that F14 defines as a comparison, such as S2's external against own reviews, splits on it. A later change to the rule needs no new data.
 
 **New tables, never pruned.**
 
@@ -18,7 +18,8 @@ Radar keeps one row per contribution fact, for good, in new D1 tables. Raw event
 | `review_facts` | Review I submitted, keyed by review node ID | `repo`, `external`, `pr_number`, `pr_author_login`, `state`, `submitted_at`, `source` |
 | `pr_transitions` | Change of stage or turn on a PR I authored | `item_node_id`, `stage`, `turn`, `at` |
 | `pr_issue_links` | Issue a PR of mine closes | `pr_node_id`, `issue_repo`, `issue_number`, `issue_authored_by_me`, `issue_commented_by_me` |
-| `own_events` | Event by me that the weekly rollup folded, keyed by the `events` ID | the `events` columns |
+| `own_events` | Event by me, or `ci_failed` event on a PR I authored, that the weekly rollup folded, keyed by the `events` ID. `ci_failed` rows carry no actor, so readers of my own actions filter on `actor_is_me = 1` | the `events` columns |
+| `import_state` | One row | `facts_imported_at`, `account_created_at`, so D1 readers know when the import finished |
 
 `first_response_at` is the first review or comment by a human who is not me, after the PR opened, as R19's `first_response` rule defines it. `changes_requested_rounds` counts reviews with state `changes_requested`.
 
@@ -27,7 +28,7 @@ Radar keeps one row per contribution fact, for good, in new D1 tables. Raw event
 - `repos` gains `owned_by_me`, `stars`, `primary_language`, and `meta_refreshed_at`.
 - `settings` gains `utc_offset_minutes` (default `0`) for the when-I-work chart, and `goal_merged_per_month` (nullable). Both change with `wrangler d1 execute`, like the nudge thresholds.
 
-**Events by me stay.** The weekly rollup keeps its current loop: it folds the week of the oldest event before the cutoff, then deletes every event in that week, so the next fold reaches the next week and no week is added twice. The delete runs for every expired week, including a week with no events by me. The fold writes a `rollups_weekly` row only when one of its totals is above zero, so a week whose only events are a maintainer merging my PR still counts. Today `unit` in `crates/worker/src/rollup.rs` skips the whole fold when `events` is 0, which leaves such a week in `events` and stalls the loop on it. That fix ships before or with this change. In the same D1 batch, before the delete, it copies that week's events where `actor_is_me = 1` into `own_events` with `ON CONFLICT (id) DO NOTHING`. My own events, about a few thousand a year, stay for good there. A reader of my own events reads `events` where `actor_is_me = 1` together with `own_events`. The two never hold the same row, because the batch that copies a week also deletes it from `events`, and `INSERT` and `INSERT_MANY` in `crates/worker/src/db/events.rs` skip a row whose `id` is already in `own_events`, with `NOT EXISTS (SELECT 1 FROM own_events WHERE own_events.id = <the row's id>)`. An event that enrichment sees again after its week was folded is dropped, so the next fold never adds it twice. A late event with a new `id` still lands in `events` and folds as it does today.
+**Events by me stay.** The weekly rollup keeps its current loop: it folds the week of the oldest event before the cutoff, then deletes every event in that week, so the next fold reaches the next week and no week is added twice. The delete runs for every expired week, including a week with no events by me. The fold writes a `rollups_weekly` row only when one of its totals is above zero, so a week whose only events are a maintainer merging my PR still counts. Today `unit` in `crates/worker/src/rollup.rs` skips the whole fold when `events` is 0, which leaves such a week in `events` and stalls the loop on it. That fix ships before or with this change. In the same D1 batch, before the delete, it copies that week's events where `actor_is_me = 1`, and each `ci_failed` event on a PR I authored, into `own_events` with `ON CONFLICT (id) DO NOTHING`. My own events, about a few thousand a year, stay for good there, and the CI failures keep `pr_facts.ci_failures` whole. A reader of my own events reads `events` and `own_events` together, both filtered on `actor_is_me = 1`. The two never hold the same row, because the batch that copies a week also deletes it from `events`, and `INSERT` and `INSERT_MANY` in `crates/worker/src/db/events.rs` skip a row whose `id` is already in `own_events`, with `NOT EXISTS (SELECT 1 FROM own_events WHERE own_events.id = <the row's id>)`. An event that enrichment sees again after its week was folded is dropped, so the next fold never adds it twice. A late event with a new `id` still lands in `events` and folds as it does today.
 
 **How the tables fill.**
 
