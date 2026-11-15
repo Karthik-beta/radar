@@ -1,6 +1,6 @@
 # 0010. Contribution facts kept for good
 
-Status: proposed, 2026-11-15.
+Status: accepted, 2026-11-15.
 
 F14 adds a Stats page with 12 months of detail and a comparison of this year with last year. Today Radar cannot hold that. N6 deletes `events` after 180 days and keeps only four weekly totals in `rollups_weekly`: PRs opened, PRs merged, repos touched, and events. Reviews I give, time to merge, time to first response, stage times, PR size, and when I work are all lost after 180 days. History before the 90-day backfill holds only the seeded weekly totals. The data must start collecting now, and in a shape that later metrics can reuse without another migration each time.
 
