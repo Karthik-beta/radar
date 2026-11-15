@@ -661,3 +661,26 @@ fn an_undated_stage_change_is_dated_now_and_never_before_the_last_change() {
         .expect("a stage change");
     assert_eq!(moved.at, Timestamp(NOW.0 + 60));
 }
+
+#[test]
+fn first_response_uses_review_submission_time() {
+    let mut started_early = review("PRR_1", 300, "maint", "COMMENTED");
+    started_early["submittedAt"] = json!(ago(10));
+    let pr = Pr::by(
+        "karthik",
+        vec![started_early, comment("IC_1", 100, "bob", "User")],
+    );
+    let done = enrich(&pr, "author", None);
+    let fact = done.facts.pr.expect("a fact");
+    assert_eq!(fact.first_response_at, Some(Timestamp(NOW.0 - 100 * 60)));
+    assert_eq!(
+        fact.first_response_login.as_ref().map(Login::as_str),
+        Some("bob")
+    );
+    let review_event = done
+        .events
+        .iter()
+        .find(|e| e.id.as_str() == "PRR_1")
+        .expect("the review event");
+    assert_eq!(review_event.occurred_at, Timestamp(NOW.0 - 300 * 60));
+}

@@ -615,6 +615,8 @@ fn item_facts(
             _ => None,
         })
         .collect();
+    // A review answers when it is submitted, which can be after other replies
+    // made while it was pending. The `events` table keeps `createdAt`, as R10 dates it.
     let seen: Vec<Event> = entries
         .iter()
         .map(|e| Event {
@@ -623,7 +625,7 @@ fn item_facts(
             repo: repo.clone(),
             kind: event_kind(&e.what),
             actor: Some(event_actor(&e.actor, me)),
-            occurred_at: e.at,
+            occurred_at: e.submitted_at.unwrap_or(e.at),
         })
         .chain(
             events
