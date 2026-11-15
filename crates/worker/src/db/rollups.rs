@@ -60,6 +60,15 @@ pub struct RollupTotals {
     pub repos_touched: u32,
 }
 
+impl RollupTotals {
+    /// True when the week holds nothing worth a `rollups_weekly` row. A week of
+    /// other people's events alone is empty, but a maintainer's merge of my
+    /// pull request is not.
+    pub fn is_empty(self) -> bool {
+        self.events == 0 && self.prs_opened == 0 && self.prs_merged == 0 && self.repos_touched == 0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RollupRow {
     pub week_start: WeekStart,
