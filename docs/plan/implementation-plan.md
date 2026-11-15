@@ -41,7 +41,7 @@ Updated 2026-11-15. R01 to R25 are merged, and Radar runs at `radar.karthik.nz`.
 
 Budgets. ADR 0009 raises the UI budget to 300 KB gzipped. Per-R perf rules below that name 200 KB were the gates when those Rs ran, and ADR 0009 replaces that number. At `b25961b` the UI is 252.5 KB and the Worker is 332.8 KB of 400 KB.
 
-Verification gaps. To ship faster, R13 to R24 ran their unit boxes, every gate, and a short live smoke on the stubs. The ten live lanes per R, the perf probes, Lighthouse, and the review videos did not run.
+Verification gaps. To ship faster, R13 to R24 ran their unit boxes, every gate, and a short live smoke on the stubs. The ten live lanes per R, the perf probes, Lighthouse, and the review videos did not run. M6 follows the same rule. R26 to R29 run their unit boxes, every gate, the size check, and a live smoke on the stubs that covers the main lanes, and each PR body lists what ran. Their live and perf boxes stay unchecked until the lanes run, and the perf probes wait for an operator-approved preview deploy. R29 keeps its review gate, so the operator still sees screenshots and a video before merge.
 
 ### Open operator items
 
@@ -2118,7 +2118,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] Metric. GitHub requests for the whole `import-history` run, `cpuTime` per import alarm, and gzipped Worker size at trunk and head.
 - [ ] Probe. Count requests in the stub log for lane 2. On a preview deploy the operator approves, sign in with the real account, run `npx wrangler tail radar-preview --format json` through the import, and read `cpuTime` for every import alarm. Run `node scripts/check-size.mjs` at both SHAs, interleaved.
 - [ ] Baseline. Trunk has no import, so record only the trunk Worker size first.
-- [ ] Rule. Fail when the stub run takes more requests than one per search page, timeline page, reviewed page, and review page the stub serves, plus one per range split. Fail when the real-account import takes more than 400 requests in any hour, when a warm import alarm reports `cpuTime` above 7 ms or a cold one above 10 ms, or when the Worker grows more than 15 KB gzipped over trunk or passes 400 KB.
+- [ ] Rule. Fail when the stub run takes more requests than one per search page, timeline page, reviewed page, and review page the stub serves, plus one per range split. Fail when the real-account import takes more than 400 requests in any hour, when a warm import alarm reports `cpuTime` above 7 ms or a cold one above 10 ms, or when the Worker grows more than 15 KB gzipped over trunk or passes 400 KB. R27 alone may grow the Worker by up to 24 KB, as "Plan problems found while building" records, because the 400 KB budget holds. Every other R keeps its own limit.
 
 **Review gate.** None. R27 changes no screen except dead rows on the existing freshness panel.
 
