@@ -15,6 +15,15 @@
         "mergedAt": null,
         "headRefName": "feature/12",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "alice",
           "__typename": "User"
@@ -81,6 +90,15 @@
         "mergedAt": null,
         "headRefName": "feature/13",
         "reviewDecision": "CHANGES_REQUESTED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 1
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -149,6 +167,15 @@
         "mergedAt": null,
         "headRefName": "feature/14",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -209,6 +236,15 @@
         "mergedAt": null,
         "headRefName": "feature/15",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -319,6 +355,15 @@
         "mergedAt": null,
         "headRefName": "feature/16",
         "reviewDecision": null,
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -355,6 +400,15 @@
         "mergedAt": null,
         "headRefName": "feature/1000",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -411,6 +465,15 @@
         "mergedAt": null,
         "headRefName": "feature/1001",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -467,6 +530,15 @@
         "mergedAt": null,
         "headRefName": "feature/1002",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -523,6 +595,15 @@
         "mergedAt": null,
         "headRefName": "feature/1003",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -579,6 +660,15 @@
         "mergedAt": null,
         "headRefName": "feature/1004",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -635,6 +725,15 @@
         "mergedAt": null,
         "headRefName": "feature/1005",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -691,6 +790,15 @@
         "mergedAt": null,
         "headRefName": "feature/1006",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -747,6 +855,15 @@
         "mergedAt": null,
         "headRefName": "feature/1007",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -803,6 +920,15 @@
         "mergedAt": null,
         "headRefName": "feature/1008",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -859,6 +985,15 @@
         "mergedAt": null,
         "headRefName": "feature/1009",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -915,6 +1050,15 @@
         "mergedAt": null,
         "headRefName": "feature/1010",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -971,6 +1115,15 @@
         "mergedAt": null,
         "headRefName": "feature/1011",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -1027,6 +1180,15 @@
         "mergedAt": null,
         "headRefName": "feature/1012",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"
@@ -1083,6 +1245,15 @@
         "mergedAt": null,
         "headRefName": "feature/1013",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": {
           "login": "karthik",
           "__typename": "User"

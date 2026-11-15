@@ -1,6 +1,7 @@
 //! The reads one `Enrich` unit makes before it calls GitHub. D1 runs them as one
 //! batch, so a unit costs one round trip to read and one to write.
 
+use domain::facts::Side;
 use domain::ids::{ItemKind, ItemRef, Login, RepoName, Timestamp};
 use domain::item::CiState;
 use domain::stage::Stage;
@@ -26,7 +27,7 @@ const THREADS: &str = concat!(
 );
 
 const STORED: &str = concat!(
-    "SELECT i.repo, i.number, i.node_id, i.ci_state, i.stage, i.stage_since, i.updated_at \
+    "SELECT i.repo, i.number, i.node_id, i.ci_state, i.stage, i.turn, i.stage_since, i.updated_at \
      FROM notification_threads t JOIN items i ON i.repo = t.repo AND i.number = t.subject_number \
      WHERE ",
     wanted!()
@@ -34,7 +35,7 @@ const STORED: &str = concat!(
 
 /// What a search page found, by the item's node id.
 const STORED_BY_NODE: &str =
-    "SELECT repo, number, node_id, ci_state, stage, stage_since, updated_at \
+    "SELECT repo, number, node_id, ci_state, stage, turn, stage_since, updated_at \
      FROM items WHERE node_id IN (SELECT value FROM json_each(?1))";
 
 const ME: &str = "SELECT login FROM auth WHERE id = 1";
@@ -133,6 +134,7 @@ pub struct StoredRecord {
     pub node_id: String,
     pub ci_state: Option<String>,
     pub stage: Option<String>,
+    pub turn: String,
     pub stage_since: i64,
     pub updated_at: i64,
 }
@@ -145,6 +147,7 @@ pub struct Stored {
     pub node_id: String,
     pub ci_state: Option<CiState>,
     pub stage: Option<Stage>,
+    pub turn: Side,
     pub stage_since: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -162,6 +165,7 @@ impl TryFrom<StoredRecord> for Stored {
             node_id: r.node_id,
             ci_state: untag_opt::<CiState>("ci_state", r.ci_state.as_deref())?,
             stage: untag_opt::<Stage>("stage", r.stage.as_deref())?,
+            turn: untag::<Side>("turn", &r.turn)?,
             stage_since: Timestamp(r.stage_since),
             updated_at: Timestamp(r.updated_at),
         })

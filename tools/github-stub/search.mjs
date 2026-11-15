@@ -3,6 +3,8 @@
 // (`is:pr` or `is:issue`) and the `updated:>=DATE` cutoff. A cursor names the offset in the filtered list,
 // so a repeated cursor returns the same page.
 
+import { withFactFields } from "./enrich.mjs";
+
 export function cursorFor(offset) {
   return Buffer.from(`cursor:${offset}`).toString("base64");
 }
@@ -48,7 +50,7 @@ export function answerSearch(scenario, variables) {
     body: {
       data: {
         search: {
-          nodes: wholeSeconds(nodes),
+          nodes: wholeSeconds(nodes.map(withFactFields)),
           pageInfo: { endCursor: nodes.length ? cursorFor(end) : null, hasNextPage: end < all.length },
         },
         rateLimit: wholeSeconds({ cost: 1, remaining, resetAt }),

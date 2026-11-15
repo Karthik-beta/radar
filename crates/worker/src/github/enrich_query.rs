@@ -61,6 +61,9 @@ macro_rules! item_fields {
     " } } } ",
     "... on PullRequest { id number title url prState: state isDraft createdAt updatedAt ",
     "closedAt mergedAt headRefName reviewDecision author { login __typename } ",
+    "additions deletions changedFiles ",
+    "closingIssuesReferences(first: 5) { nodes { number repository { nameWithOwner } } } ",
+    "reviews(states: [CHANGES_REQUESTED]) { totalCount } ",
     "assignees(first: 10) { nodes { login } } ",
     "reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } } } } ",
     "latestReviews(first: 10) { nodes { id state at: createdAt url author { login __typename } } } ",
@@ -188,6 +191,17 @@ mod tests {
         assert_eq!(vars["n1"], "gadgets");
         assert_eq!(vars["i0"], 12);
         assert_eq!(vars.as_object().map(Map::len), Some(6));
+    }
+
+    #[test]
+    fn pull_requests_read_the_fact_fields() {
+        for field in [
+            "additions deletions changedFiles",
+            "closingIssuesReferences(first: 5) { nodes { number repository { nameWithOwner } } }",
+            "reviews(states: [CHANGES_REQUESTED]) { totalCount }",
+        ] {
+            assert!(ENRICH_FRAGMENT.contains(field), "{field}");
+        }
     }
 
     #[test]

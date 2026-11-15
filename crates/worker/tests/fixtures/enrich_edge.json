@@ -15,6 +15,15 @@
         "mergedAt": null,
         "headRefName": "feature/41",
         "reviewDecision": "REVIEW_REQUIRED",
+        "additions": 10,
+        "deletions": 2,
+        "changedFiles": 1,
+        "closingIssuesReferences": {
+          "nodes": []
+        },
+        "reviews": {
+          "totalCount": 0
+        },
         "author": null,
         "assignees": {
           "nodes": []

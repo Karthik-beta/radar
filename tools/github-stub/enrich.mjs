@@ -12,6 +12,24 @@ function wholeSeconds(value) {
   return value;
 }
 
+// The R26 fact fields. A scenario that leaves them out gets a small pull request with no closing issues, and
+// `reviews.totalCount` counts its CHANGES_REQUESTED reviews in the timeline and latest reviews.
+export function withFactFields(node) {
+  if (!node || node.__typename !== "PullRequest") return node;
+  const reviews = [...(node.timelineItems?.nodes ?? []), ...(node.latestReviews?.nodes ?? [])].filter(
+    (n) => n && n.state === "CHANGES_REQUESTED",
+  );
+  const changesRequested = new Set(reviews.map((n) => n.id)).size;
+  return {
+    additions: 10,
+    deletions: 2,
+    changedFiles: 1,
+    closingIssuesReferences: { nodes: [] },
+    reviews: { totalCount: changesRequested },
+    ...node,
+  };
+}
+
 function aliasCount(variables) {
   let count = 0;
   while (`o${count}` in variables) count += 1;
@@ -38,7 +56,7 @@ export function answerEnrich(scenario, variables) {
         message: `Could not resolve to an issue or pull request for ${key}.`,
       });
     } else {
-      data[alias] = { issueOrPullRequest: wholeSeconds(items[key]) };
+      data[alias] = { issueOrPullRequest: wholeSeconds(withFactFields(items[key])) };
     }
   }
   const { remaining, reset } = scenario.rate;

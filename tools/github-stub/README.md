@@ -188,6 +188,15 @@ Boot one with `--scenario generated/<kind>` after saving its output under `scena
 | `feed-old` | Three pull requests whose events are 200, 190, and 170 days old, for the nightly rollup. |
 | `feed-many` | 100 pull requests of 20 events each, 2,000 events. |
 
+## Fact scenarios
+
+`node tools/github-stub/scenarios/make.mjs facts-live > tools/github-stub/scenarios/facts-live.json` writes the R26 scenario, and `facts-live-turn` writes its second step. Every pull request the stub answers carries `additions`, `deletions`, `changedFiles`, `closingIssuesReferences`, and `reviews(states: [CHANGES_REQUESTED]) { totalCount }`, with defaults when a scenario leaves them out.
+
+| Scenario | What it holds |
+| --- | --- |
+| `facts-live` | Eight pull requests of mine in `octo/widgets` and `karthik/radar`, one on an `agent/` branch, two closing issues, an issue I opened, and someone else's pull request that I reviewed. |
+| `facts-live-turn` | `facts-live` after a maintainer answers on #305, so its turn moves to me while it stays in awaiting review. |
+
 ## Tests
 
 `node --test "tools/**/*.test.mjs"`
