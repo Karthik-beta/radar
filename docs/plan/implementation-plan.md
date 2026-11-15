@@ -1998,7 +1998,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Files.**
 
-- [ ] Create `migrations/0011_contribution_facts.sql`. It creates `pr_facts`, `review_facts`, `pr_transitions`, `pr_issue_links`, and `own_events` as ADR 0010 lists them, all `STRICT`, with an index on each time column the Stats page filters by. It adds `owned_by_me`, `stars`, `primary_language`, and `meta_refreshed_at` to `repos`, and `utc_offset_minutes INTEGER NOT NULL DEFAULT 0 CHECK (utc_offset_minutes BETWEEN -720 AND 840)` and `goal_merged_per_month INTEGER CHECK (goal_merged_per_month IS NULL OR goal_merged_per_month > 0)` to `settings`. `own_events` copies the column list and CHECKs of `events`.
+- [ ] Create `migrations/0011_contribution_facts.sql`. It creates `pr_facts`, `review_facts`, `pr_transitions`, `pr_issue_links`, and `own_events` as ADR 0010 lists them, all `STRICT`, with an index on each time column the Stats page filters by. It adds `owned_by_me`, `stars`, `primary_language`, and `meta_refreshed_at` to `repos`, and `utc_offset_minutes INTEGER NOT NULL DEFAULT 0 CHECK (utc_offset_minutes BETWEEN -720 AND 840)` and `goal_merged_per_month INTEGER CHECK (goal_merged_per_month IS NULL OR goal_merged_per_month > 0)` to `settings`. `own_events` copies the column list and CHECKs of `events`. It also creates a one-row `import_state` table with `facts_imported_at INTEGER` and `account_created_at INTEGER`, both nullable, so the Stats API can read the import state from D1.
 - [ ] Create `crates/domain/src/facts.rs` and export it from `crates/domain/src/lib.rs`.
 - [ ] Create `crates/worker/src/db/facts.rs` and register it in `crates/worker/src/db/mod.rs`.
 - [ ] Edit `crates/worker/src/github/enrich_query.rs` and `crates/worker/src/github/enrich_response.rs` to read `additions`, `deletions`, `changedFiles`, `closingIssuesReferences(first: 5) { nodes { number repository { nameWithOwner } } }`, and `reviews(states: [CHANGES_REQUESTED]) { totalCount }` on pull requests.
@@ -2011,11 +2011,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 - [ ] Name the data shapes first. `PrFact { node_id, repo, external: bool, number, created_at, merged_at: Option<Time>, closed_at: Option<Time>, first_response_at: Option<Time>, first_response_login: Option<Login>, changes_requested_rounds: u32, ci_failures: u32, additions: u32, deletions: u32, changed_files: u32, agent: bool, source: FactSource }`, where `FactSource` is an enum with `Live` and `Imported`. `ReviewFact { review_id, repo, external, pr_number, pr_author_login, state: ReviewState, submitted_at, source }`. `Transition { item_node_id, stage: Stage, turn: Turn, at }`. `IssueLink { pr_node_id, issue_repo, issue_number, issue_authored_by_me, issue_commented_by_me }`. Put them in `crates/domain/src/facts.rs`.
 - [ ] Write `is_external(repo, my_login) -> bool` as one rule that every fact uses. A repo is external when its owner login, the part of `repo` before the slash, is not my login, compared without case.
-- [ ] Write `pr_fact(item, enriched, events, my_login) -> Option<PrFact>` as a pure function. It returns `None` for a pull request I did not author. It takes the first response from R21's `first_response` in `crates/domain/src/repo_stats.rs`, counts `ci_failed` events into `ci_failures`, takes `changes_requested_rounds` from the review `totalCount`, and sets `agent` when the head ref starts with `agent/`.
+- [ ] Write `pr_fact(item, enriched, events, my_login) -> Option<PrFact>` as a pure function. It returns `None` for a pull request I did not author. It takes the first response from R21's `first_response` in `crates/domain/src/repo_stats.rs`, counts `ci_failed` events for the pull request in `events` and `own_events` together into `ci_failures`, takes `changes_requested_rounds` from the review `totalCount`, and sets `agent` when the head ref starts with `agent/`.
 - [ ] Write `transition(previous: Option<(Stage, Turn)>, next: (Stage, Turn), at) -> Option<Transition>`. It returns a row when the stage or the turn changed, and for the first sight of a pull request.
 - [ ] Write `issue_links(pr, closing, items, events) -> Vec<IssueLink>`. It sets `issue_authored_by_me` from `items` and `issue_commented_by_me` from a `commented` event by me on that issue, as far as Radar knows at write time. Each enrich of the pull request refreshes the row.
-- [ ] Enrich writes `pr_facts`, `pr_issue_links`, `pr_transitions`, and `review_facts` in the same D1 batch as its item upsert. Each table takes one `json_each` statement per batch, as `INSERT_MANY` does, so a batch stays a fixed number of D1 calls. `pr_facts` and `pr_issue_links` upsert on their keys. `pr_transitions` only inserts. `review_facts` upserts a `reviewed` timeline node by me, keyed by the review's node ID, with `source = 'live'`, and a live row replaces an imported one.
-- [ ] The rollup batch for a week runs `INSERT INTO own_events SELECT * FROM events WHERE actor_is_me = 1 AND occurred_at >= ?1 AND occurred_at < ?2 ON CONFLICT (id) DO NOTHING` before the optional upsert and `DELETE_WEEK`, all in one D1 batch.
+- [ ] Enrich writes `pr_facts`, `pr_issue_links`, `pr_transitions`, and `review_facts` in the same D1 batch as its item upsert. Each table takes one `json_each` statement per batch, as `INSERT_MANY` does, so a batch stays a fixed number of D1 calls. `pr_facts` and `pr_issue_links` upsert on their keys, and the `pr_facts` upsert keeps `MAX(ci_failures, excluded.ci_failures)` so a count never drops. `pr_transitions` only inserts. `review_facts` upserts a `reviewed` timeline node by me, keyed by the review's node ID, with `source = 'live'`, and a live row replaces an imported one.
+- [ ] The rollup batch for a week runs `INSERT INTO own_events SELECT * FROM events WHERE (actor_is_me = 1 OR (kind = 'ci_failed' AND item_node_id IN (SELECT node_id FROM items WHERE kind = 'pr' AND authored_by_me = 1))) AND occurred_at >= ?1 AND occurred_at < ?2 ON CONFLICT (id) DO NOTHING` before the optional upsert and `DELETE_WEEK`, all in one D1 batch. `ci_failed` rows carry no actor, so they need the second condition. Every reader of my own actions, such as S8, filters `own_events` on `actor_is_me = 1`.
 - [ ] `INSERT` and `INSERT_MANY` in `crates/worker/src/db/events.rs` gain `AND NOT EXISTS (SELECT 1 FROM own_events WHERE own_events.id = <the row's id>)`, so an event that comes back after its week was folded is dropped.
 - [ ] No fact table stores a title, a body, or comment text (N5). Every new GraphQL field is read by a `query` (N2).
 
@@ -2030,7 +2030,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 - [ ] `is_external` is false for `karthik/radar` and `Karthik/x` with login `karthik`, and true for `rust-lang/rust` and for an organisation repo. `pr_fact` returns `None` for a pull request by someone else and sets `agent` only for `agent/` heads. Run `cargo test -p domain facts`.
 - [ ] `transition` returns `None` when stage and turn are unchanged, a row when only the turn changes, a row when only the stage changes, and a row for the first sight. Run `cargo test -p domain facts`.
-- [ ] `db/facts.rs` gains `enrich_batch_writes_one_statement_per_table`, `a_live_review_replaces_an_imported_one`, and `transitions_only_insert`. `db/rollups.rs` gains `fold_copies_my_events_before_the_delete` and `fold_keeps_no_other_events`. `db/events.rs` gains `an_event_already_in_own_events_is_skipped` and `a_late_event_with_a_new_id_lands`. Run `cargo test -p radar-worker facts rollup events`.
+- [ ] `db/facts.rs` gains `enrich_batch_writes_one_statement_per_table`, `a_live_review_replaces_an_imported_one`, and `transitions_only_insert`. `db/facts.rs` also gains `ci_failures_never_drop_after_a_rollup`. `db/rollups.rs` gains `fold_copies_my_events_before_the_delete`, `fold_copies_ci_failures_on_my_prs`, and `fold_keeps_no_other_events`. `db/events.rs` gains `an_event_already_in_own_events_is_skipped` and `a_late_event_with_a_new_id_lands`. Run `cargo test -p radar-worker facts`, `cargo test -p radar-worker rollup`, and `cargo test -p radar-worker events`, one filter each.
 - [ ] Migration `0011` applies on top of `0010` in `memory_db`, and every existing test still passes. Run `cargo test --workspace`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
@@ -2078,10 +2078,10 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 - [ ] Name the data shapes first. `ImportKey` is an enum with `SearchRange { from: Date, to: Date, after: Option<Cursor> }`, `Timeline { pr: NodeId, after: Cursor }`, `ReviewedPrs { year: i32, after: Option<Cursor> }`, and `Reviews { prs: Vec<NodeId>, after: Option<Cursor> }`. Put it in `crates/worker/src/sync/work.rs` next to `HistoryKey`.
 - [ ] Store each `ImportFacts` unit as a `backfill_page` row under an `import.` key, and each `RefreshRepos` unit under a `repos.` key, as `SeedHistory` uses `seed.`. The deployed Syncer's `work` table keeps its old `kind` CHECK, so no new `kind` value is allowed. Both share `backfill_page`'s rate gate, freshness, and dead-row revival.
-- [ ] While `facts_imported_at` is unset, the nightly kick reads my `createdAt` once and enqueues one `SearchRange` from January 1 to December 31 and one `ReviewedPrs` for each year from my account's first year to this year.
+- [ ] While `facts_imported_at` is unset and no `import.` row is in `work`, the nightly kick reads my `createdAt` once, stores it in `import_state.account_created_at`, and enqueues one `SearchRange` from January 1 to December 31 and one `ReviewedPrs` for each year from my account's first year to this year.
 - [ ] A `SearchRange` unit runs `search(type: ISSUE, query: "is:pr author:<login> created:<from>..<to>", first: 50)`. When `issueCount` is over 1,000, it enqueues the two halves of the range by date and writes nothing. Otherwise it writes one `pr_facts` row per node with `source = 'imported'` and `ON CONFLICT DO NOTHING`, plus `pr_issue_links`, and upserts each repository's owner, stars, and language. A node with no human response on its first 20 timeline items enqueues a `Timeline` unit. A next page enqueues the same range with `after`.
 - [ ] A `ReviewedPrs` unit reads `contributionsCollection(from, to) { pullRequestReviewContributions(first: 100) }` only to collect pull request IDs, enqueues `Reviews` units of up to 50 IDs, and enqueues its own next page with `after`. A `Reviews` unit reads `nodes(ids: [...]) { ... on PullRequest { reviews(author: <login>, first: 100) } }` and writes one `review_facts` row per review with `source = 'imported'`. A pull request with more reviews pages on in a follow-up unit.
-- [ ] After each unit, the Syncer sets `facts_imported_at` only when no `import.` row remains in `work`. A dead `import.` row blocks the marker and shows on the freshness panel, as other dead rows do (N9).
+- [ ] After each unit, the Syncer sets `facts_imported_at` in its storage and in `import_state` only when no `import.` row remains in `work`. A dead `import.` row blocks the marker and shows on the freshness panel, as other dead rows do (N9).
 - [ ] Once per week, the nightly kick enqueues `RefreshRepos` units for every repo in `repos`, 50 to a `nodes` query in `repo_meta.graphql`, setting `stars`, `primary_language`, `owned_by_me`, and `meta_refreshed_at`. `repos_refreshed_week` stops a second run in the same week.
 - [ ] Every unit makes one GraphQL request, passes R06's `every_registered_document_is_a_query` test, and respects R08's rate-limit gate and the 500 calls an hour cap. If one alarm passes 7 ms of CPU, the page size drops from 50 to 25.
 
@@ -2094,7 +2094,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `sync/import.rs` gains `over_limit_range_splits_in_two`, `split_ranges_cover_the_year_without_overlap`, `one_range_and_one_reviewed_list_per_year`, `marker_waits_for_every_import_row`, and `a_second_night_enqueues_nothing`. Run `cargo test -p radar-worker import`.
+- [ ] `sync/import.rs` gains `over_limit_range_splits_in_two`, `split_ranges_cover_the_year_without_overlap`, `one_range_and_one_reviewed_list_per_year`, `marker_waits_for_every_import_row`, `no_enqueue_while_an_import_row_remains`, and `a_second_night_enqueues_nothing`. Run `cargo test -p radar-worker import`.
 - [ ] `timeline_pages_until_a_human_answers` and `three_reviews_on_one_pr_make_three_rows` pass. Run `cargo test -p radar-worker import`.
 - [ ] `import.` and `repos.` keys round-trip through `Columns` as `backfill_page` rows. Run `cargo test -p radar-worker work`.
 - [ ] Every new document passes R06's `every_registered_document_is_a_query`. `tools/github-stub/import.test.mjs` passes with `node --test "tools/github-stub/*.test.mjs"`.
@@ -2151,7 +2151,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] S6 (Waiting). The median time in each stage from consecutive `pr_transitions` rows, and the total days on each side from the `turn` of those rows. An open pull request counts up to now. A pull request with no transitions is left out, so imported history never counts.
 - [ ] S7 (Shape). Merge rate by lines changed in buckets under 50, 50 to 199, 200 to 499, and 500 or more, and the count of issues I opened or commented on that a merged pull request of mine closed.
 - [ ] S8 (Habits). A 7 by 24 grid of my events from `events` and `own_events`, shifted by `utc_offset_minutes`. Goal progress is merged this month against `goal_merged_per_month`. Milestones are a first merge in a new repo, the 50th and 100th merged pull request, and a first merge into a repo with 1,000 or more stars, each with its date.
-- [ ] `YearOverYear` gives each month of this year next to the same month of last year. `yoy_ready` is true when the earliest `pr_facts` row is on or before January 1 of last year. Stage times, turn times, CI failures, and habits carry a flag when last year's months hold no data for them, as ADR 0010 says.
+- [ ] `YearOverYear` gives each month of this year next to the same month of last year. `yoy_ready` is true when `import_state.facts_imported_at` is set and `import_state.account_created_at` is before January 1 of this year, as ADR 0010 says year over year works once the import finishes. Stage times, turn times, CI failures, and habits carry a flag when last year's months hold no data for them, as ADR 0010 says.
 - [ ] Write `GET /api/stats?period=12m&grain=week`, `grain=month`, or `period=yoy`. It requires a session, answers any other value with `400`, and reads D1 only, in one batch of indexed selects (N7).
 - [ ] Each section is a pure function from rows to its struct, tested on its own. `db/stats.rs` only selects rows.
 
@@ -2159,12 +2159,12 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 - [ ] The UI is unchanged. The page arrives in R29.
 - [ ] `curl -b jar.txt /api/stats?period=12m&grain=month` returns all eight sections with the totals the fixture names.
-- [ ] `period=yoy` on a database with one year of facts returns `yoy_ready: false`.
+- [ ] `period=yoy` returns `yoy_ready: false` until `import_state.facts_imported_at` is set.
 - [ ] Empty sections return `null` values, never `0` rates or `NaN`.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Each section module has tests for an empty input, one item, an own repo that is left out, an open pull request that is not a failure, and a week and month boundary. Run `cargo test -p domain stats`.
+- [ ] Each section module has tests for an empty input, one item, an open pull request that is not a failure, and a week and month boundary. Every external-only section leaves out an own repo, and S2 keeps own repos on their own side of its comparison. Run `cargo test -p domain stats`.
 - [ ] `percentile` returns `None` for an empty list and the nearest-rank value for 1, 2, 4, and 9 items. Monthly groups mark a month younger than 30 days unfinished. Run `cargo test -p domain stats`.
 - [ ] S6 counts a turn-only change and an open pull request up to `now`, and leaves out imported pull requests. S8 places an event at 23:30 UTC in the next day's column for `utc_offset_minutes = 60`. Run `cargo test -p domain stats`.
 - [ ] `api/stats.rs` answers `401` with no session, `400` for `period=all`, and one D1 batch per request. `scripts/gen-stats-fixture.test.mjs` passes. Run `cargo test -p radar-worker stats` and `node --test "scripts/*.test.mjs"`.
@@ -2174,12 +2174,12 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] Lane 1. Regression lane against trunk. Sign in on `basic` at trunk and head and open every view. Save `stats-api-regression.png`. Pass when every view and `/api/dashboard` match at both SHAs and only head answers `/api/stats`.
 - [ ] Lane 2. Session and parameters. Run `curl -i` on `/api/stats` with no cookie, then with a session and `period=12m&grain=week`, `grain=month`, `period=yoy`, and `period=all`. Save `stats-api-params.png`. Pass when the answers are `401`, `200`, `200`, `200`, and `400`.
 - [ ] Lane 3. S1 against SQL. Load the fixture. Save `stats-api-lands.png`. Pass when merge rate, median, and 75th percentile equal values computed by hand from `select` queries on `pr_facts`.
-- [ ] Lane 4. S2 and S3. Save `stats-api-reviews-trust.png`. Pass when review counts by state, new repos, repeat repos, and star merges equal `select` counts, and own repos are absent.
+- [ ] Lane 4. S2 and S3. Save `stats-api-reviews-trust.png`. Pass when review counts by state, new repos, repeat repos, and star merges equal `select` counts, own repos are absent from S3, and S2's external and own review counts each equal their `select` count.
 - [ ] Lane 5. S4 and S7. Save `stats-api-agents-shape.png`. Pass when the agent and other splits and the four size buckets sum to the S1 totals.
 - [ ] Lane 6. S5 matches Trends. Save `stats-api-output.png`. Pass when weekly opened and merged in S5 equal `/api/trends` for every shared week.
 - [ ] Lane 7. S6. Save `stats-api-waiting.png`. Pass when the stage medians and the days on each side equal values computed from `pr_transitions` by hand for three named pull requests.
 - [ ] Lane 8. S8. Set `utc_offset_minutes` to 330 with `wrangler d1 execute`. Save `stats-api-habits.png`. Pass when the grid sums to the count of my events and each cell equals a shifted `select` count, and goal progress appears only after `goal_merged_per_month` is set.
-- [ ] Lane 9. Year over year. Load one year of facts, then two. Save `stats-api-yoy.png`. Pass when `yoy_ready` is false, then true, and each month pair equals `select` counts for both years.
+- [ ] Lane 9. Year over year. Load the fixture with `import_state.facts_imported_at` unset, then set it. Save `stats-api-yoy.png`. Pass when `yoy_ready` is false, then true, and each month pair equals `select` counts for both years.
 - [ ] Lane 10. Empty database. On a fresh `--persist-to` directory, call every period. Save `stats-api-empty.png`. Pass when every rate is `null`, every count is 0, and the JSON has no `NaN`.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
@@ -2212,7 +2212,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Build.**
 
-- [ ] Fetch `/api/stats` once per period change, and keep the last answer per period in memory, so switching back is instant.
+- [ ] Fetch `/api/stats` on each period change. Keep the last answer per period in memory and paint it at once when switching back, then revalidate with one request and replace the sections when the answer differs, so a sync never leaves the page stale.
 - [ ] Open with a summary line at the title size, such as "31 merged in 12 months across 9 repos, 74 percent merge rate". Write "Nothing merged yet." when the totals are 0.
 - [ ] Put the period switch at the top, with Last 12 months (weekly or monthly) and This year vs last year. Show the second only when `yoy_ready` is true, and otherwise one grey line that says when it unlocks.
 - [ ] Draw the sections in F14 order, S1 to S8, each with a heading, its numbers, and at most two charts. Draw lines with `lines.rs`, the rankings, stage medians, and size buckets with `hbars.rs`, the habits grid with `grid.rs`, and the output bars and heatmap with the existing charts.
@@ -2233,14 +2233,14 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 - [ ] `lines.rs`, `grid.rs`, and `hbars.rs` render the right number of marks for empty, one, and many points, and scale with `nice_max`. Run `cargo test -p web charts`.
 - [ ] The summary line and the dash text cover zero, one, and many, and `null` rates. Run `cargo test -p web stats`.
-- [ ] `tabs.rs` tests list `Stats` in the More group, and `route.rs` sends `/trends` and `/stats` to the same view. Run `cargo test -p web tabs route`.
+- [ ] `tabs.rs` tests list `Stats` in the More group, and `route.rs` sends `/trends` and `/stats` to the same view. Run `cargo test -p web tabs` and `cargo test -p web route`, one filter each.
 - [ ] Removing `api/trends.rs` leaves every other route test passing. Run `cargo test --workspace`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
 - [ ] Lane 1. Regression lane against trunk. Open Your turn, Their turn, Pipeline, Feed, Repos, and Agents at trunk and head on `basic`. Save `stats-regression.png`. Pass when those views match and only Trends became Stats.
 - [ ] Lane 2. Happy path. Load the two-year fixture from R28 and open Stats. Save `stats-basic.png`. Pass when every section shows numbers equal to `/api/stats` for the default period.
-- [ ] Lane 3. Period switch. Switch weekly, monthly, and year over year. Save `stats-periods.png`. Pass when each switch updates every section, a second visit to a period sends no new request, and the URL keeps the period.
+- [ ] Lane 3. Period switch. Switch weekly, monthly, and year over year. Save `stats-periods.png`. Pass when each switch updates every section, a second visit to a period paints from memory before its one revalidating request, a fact changed in D1 between visits shows after that request, and the URL keeps the period.
 - [ ] Lane 4. Year over year locked. Load one year of facts. Save `stats-yoy-locked.png`. Pass when the year over year choice is absent and the grey unlock line names the date.
 - [ ] Lane 5. Empty state. On a fresh `--persist-to` directory, open Stats. Save `stats-empty.png`. Pass when the summary reads "Nothing merged yet.", every rate shows a dash with a reason, and the page text has no `NaN`, `undefined`, or `null`.
 - [ ] Lane 6. Old links. Open `/trends` directly and from history. Save `stats-trends-link.png`. Pass when both show Stats with the Stats tab current.

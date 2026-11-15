@@ -18,7 +18,8 @@ Radar keeps one row per contribution fact, for good, in new D1 tables. Raw event
 | `review_facts` | Review I submitted, keyed by review node ID | `repo`, `external`, `pr_number`, `pr_author_login`, `state`, `submitted_at`, `source` |
 | `pr_transitions` | Change of stage or turn on a PR I authored | `item_node_id`, `stage`, `turn`, `at` |
 | `pr_issue_links` | Issue a PR of mine closes | `pr_node_id`, `issue_repo`, `issue_number`, `issue_authored_by_me`, `issue_commented_by_me` |
-| `own_events` | Event by me that the weekly rollup folded, keyed by the `events` ID | the `events` columns |
+| `own_events` | Event by me, or `ci_failed` event on a PR I authored, that the weekly rollup folded, keyed by the `events` ID. `ci_failed` rows carry no actor, so readers of my own actions filter on `actor_is_me = 1` | the `events` columns |
+| `import_state` | One row | `facts_imported_at`, `account_created_at`, so D1 readers know when the import finished |
 
 `first_response_at` is the first review or comment by a human who is not me, after the PR opened, as R19's `first_response` rule defines it. `changes_requested_rounds` counts reviews with state `changes_requested`.
 
