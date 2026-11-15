@@ -557,16 +557,19 @@ fn three_reviews_on_one_pr_make_three_rows() {
 #[test]
 fn refresh_matches_repos_by_node_id_and_owns_mine_whatever_the_case() {
     let stored = vec![
-        (repo("Karthik/radar"), "R_1".to_owned()),
-        (repo("octo/widgets"), "R_2".to_owned()),
+        (repo("Karthik/radar"), Some("R_1".to_owned())),
+        (repo("octo/widgets"), Some("R_2".to_owned())),
     ];
-    let nodes: Vec<Option<Node>> = parse(json!([
+    let data: Node = parse(json!({ "nodes": [
         { "id": "R_2", "nameWithOwner": "octo/widgets", "stargazerCount": 7, "primaryLanguage": null },
         { "id": "R_1", "nameWithOwner": "karthik/radar", "stargazerCount": 3, "primaryLanguage": { "name": "Rust" } },
         { "id": "R_9", "nameWithOwner": "x/y", "stargazerCount": 1, "primaryLanguage": null },
         null,
-    ]));
-    let metas = plan_refresh(&stored, &nodes, &me(), NOW);
+    ] }));
+    let (taken, vars) = refresh_request(&stored);
+    assert_eq!((taken, vars["byName"].as_bool()), (2, Some(false)));
+    assert_eq!(vars["ids"], json!(["R_1", "R_2"]));
+    let metas = plan_refresh(&stored, &data, &me(), NOW);
     assert_eq!(metas.len(), 2);
     assert_eq!(metas[0].full_name, repo("octo/widgets"));
     assert!(!metas[0].owned_by_me && metas[0].primary_language.is_none());
@@ -640,4 +643,111 @@ fn a_response_missing_a_field_its_unit_needs_is_retried_not_stored() {
     };
     assert!(plan_unit(&range, &page, &me(), NOW).is_err());
     assert!(plan_unit(&range, &Node::default(), &me(), NOW).is_err());
+}
+
+#[test]
+fn a_repo_without_a_node_id_is_refreshed_by_name_and_keeps_its_id() {
+    let stored = vec![
+        (repo("octo/legacy"), None),
+        (repo("octo/widgets"), Some("R_2".to_owned())),
+    ];
+    let (taken, vars) = refresh_request(&stored);
+    assert_eq!(taken, 2);
+    assert_eq!(vars["q"], "repo:octo/legacy");
+    assert_eq!(vars["byName"], true);
+    assert_eq!(vars["ids"], json!(["R_2"]));
+    let data: Node = parse(json!({
+        "nodes": [{ "id": "R_2", "nameWithOwner": "octo/widgets", "stargazerCount": 7, "primaryLanguage": null }],
+        "search": { "nodes": [
+            { "id": "R_legacy", "nameWithOwner": "Octo/Legacy", "stargazerCount": 4, "primaryLanguage": { "name": "Go" } },
+            { "id": "R_other", "nameWithOwner": "octo/widgets", "stargazerCount": 99, "primaryLanguage": null },
+        ] },
+    }));
+    let metas = plan_refresh(&stored, &data, &me(), NOW);
+    assert_eq!(
+        metas.len(),
+        2,
+        "the search cannot overwrite a repo matched by node ID"
+    );
+    let legacy = metas
+        .iter()
+        .find(|m| m.full_name == repo("octo/legacy"))
+        .expect("legacy");
+    assert_eq!(legacy.node_id, "R_legacy");
+    assert_eq!(legacy.primary_language.as_deref(), Some("Go"));
+
+    let conn = memory_db();
+    conn.execute(
+        "INSERT INTO repos (full_name, open_prs, merged_prs, closed_prs, updated_at) \
+         VALUES ('octo/legacy', 1, 0, 0, 5)",
+        [],
+    )
+    .expect("a repo card row with no node id");
+    exec(&conn, &repos::upsert_meta(&metas)).expect("refresh");
+    let rows = query_json(
+        &conn,
+        "SELECT node_id, stars, open_prs FROM repos WHERE full_name = 'octo/legacy'",
+        &[],
+    );
+    assert_eq!(rows[0]["node_id"], "R_legacy");
+    assert_eq!(rows[0]["stars"], 4);
+    assert_eq!(rows[0]["open_prs"], 1);
+}
+
+#[test]
+fn repos_without_a_node_id_fill_one_search_of_256_characters_and_the_page_ends_there() {
+    let stored: Vec<(RepoName, Option<String>)> = (0..IMPORT_PAGE)
+        .map(|n| (repo(&format!("some-owner/repository-number-{n:02}")), None))
+        .collect();
+    let (taken, vars) = refresh_request(&stored);
+    let q = vars["q"].as_str().expect("query");
+    assert!(q.len() <= 256, "{}", q.len());
+    assert!(taken > 0 && taken < IMPORT_PAGE);
+    assert_eq!(q.matches("repo:").count(), taken);
+    let next = format!("repo:{} ", stored[taken].0);
+    assert!(
+        q.len() + 1 + next.len() > 257,
+        "the next repo would not fit"
+    );
+}
+
+#[test]
+fn a_bad_timeline_cursor_fails_the_search_page_so_it_retries() {
+    let no_cursor = json!({
+        "nodes": [entry("karthik", "User", "2025-03-01T11:00:00Z", None)],
+        "pageInfo": { "endCursor": null, "hasNextPage": true },
+    });
+    let page = search(1, vec![pr_node("PR_1", "octo/widgets", no_cursor)], None);
+    let (from, to) = (day("2025-01-01"), day("2025-12-31"));
+    assert!(plan_range(from, to, None, &page, &me(), NOW).is_err());
+    let no_page_info = json!({ "nodes": [] });
+    let page = search(1, vec![pr_node("PR_1", "octo/widgets", no_page_info)], None);
+    assert!(plan_range(from, to, None, &page, &me(), NOW).is_err());
+    let clean_end = json!({ "nodes": [], "pageInfo": page_info(None) });
+    let page = search(1, vec![pr_node("PR_1", "octo/widgets", clean_end)], None);
+    let plan = plan_range(from, to, None, &page, &me(), NOW).expect("a clean end");
+    assert!(plan.follow_ups.is_empty());
+}
+
+#[test]
+fn a_bad_review_cursor_fails_the_reviews_unit_so_it_retries() {
+    let pr = |page: serde_json::Value| {
+        json!({ "nodes": [{
+            "id": "PR_r",
+            "number": 4,
+            "repository": { "nameWithOwner": "octo/widgets" },
+            "author": { "__typename": "User", "login": "bob" },
+            "reviews": { "nodes": [
+                { "id": "PRR_1", "state": "APPROVED", "createdAt": "2025-01-01T00:00:00Z", "submittedAt": null },
+            ], "pageInfo": page },
+        }] })
+    };
+    let repeated: Node = parse(pr(json!({ "endCursor": "cnY6MTAw", "hasNextPage": true })));
+    assert!(plan_reviews(&repeated.nodes, Some("cnY6MTAw"), &me()).is_err());
+    let missing: Node = parse(pr(json!({ "endCursor": null, "hasNextPage": true })));
+    assert!(plan_reviews(&missing.nodes, None, &me()).is_err());
+    let next: Node = parse(pr(json!({ "endCursor": "cnY6MTAw", "hasNextPage": true })));
+    let (rows, follow_ups) = plan_reviews(&next.nodes, None, &me()).expect("a usable cursor");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(follow_ups.len(), 1);
 }

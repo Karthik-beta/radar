@@ -114,6 +114,36 @@ test("RepoMeta answers repos by node id and null for an unknown one", () => {
   assert.equal(body.data.nodes[1], null);
 });
 
+test("RepoMeta searches repos by name when byName is set", () => {
+  const { body } = answerRepoMeta(scenario, { ids: ["R_radar"], q: "repo:Octo/Widgets repo:nobody/none", byName: true });
+  assert.equal(body.data.nodes[0].id, "R_radar");
+  assert.deepEqual(body.data.search.nodes.map((n) => n.id), ["R_widgets"]);
+  assert.equal(answerRepoMeta(scenario, { ids: [], q: "", byName: false }).body.data.search, undefined);
+});
+
+test("a pending review does not move a reviewed pull request out of its year", () => {
+  const withPending = {
+    ...scenario,
+    import: {
+      reviewed: [
+        {
+          id: "PR_mixed",
+          repo: "octo/widgets",
+          number: 9,
+          author: "bob",
+          reviews: [
+            { id: "PRR_done", state: "APPROVED", submitted_at: "2025-06-01T10:00:00Z" },
+            { id: "PRR_wip", state: "PENDING", submitted_at: null },
+          ],
+        },
+      ],
+    },
+  };
+  const nodes = answerImportReviewedPrs(withPending, { from: "2025-01-01T00:00:00Z", to: "2025-12-31T23:59:59Z", after: null })
+    .body.data.viewer.contributionsCollection.pullRequestReviewContributions.nodes;
+  assert.deepEqual(nodes, [{ pullRequest: { id: "PR_mixed" } }]);
+});
+
 test("a bad cursor is a GraphQL error", () => {
   const { body } = answerImportPrs(scenario, { q: q("2025-01-01", "2025-12-31"), first: 50, after: "nope" });
   assert.ok(body.errors);

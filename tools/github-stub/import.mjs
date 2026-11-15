@@ -221,8 +221,10 @@ export function answerImportTimeline(scenario, variables) {
   };
 }
 
+// The latest submitted review dates the contribution. A pending review has no `submitted_at`.
 function latestReview(pr) {
-  return Math.max(...pr.reviews.map((r) => Date.parse(r.submitted_at)));
+  const submitted = pr.reviews.filter((r) => r.submitted_at).map((r) => Date.parse(r.submitted_at));
+  return submitted.length ? Math.max(...submitted) : NaN;
 }
 
 export function answerImportReviewedPrs(scenario, variables) {
@@ -288,11 +290,21 @@ export function answerImportReviews(scenario, variables) {
   return { count, body: { data: { nodes, rateLimit: rateLimit(scenario) } } };
 }
 
+// `ids` answer through `nodes`. When `byName` is true, `q` holds `repo:owner/name` qualifiers and the
+// matching repos answer through `search`, as a repository search does.
 export function answerRepoMeta(scenario, variables) {
   const model = importModel(scenario);
   const byId = new Map(Object.keys(model.repos).map((name) => [repoNode(model, name).id, name]));
   const nodes = (variables?.ids ?? []).map((id) => (byId.has(id) ? repoNode(model, byId.get(id)) : null));
-  return { count: nodes.filter(Boolean).length, body: { data: { nodes, rateLimit: rateLimit(scenario) } } };
+  const data = { nodes, rateLimit: rateLimit(scenario) };
+  let count = nodes.filter(Boolean).length;
+  if (variables?.byName) {
+    const wanted = [...String(variables.q ?? "").matchAll(/repo:(\S+)/g)].map((m) => m[1].toLowerCase());
+    const found = Object.keys(model.repos).filter((name) => wanted.includes(name.toLowerCase()));
+    data.search = { nodes: found.map((name) => repoNode(model, name)) };
+    count += found.length;
+  }
+  return { count, body: { data } };
 }
 
 export const IMPORT_ANSWERS = {

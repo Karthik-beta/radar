@@ -28,7 +28,7 @@ const UPSERT_META: &str = "INSERT INTO repos (full_name, open_prs, merged_prs, c
      meta_refreshed_at = excluded.meta_refreshed_at";
 
 const PAGE: &str = "SELECT full_name, node_id FROM repos \
-     WHERE node_id IS NOT NULL AND full_name > ?1 ORDER BY full_name LIMIT ?2";
+     WHERE full_name > ?1 ORDER BY full_name LIMIT ?2";
 
 /// What the import or the weekly refresh learned about one repo.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,7 +71,8 @@ pub fn upsert_meta(rows: &[RepoMeta]) -> Statement {
     }
 }
 
-/// Up to `limit` repos with a node ID, in name order, after `after`.
+/// Up to `limit` repos in name order after `after`. A repo that never came
+/// through the import has no node ID yet.
 pub fn page(after: Option<&RepoName>, limit: usize) -> Statement {
     Statement {
         sql: PAGE,
@@ -85,7 +86,7 @@ pub fn page(after: Option<&RepoName>, limit: usize) -> Statement {
 #[derive(Debug, Deserialize)]
 pub struct RepoIdRecord {
     pub full_name: String,
-    pub node_id: String,
+    pub node_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -196,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn a_page_holds_repos_with_a_node_id_after_the_last_name() {
+    fn a_page_holds_repos_after_the_last_name_with_or_without_a_node_id() {
         let conn = memory_db();
         exec(&conn, &upsert(&repo(2, 2000)).expect("stmt")).expect("no node id");
         let names = ["a/one", "b/two", "c/three"];
@@ -209,8 +210,10 @@ mod tests {
         let after = RepoName::parse("b/two").expect("repo");
         let next = page(Some(&after), 2);
         let got = query_json(&conn, next.sql, &next.params);
-        assert_eq!(got.len(), 1);
+        assert_eq!(got.len(), 2);
         assert_eq!(got[0]["full_name"], "c/three");
+        assert_eq!(got[1]["full_name"], "karthik-beta/radar");
+        assert!(got[1]["node_id"].is_null());
     }
 
     #[test]

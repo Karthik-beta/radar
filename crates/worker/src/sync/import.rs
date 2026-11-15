@@ -39,6 +39,8 @@ use crate::github::{Client, GithubError, QueryDoc};
 /// GitHub's search returns at most this many results for one query.
 const SEARCH_LIMIT: u32 = 1_000;
 const LANGUAGE_MAX_LEN: usize = 64;
+/// GitHub refuses a search query longer than this.
+const SEARCH_QUERY_MAX_LEN: usize = 256;
 const LAST_SECOND_OF_DAY: i64 = 86_399;
 
 /// The response data, a pull request, a repository, its language, a timeline
@@ -287,13 +289,13 @@ fn imported_pr(node: &Node, me: &Login, now: Timestamp) -> Result<Option<Importe
     };
     let created = need(node.created_at, "createdAt")?;
     let timeline = need(node.timeline.as_ref(), "timelineItems")?;
-    let (first, follow_up) = match timeline_step(id, &repo, created, timeline, None, me) {
-        Ok(TimelineStep::Answered(at, login)) => (Some((at, login)), None),
-        Ok(TimelineStep::Next(after)) => (
+    let (first, follow_up) = match timeline_step(id, &repo, created, timeline, None, me)? {
+        TimelineStep::Answered(at, login) => (Some((at, login)), None),
+        TimelineStep::Next(after) => (
             None,
             Some(WorkKind::ImportFacts(ImportKey::Timeline { pr, after })),
         ),
-        Ok(TimelineStep::End) | Err(_) => (None, None),
+        TimelineStep::End => (None, None),
     };
     let links = node
         .closing
@@ -441,9 +443,7 @@ fn plan_reviews(
                 source: FactSource::Imported,
             });
         }
-        let next = next_cursor(after, reviews.page_info.as_ref())
-            .ok()
-            .flatten();
+        let next = next_cursor(after, reviews.page_info.as_ref())?;
         let prs = pr
             .id
             .as_deref()
@@ -459,21 +459,59 @@ fn plan_reviews(
     Ok((rows, follow_ups))
 }
 
-/// Matches each answered repo to the name Radar stores it under, by node ID.
-fn plan_refresh(
-    stored: &[(RepoName, String)],
-    nodes: &[Option<Node>],
-    me: &Login,
-    now: Timestamp,
-) -> Vec<RepoMeta> {
-    nodes
+/// A stored repo: its name and, once the import or a refresh saw it, its node ID.
+type StoredRepo = (RepoName, Option<String>);
+
+/// How many of `stored` one `RepoMeta` request covers, and its variables.
+/// Repos with a node ID go to `nodes(ids:)`. Repos without one go to a
+/// repository search by `repo:` qualifiers, which GitHub caps at 256
+/// characters, so the page ends at the last repo that fits.
+fn refresh_request(stored: &[StoredRepo]) -> (usize, Value) {
+    let mut ids = Vec::new();
+    let mut q = String::new();
+    let mut taken = 0;
+    for (name, id) in stored {
+        match id {
+            Some(id) => ids.push(id.as_str()),
+            None => {
+                let term = format!("repo:{name} ");
+                if q.len() + term.len() > SEARCH_QUERY_MAX_LEN + 1 {
+                    break;
+                }
+                q.push_str(&term);
+            }
+        }
+        taken += 1;
+    }
+    let q = q.trim_end();
+    (
+        taken,
+        json!({ "ids": ids, "q": q, "byName": !q.is_empty() }),
+    )
+}
+
+/// Matches each answered repo to the name Radar stores it under: by node ID
+/// from `nodes`, and by name, ignoring case, from the search.
+fn plan_refresh(stored: &[StoredRepo], data: &Node, me: &Login, now: Timestamp) -> Vec<RepoMeta> {
+    let by_id = data.nodes.iter().flatten().filter_map(|node| {
+        let id = node.id.as_deref()?;
+        let (name, _) = stored.iter().find(|(_, s)| s.as_deref() == Some(id))?;
+        Some((name, node))
+    });
+    let searched = data
+        .search
         .iter()
-        .flatten()
-        .filter_map(|node| {
-            let id = node.id.as_deref()?;
-            let (name, _) = stored.iter().find(|(_, stored)| stored == id)?;
-            repo_meta(name.clone(), node, me, now).ok()
-        })
+        .flat_map(|page| page.nodes.iter().flatten());
+    let by_name = searched.filter_map(|node| {
+        let found = node.name.as_deref()?;
+        let (name, _) = stored
+            .iter()
+            .find(|(n, s)| s.is_none() && n.to_string().eq_ignore_ascii_case(found))?;
+        Some((name, node))
+    });
+    by_id
+        .chain(by_name)
+        .filter_map(|(name, node)| repo_meta(name.clone(), node, me, now).ok())
         .collect()
 }
 
@@ -708,7 +746,7 @@ pub async fn run(
     }
 }
 
-/// One page of the weekly repo refresh: up to 50 repos in one `nodes` query.
+/// One page of the weekly repo refresh: up to 50 repos in one `RepoMeta` query.
 pub async fn refresh(
     page: &RepoPage,
     env: &Env,
@@ -720,8 +758,7 @@ pub async fn refresh(
         Ok(opened) => opened,
         Err(outcome) => return outcome,
     };
-    let stored: Vec<(RepoName, String)> = match results.first().map(|r| r.results::<RepoIdRecord>())
-    {
+    let stored: Vec<StoredRepo> = match results.first().map(|r| r.results::<RepoIdRecord>()) {
         Some(Ok(rows)) => rows
             .into_iter()
             .filter_map(|r| Some((RepoName::parse(&r.full_name).ok()?, r.node_id)))
@@ -733,19 +770,20 @@ pub async fn refresh(
         console_log!("sync.repos week={} repos=0", page.week.date());
         return UnitOutcome::Done { follow_ups: vec![] };
     }
-    let ids: Vec<&str> = stored.iter().map(|(_, id)| id.as_str()).collect();
-    let data = match unit.ask(&REPO_META, json!({ "ids": ids }), state).await {
+    let (taken, variables) = refresh_request(&stored);
+    let data = match unit.ask(&REPO_META, variables, state).await {
         Ok(data) => data,
         Err(outcome) => return outcome,
     };
-    let metas = plan_refresh(&stored, &data.nodes, &unit.me, now);
+    let metas = plan_refresh(&stored[..taken], &data, &unit.me, now);
     if !metas.is_empty() {
         if let Err(err) = crate::db::run(&unit.db, vec![repos::upsert_meta(&metas)]).await {
             return retry(format!("d1 write: {err}"));
         }
     }
-    let follow_ups = match stored.last() {
-        Some((last, _)) if stored.len() == IMPORT_PAGE => vec![WorkKind::RefreshRepos(RepoPage {
+    let more = taken < stored.len() || stored.len() == IMPORT_PAGE;
+    let follow_ups = match stored[..taken].last() {
+        Some((last, _)) if more => vec![WorkKind::RefreshRepos(RepoPage {
             week: page.week,
             after: Some(last.clone()),
         })],
@@ -754,7 +792,7 @@ pub async fn refresh(
     console_log!(
         "sync.repos week={} repos={} refreshed={} next={}",
         page.week.date(),
-        stored.len(),
+        taken,
         metas.len(),
         follow_ups.len()
     );
