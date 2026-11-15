@@ -76,6 +76,8 @@ const ASSIGN_REASON: &str = "assign";
 struct Entry {
     id: String,
     at: Timestamp,
+    /// A review's `submittedAt`, which can differ from when it was started.
+    submitted_at: Option<Timestamp>,
     actor: Actor,
     what: What,
     url: Option<String>,
@@ -136,6 +138,7 @@ fn entry(node: &TimelineNode) -> Option<Entry> {
     let simple = |id: &String, at: Timestamp, who: Option<&ActorNode>, what: What| Entry {
         id: id.clone(),
         at,
+        submitted_at: None,
         actor: actor(who),
         what,
         url: None,
@@ -148,6 +151,7 @@ fn entry(node: &TimelineNode) -> Option<Entry> {
         },
         TimelineNode::PullRequestReview(n) => Entry {
             url: Some(n.url.clone()),
+            submitted_at: n.submitted_at,
             ..simple(
                 &n.id,
                 n.at,
@@ -170,6 +174,7 @@ fn entry(node: &TimelineNode) -> Option<Entry> {
         TimelineNode::PullRequestCommit(n) => Entry {
             id: n.id.clone(),
             at: n.commit.at,
+            submitted_at: None,
             actor: Actor {
                 login: n
                     .commit
@@ -252,6 +257,7 @@ fn parts(node: &ItemNode) -> Parts<'_> {
                     entries.push(Entry {
                         id: review.id.clone(),
                         at: review.at,
+                        submitted_at: review.submitted_at,
                         actor: actor(review.author.as_ref()),
                         what: What::Review(review_state(review.state)),
                         url: Some(review.url.clone()),
@@ -564,12 +570,19 @@ pub fn classify_node(
             ));
         }
     }
-    let facts = item_facts(node, &item, &row, &p.entries, &events, stored, me);
+    let stale = stored.is_some_and(|s| p.updated_at < s.updated_at);
+    let facts = if stale {
+        ItemFacts::default()
+    } else {
+        item_facts(node, &item, &row, &p.entries, &events, stored, me, now)
+    };
     Enriched { row, events, facts }
 }
 
 /// The facts for a pull request. The first response looks at every timeline
-/// item the query returned, not only the ones since the last sync.
+/// item the query returned, not only the ones since the last sync. A snapshot
+/// older than the stored item gives no facts, because the item upsert drops it.
+#[allow(clippy::too_many_arguments)]
 fn item_facts(
     node: &ItemNode,
     item: &Item,
@@ -578,6 +591,7 @@ fn item_facts(
     events: &[Event],
     stored: Option<&Stored>,
     me: &Login,
+    now: Timestamp,
 ) -> ItemFacts {
     let ItemNode::PullRequest(pr) = node else {
         return ItemFacts::default();
@@ -594,7 +608,7 @@ fn item_facts(
                     pr_number: pr.number,
                     pr_author_login: item.author.login.clone(),
                     state,
-                    submitted_at: e.at,
+                    submitted_at: e.submitted_at.unwrap_or(e.at),
                     source: FactSource::Live,
                 })
             }
@@ -631,12 +645,17 @@ fn item_facts(
     let moved = fact.as_ref().and(row.stage).and_then(|stage| {
         let previous = stored.and_then(|s| s.stage.map(|was| (was, s.turn)));
         let stage_moved = previous.is_none_or(|(was, _)| was != stage);
-        let at = if stage_moved {
+        let dated = if stage_moved {
             row.stage_since
         } else {
             row.since
         };
-        transition(&pr.id, previous, (stage, Side::from(row.turn)), at)
+        transition(
+            &pr.id,
+            previous,
+            (stage, Side::from(row.turn)),
+            transition_at(dated, stored, now),
+        )
     });
     let closing = fact
         .as_ref()
@@ -659,6 +678,20 @@ fn item_facts(
         reviews,
         transition: moved,
         closing,
+    }
+}
+
+/// When a change happened. A change that no timeline item dates after the last
+/// known change, such as a conversion to draft, happened by `now`, so the
+/// history never runs backward.
+fn transition_at(dated: Timestamp, stored: Option<&Stored>, now: Timestamp) -> Timestamp {
+    let Some(floor) = stored.map(|s| s.last_change()) else {
+        return dated;
+    };
+    if dated > floor {
+        dated
+    } else {
+        Timestamp(now.0.max(floor.0))
     }
 }
 
@@ -687,6 +720,14 @@ pub fn batch_facts(per_item: Vec<ItemFacts>, rows: &[ItemRow], events: &[Event])
         facts.reviews.extend(item.reviews);
         facts.transitions.extend(item.transition);
     }
+    facts.issues = known
+        .into_iter()
+        .filter(|i| i.kind == ItemKind::Issue)
+        .map(|i| ClosingIssue {
+            repo: i.repo,
+            number: i.number,
+        })
+        .collect();
     facts
 }
 

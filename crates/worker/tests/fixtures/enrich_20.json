@@ -119,7 +119,8 @@
               "author": {
                 "login": "bob",
                 "__typename": "User"
-              }
+              },
+              "submittedAt": "2026-11-07T10:00:00Z"
             }
           ]
         },
@@ -146,7 +147,8 @@
               "actor": {
                 "login": "bob",
                 "__typename": "User"
-              }
+              },
+              "submittedAt": "2026-11-07T10:00:00Z"
             }
           ]
         }

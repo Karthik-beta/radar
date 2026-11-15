@@ -116,6 +116,7 @@ fn stored(ci: Option<CiState>, stage: Option<Stage>, updated_minutes_ago: i64) -
         turn: domain::facts::Side::Them,
         stage_since: Timestamp(NOW.0 - 7200),
         updated_at: Timestamp(NOW.0 - updated_minutes_ago * 60),
+        last_transition_at: None,
     }
 }
 
@@ -601,4 +602,62 @@ fn writes_add_one_statement_per_fact_table_and_apply_in_order() {
             "{table}"
         );
     }
+}
+
+#[test]
+fn a_snapshot_older_than_the_stored_item_gives_no_facts() {
+    let pr = Pr::by(
+        "karthik",
+        vec![review("PRR_1", 100, "karthik", "COMMENTED")],
+    );
+    let newer = stored(Some(CiState::Passing), Some(Stage::Draft), 1);
+    let done = enrich(&pr, "author", Some(&newer));
+    assert_eq!(done.facts, ItemFacts::default());
+    let older = stored(Some(CiState::Passing), Some(Stage::Draft), 60);
+    assert!(enrich(&pr, "author", Some(&older)).facts.pr.is_some());
+}
+
+#[test]
+fn a_review_fact_takes_submitted_at_and_falls_back_to_created_at() {
+    let mut submitted = review("PRR_9", 30, "karthik", "APPROVED");
+    submitted["submittedAt"] = json!(ago(10));
+    let pr = Pr::by(
+        "alice",
+        vec![submitted, review("PRR_8", 20, "karthik", "COMMENTED")],
+    );
+    let done = enrich(&pr, "review_requested", None);
+    let at: Vec<(&str, Timestamp)> = done
+        .facts
+        .reviews
+        .iter()
+        .map(|r| (r.review_id.as_str(), r.submitted_at))
+        .collect();
+    assert_eq!(
+        at,
+        [
+            ("PRR_9", Timestamp(NOW.0 - 600)),
+            ("PRR_8", Timestamp(NOW.0 - 1200)),
+        ]
+    );
+}
+
+#[test]
+fn an_undated_stage_change_is_dated_now_and_never_before_the_last_change() {
+    let pr = Pr::by("karthik", Vec::new());
+    let was_draft = stored(Some(CiState::Passing), Some(Stage::Draft), 60);
+    let done = enrich(&pr, "author", Some(&was_draft));
+    assert_eq!(done.row.stage, Some(Stage::AwaitingReview));
+    assert!(done.row.stage_since < was_draft.stage_since);
+    let moved = done.facts.transition.expect("a stage change");
+    assert_eq!(moved.at, NOW);
+
+    let later = Stored {
+        last_transition_at: Some(Timestamp(NOW.0 + 60)),
+        ..was_draft
+    };
+    let moved = enrich(&pr, "author", Some(&later))
+        .facts
+        .transition
+        .expect("a stage change");
+    assert_eq!(moved.at, Timestamp(NOW.0 + 60));
 }

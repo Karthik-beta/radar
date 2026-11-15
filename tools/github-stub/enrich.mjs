@@ -20,7 +20,7 @@ export function withFactFields(node) {
     (n) => n && n.state === "CHANGES_REQUESTED",
   );
   const changesRequested = new Set(reviews.map((n) => n.id)).size;
-  return {
+  const filled = {
     additions: 10,
     deletions: 2,
     changedFiles: 1,
@@ -28,6 +28,19 @@ export function withFactFields(node) {
     reviews: { totalCount: changesRequested },
     ...node,
   };
+  if (node.timelineItems) {
+    filled.timelineItems = { ...node.timelineItems, nodes: node.timelineItems.nodes.map(withSubmittedAt) };
+  }
+  if (node.latestReviews) {
+    filled.latestReviews = { ...node.latestReviews, nodes: node.latestReviews.nodes.map(withSubmittedAt) };
+  }
+  return filled;
+}
+
+// A review the scenario leaves without `submittedAt` was submitted when it was created.
+function withSubmittedAt(review) {
+  if (!review || !("state" in review) || "submittedAt" in review) return review;
+  return { ...review, submittedAt: review.at };
 }
 
 function aliasCount(variables) {

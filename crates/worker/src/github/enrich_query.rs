@@ -13,7 +13,8 @@ macro_rules! timeline_node {
         "... on IssueComment { id at: createdAt url actor: author { login __typename } }"
     };
     (review) => {
-        "... on PullRequestReview { id at: createdAt url state actor: author { login __typename } }"
+        "... on PullRequestReview { id at: createdAt submittedAt url state \
+         actor: author { login __typename } }"
     };
     (review_requested) => {
         "... on ReviewRequestedEvent { id at: createdAt actor { login __typename } \
@@ -66,7 +67,8 @@ macro_rules! item_fields {
     "reviews(states: [CHANGES_REQUESTED]) { totalCount } ",
     "assignees(first: 10) { nodes { login } } ",
     "reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } } } } ",
-    "latestReviews(first: 10) { nodes { id state at: createdAt url author { login __typename } } } ",
+    "latestReviews(first: 10) { nodes { id state at: createdAt submittedAt url \
+     author { login __typename } } } ",
     "commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } } ",
     "timelineItems(last: 50, itemTypes: [ISSUE_COMMENT, PULL_REQUEST_REVIEW, \
      REVIEW_REQUESTED_EVENT, ASSIGNED_EVENT, PULL_REQUEST_COMMIT, MERGED_EVENT, CLOSED_EVENT, \
@@ -199,6 +201,8 @@ mod tests {
             "additions deletions changedFiles",
             "closingIssuesReferences(first: 5) { nodes { number repository { nameWithOwner } } }",
             "reviews(states: [CHANGES_REQUESTED]) { totalCount }",
+            "at: createdAt submittedAt url state",
+            "at: createdAt submittedAt url",
         ] {
             assert!(ENRICH_FRAGMENT.contains(field), "{field}");
         }

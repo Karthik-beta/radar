@@ -166,6 +166,9 @@ pub struct LatestReview {
     pub id: String,
     pub state: ReviewStateNode,
     pub at: Timestamp,
+    /// Null while a review is pending.
+    #[serde(rename = "submittedAt")]
+    pub submitted_at: Option<Timestamp>,
     pub url: String,
     pub author: Option<ActorNode>,
 }
@@ -387,6 +390,7 @@ pub struct CommentNode {
 pub struct ReviewNode {
     pub id: String,
     pub at: Timestamp,
+    pub submitted_at: Option<Timestamp>,
     pub url: String,
     pub state: ReviewStateNode,
     pub actor: Option<ActorNode>,
@@ -443,6 +447,8 @@ struct RawTimeline {
     typename: String,
     id: Option<String>,
     at: Option<Timestamp>,
+    #[serde(rename = "submittedAt")]
+    submitted_at: Option<Timestamp>,
     url: Option<String>,
     state: Option<ReviewStateNode>,
     actor: Option<ActorNode>,
@@ -473,6 +479,7 @@ impl TryFrom<RawTimeline> for TimelineNode {
             "PullRequestReview" => Self::PullRequestReview(ReviewNode {
                 id: need(raw.id, "id")?,
                 at: need(raw.at, "at")?,
+                submitted_at: raw.submitted_at,
                 url: need(raw.url, "url")?,
                 state: need(raw.state, "state")?,
                 actor: raw.actor,

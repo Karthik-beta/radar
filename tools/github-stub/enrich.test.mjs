@@ -127,6 +127,14 @@ test("a pull request without the fact fields gets defaults, and an issue is left
   const filled = withFactFields(pr);
   assert.deepEqual(filled.closingIssuesReferences, { nodes: [] });
   assert.equal(filled.reviews.totalCount, 1);
+  const dated = withFactFields({
+    __typename: "PullRequest",
+    timelineItems: { nodes: [{ id: "R1", state: "APPROVED", at: "@-1h" }, { id: "C1", at: "@-2h" }] },
+    latestReviews: { nodes: [{ id: "R1", state: "APPROVED", at: "@-1h", submittedAt: "@-30m" }] },
+  });
+  assert.equal(dated.timelineItems.nodes[0].submittedAt, "@-1h");
+  assert.equal("submittedAt" in dated.timelineItems.nodes[1], false);
+  assert.equal(dated.latestReviews.nodes[0].submittedAt, "@-30m");
   assert.equal(typeof filled.additions, "number");
   assert.equal(withFactFields({ ...pr, additions: 99 }).additions, 99);
   const issue = { __typename: "Issue", id: "I_1" };

@@ -4,7 +4,9 @@
 //! reading `ON` as a join constraint.
 
 use domain::activity::ReviewState;
-pub use domain::facts::{FactSource, IssueLink, PrFact, ReviewFact, Side, Transition};
+pub use domain::facts::{
+    ClosingIssue, FactSource, IssueLink, PrFact, ReviewFact, Side, Transition,
+};
 use domain::ids::Login;
 use domain::stage::Stage;
 use serde::Serialize;
@@ -14,33 +16,48 @@ use super::sql::{Param, Statement};
 
 /// `ci_failures` is the larger of what the batch saw and what `events` and
 /// `own_events` hold, and the stored count never drops, so a rollup that moves
-/// the events cannot lower it. The first response keeps the earliest one known,
-/// because the timeline window can end after it. A live row replaces an imported one.
+/// the events cannot lower it. The first response is the earliest of the
+/// batch's and the earliest stored human reply that is not mine, as R21's
+/// `first_response` defines it, because the timeline window can end after it.
+/// A live row replaces an imported one.
 const UPSERT_PRS: &str = "INSERT INTO pr_facts (node_id, repo, external, number, created_at, \
      merged_at, closed_at, first_response_at, first_response_login, changes_requested_rounds, \
      ci_failures, additions, deletions, changed_files, agent, source) \
-     SELECT f.node_id, f.repo, f.external, f.number, f.created_at, f.merged_at, f.closed_at, \
-     f.first_response_at, f.first_response_login, f.changes_requested_rounds, \
-     MAX(f.ci_failures, \
-       (SELECT COUNT(*) FROM events e WHERE e.item_node_id = f.node_id AND e.kind = 'ci_failed') \
-       + (SELECT COUNT(*) FROM own_events o WHERE o.item_node_id = f.node_id \
+     SELECT g.node_id, g.repo, g.external, g.number, g.created_at, g.merged_at, g.closed_at, \
+     CASE WHEN g.seed_at IS NOT NULL \
+       AND (g.first_response_at IS NULL OR g.seed_at < g.first_response_at) \
+       THEN g.seed_at ELSE g.first_response_at END, \
+     CASE WHEN g.seed_at IS NOT NULL \
+       AND (g.first_response_at IS NULL OR g.seed_at < g.first_response_at) \
+       THEN g.seed_login ELSE g.first_response_login END, \
+     g.changes_requested_rounds, \
+     MAX(g.ci_failures, \
+       (SELECT COUNT(*) FROM events e WHERE e.item_node_id = g.node_id AND e.kind = 'ci_failed') \
+       + (SELECT COUNT(*) FROM own_events o WHERE o.item_node_id = g.node_id \
           AND o.kind = 'ci_failed')), \
-     f.additions, f.deletions, f.changed_files, f.agent, f.source \
-     FROM (SELECT json_extract(value, '$.node_id') AS node_id, \
-       json_extract(value, '$.repo') AS repo, json_extract(value, '$.external') AS external, \
-       json_extract(value, '$.number') AS number, \
-       json_extract(value, '$.created_at') AS created_at, \
-       json_extract(value, '$.merged_at') AS merged_at, \
-       json_extract(value, '$.closed_at') AS closed_at, \
-       json_extract(value, '$.first_response_at') AS first_response_at, \
-       json_extract(value, '$.first_response_login') AS first_response_login, \
-       json_extract(value, '$.changes_requested_rounds') AS changes_requested_rounds, \
-       json_extract(value, '$.ci_failures') AS ci_failures, \
-       json_extract(value, '$.additions') AS additions, \
-       json_extract(value, '$.deletions') AS deletions, \
-       json_extract(value, '$.changed_files') AS changed_files, \
-       json_extract(value, '$.agent') AS agent, json_extract(value, '$.source') AS source \
-       FROM json_each(?1)) AS f WHERE true \
+     g.additions, g.deletions, g.changed_files, g.agent, g.source \
+     FROM (SELECT f.*, \
+       (SELECT e.occurred_at FROM events e WHERE e.item_node_id = f.node_id \
+         AND e.kind IN ('commented', 'reviewed') AND e.actor_is_me = 0 AND e.actor_is_bot = 0 \
+         AND e.occurred_at >= f.created_at ORDER BY e.occurred_at, e.id LIMIT 1) AS seed_at, \
+       (SELECT e.actor_login FROM events e WHERE e.item_node_id = f.node_id \
+         AND e.kind IN ('commented', 'reviewed') AND e.actor_is_me = 0 AND e.actor_is_bot = 0 \
+         AND e.occurred_at >= f.created_at ORDER BY e.occurred_at, e.id LIMIT 1) AS seed_login \
+       FROM (SELECT json_extract(value, '$.node_id') AS node_id, \
+         json_extract(value, '$.repo') AS repo, json_extract(value, '$.external') AS external, \
+         json_extract(value, '$.number') AS number, \
+         json_extract(value, '$.created_at') AS created_at, \
+         json_extract(value, '$.merged_at') AS merged_at, \
+         json_extract(value, '$.closed_at') AS closed_at, \
+         json_extract(value, '$.first_response_at') AS first_response_at, \
+         json_extract(value, '$.first_response_login') AS first_response_login, \
+         json_extract(value, '$.changes_requested_rounds') AS changes_requested_rounds, \
+         json_extract(value, '$.ci_failures') AS ci_failures, \
+         json_extract(value, '$.additions') AS additions, \
+         json_extract(value, '$.deletions') AS deletions, \
+         json_extract(value, '$.changed_files') AS changed_files, \
+         json_extract(value, '$.agent') AS agent, json_extract(value, '$.source') AS source \
+         FROM json_each(?1)) AS f) AS g WHERE true \
      ON CONFLICT (node_id) DO UPDATE SET \
      repo = excluded.repo, external = excluded.external, number = excluded.number, \
      created_at = excluded.created_at, merged_at = excluded.merged_at, \
@@ -57,8 +74,10 @@ const UPSERT_PRS: &str = "INSERT INTO pr_facts (node_id, repo, external, number,
      changed_files = excluded.changed_files, agent = excluded.agent, source = excluded.source \
      WHERE excluded.source = 'live' OR pr_facts.source = 'imported'";
 
-/// The flags also look at what D1 already holds, because the issue and my
-/// comment on it usually arrived in an earlier batch. Each enrich refreshes them.
+/// Writes the batch's links (`?1`) and refreshes every stored link to an issue
+/// the batch stored (`?2`), so an issue that arrives after the pull request
+/// still sets the flags. The flags are recomputed from `items`, `events`, and
+/// `own_events`, which already hold this batch's rows.
 const UPSERT_LINKS: &str = "INSERT INTO pr_issue_links (pr_node_id, issue_repo, issue_number, \
      issue_authored_by_me, issue_commented_by_me) \
      SELECT l.pr, l.repo, l.number, \
@@ -74,10 +93,17 @@ const UPSERT_LINKS: &str = "INSERT INTO pr_issue_links (pr_node_id, issue_repo, 
      FROM (SELECT json_extract(value, '$.pr') AS pr, json_extract(value, '$.repo') AS repo, \
        json_extract(value, '$.number') AS number, \
        json_extract(value, '$.authored') AS authored, \
-       json_extract(value, '$.commented') AS commented FROM json_each(?1)) AS l WHERE true \
+       json_extract(value, '$.commented') AS commented FROM json_each(?1) \
+       UNION ALL \
+       SELECT p.pr_node_id, p.issue_repo, p.issue_number, 0, 0 FROM pr_issue_links p \
+       WHERE EXISTS (SELECT 1 FROM json_each(?2) j \
+         WHERE json_extract(j.value, '$.repo') = p.issue_repo \
+         AND json_extract(j.value, '$.number') = p.issue_number)) AS l WHERE true \
      ON CONFLICT (pr_node_id, issue_repo, issue_number) DO UPDATE SET \
-     issue_authored_by_me = excluded.issue_authored_by_me, \
-     issue_commented_by_me = excluded.issue_commented_by_me";
+     issue_authored_by_me = MAX(pr_issue_links.issue_authored_by_me, \
+       excluded.issue_authored_by_me), \
+     issue_commented_by_me = MAX(pr_issue_links.issue_commented_by_me, \
+       excluded.issue_commented_by_me)";
 
 const INSERT_TRANSITIONS: &str = "INSERT INTO pr_transitions (item_node_id, stage, turn, at) \
      SELECT json_extract(value, '$.item'), json_extract(value, '$.stage'), \
@@ -104,6 +130,8 @@ pub struct Facts {
     pub reviews: Vec<ReviewFact>,
     pub transitions: Vec<Transition>,
     pub links: Vec<IssueLink>,
+    /// The issues the batch stored, whose links to earlier pull requests refresh.
+    pub issues: Vec<ClosingIssue>,
 }
 
 impl Facts {
@@ -112,6 +140,7 @@ impl Facts {
         self.reviews.extend(other.reviews);
         self.transitions.extend(other.transitions);
         self.links.extend(other.links);
+        self.issues.extend(other.issues);
     }
 
     /// One statement per table that has rows, in table order.
@@ -120,8 +149,8 @@ impl Facts {
         if !self.prs.is_empty() {
             statements.push(upsert_prs(&self.prs));
         }
-        if !self.links.is_empty() {
-            statements.push(upsert_links(&self.links));
+        if !self.links.is_empty() || !self.issues.is_empty() {
+            statements.push(upsert_links(&self.links, &self.issues));
         }
         if !self.transitions.is_empty() {
             statements.push(insert_transitions(&self.transitions));
@@ -194,7 +223,13 @@ struct FlatLink<'a> {
     commented: u8,
 }
 
-pub fn upsert_links(rows: &[IssueLink]) -> Statement {
+#[derive(Serialize)]
+struct FlatIssue {
+    repo: String,
+    number: u32,
+}
+
+pub fn upsert_links(rows: &[IssueLink], issues: &[ClosingIssue]) -> Statement {
     let flat: Vec<FlatLink<'_>> = rows
         .iter()
         .map(|l| FlatLink {
@@ -205,9 +240,16 @@ pub fn upsert_links(rows: &[IssueLink]) -> Statement {
             commented: u8::from(l.issue_commented_by_me),
         })
         .collect();
+    let stored: Vec<FlatIssue> = issues
+        .iter()
+        .map(|i| FlatIssue {
+            repo: i.repo.to_string(),
+            number: i.number,
+        })
+        .collect();
     Statement {
         sql: UPSERT_LINKS,
-        params: vec![json_param(&flat)],
+        params: vec![json_param(&flat), json_param(&stored)],
     }
 }
 
@@ -357,6 +399,10 @@ mod tests {
                     ..link
                 },
             ],
+            issues: vec![ClosingIssue {
+                repo: repo("octo/widgets"),
+                number: 3,
+            }],
         };
         let statements = facts.statements();
         let sql: Vec<&str> = statements.iter().map(|s| s.sql).collect();
@@ -518,7 +564,7 @@ mod tests {
             issue_authored_by_me: false,
             issue_commented_by_me: false,
         };
-        exec(&conn, &upsert_links(&[link(3), link(4)])).expect("links");
+        exec(&conn, &upsert_links(&[link(3), link(4)], &[])).expect("links");
         let rows = query_json(
             &conn,
             "SELECT issue_number, issue_authored_by_me AS a, issue_commented_by_me AS c \
@@ -559,5 +605,99 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn seed_event(
+        conn: &rusqlite::Connection,
+        id: &str,
+        kind: &str,
+        who: &str,
+        me: u8,
+        bot: u8,
+        at: i64,
+    ) {
+        conn.execute(
+            "INSERT INTO events (id, item_node_id, repo, kind, actor_login, actor_is_me, \
+             actor_is_bot, occurred_at, source, ingested_at) \
+             VALUES (?1, 'PR_7', 'octo/widgets', ?2, ?3, ?4, ?5, ?6, 'poll', 0)",
+            rusqlite::params![id, kind, who, me, bot, at],
+        )
+        .expect("event");
+    }
+
+    #[test]
+    fn the_first_write_seeds_the_first_response_from_stored_events() {
+        let conn = memory_db();
+        seed_event(&conn, "a", "commented", "maint", 0, 0, 900);
+        seed_event(&conn, "b", "commented", "karthik", 1, 0, 1_100);
+        seed_event(&conn, "c", "commented", "ci-bot", 0, 1, 1_150);
+        seed_event(&conn, "d", "reviewed", "maint", 0, 0, 1_200);
+        seed_event(&conn, "e", "committed", "carol", 0, 0, 1_050);
+        let in_window = PrFact {
+            first_response_at: Some(Timestamp(1_500)),
+            first_response_login: Some(login("late")),
+            ..pr("PR_7", 0)
+        };
+        exec(&conn, &upsert_prs(&[in_window])).expect("first write");
+        let rows = query_json(
+            &conn,
+            "SELECT first_response_at, first_response_login FROM pr_facts",
+            &[],
+        );
+        assert_eq!(rows[0]["first_response_at"], 1_200);
+        assert_eq!(rows[0]["first_response_login"], "maint");
+    }
+
+    #[test]
+    fn an_issue_stored_after_its_pull_request_refreshes_the_link() {
+        let conn = memory_db();
+        let link = IssueLink {
+            pr_node_id: "PR_7".to_owned(),
+            issue_repo: repo("karthik/radar"),
+            issue_number: 3,
+            issue_authored_by_me: false,
+            issue_commented_by_me: false,
+        };
+        exec(&conn, &upsert_links(&[link], &[])).expect("the pull request's batch");
+        conn.execute(
+            "INSERT INTO items (node_id, repo, number, kind, title, url, author_login, \
+             author_kind, authored_by_me, state, created_at, updated_at, turn, since, synced_at) \
+             VALUES ('I_3', 'karthik/radar', 3, 'issue', 't', 'u', 'karthik', 'user', 1, 'open', \
+             0, 0, 'them', 0, 0)",
+            [],
+        )
+        .expect("the issue arrives later");
+        conn.execute(
+            "INSERT INTO events (id, item_node_id, repo, kind, actor_login, actor_is_me, \
+             actor_is_bot, occurred_at, source, ingested_at) \
+             VALUES ('IC_3', 'I_3', 'karthik/radar', 'commented', 'karthik', 1, 0, 5, 'poll', 5)",
+            [],
+        )
+        .expect("my comment on it");
+        let issue = ClosingIssue {
+            repo: repo("karthik/radar"),
+            number: 3,
+        };
+        let other = ClosingIssue {
+            repo: repo("karthik/radar"),
+            number: 9,
+        };
+        let statements = Facts {
+            issues: vec![issue, other],
+            ..Facts::default()
+        }
+        .statements();
+        assert_eq!(statements.len(), 1);
+        run(&conn, &statements);
+        let rows = query_json(
+            &conn,
+            "SELECT issue_authored_by_me AS a, issue_commented_by_me AS c FROM pr_issue_links",
+            &[],
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            (rows[0]["a"].as_i64(), rows[0]["c"].as_i64()),
+            (Some(1), Some(1))
+        );
     }
 }

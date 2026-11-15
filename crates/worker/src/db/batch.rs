@@ -27,7 +27,8 @@ const THREADS: &str = concat!(
 );
 
 const STORED: &str = concat!(
-    "SELECT i.repo, i.number, i.node_id, i.ci_state, i.stage, i.turn, i.stage_since, i.updated_at \
+    "SELECT i.repo, i.number, i.node_id, i.ci_state, i.stage, i.turn, i.stage_since, i.updated_at, \
+     (SELECT MAX(at) FROM pr_transitions p WHERE p.item_node_id = i.node_id) AS last_transition_at \
      FROM notification_threads t JOIN items i ON i.repo = t.repo AND i.number = t.subject_number \
      WHERE ",
     wanted!()
@@ -35,7 +36,9 @@ const STORED: &str = concat!(
 
 /// What a search page found, by the item's node id.
 const STORED_BY_NODE: &str =
-    "SELECT repo, number, node_id, ci_state, stage, turn, stage_since, updated_at \
+    "SELECT repo, number, node_id, ci_state, stage, turn, stage_since, updated_at, \
+     (SELECT MAX(at) FROM pr_transitions p WHERE p.item_node_id = items.node_id) \
+       AS last_transition_at \
      FROM items WHERE node_id IN (SELECT value FROM json_each(?1))";
 
 const ME: &str = "SELECT login FROM auth WHERE id = 1";
@@ -137,6 +140,7 @@ pub struct StoredRecord {
     pub turn: String,
     pub stage_since: i64,
     pub updated_at: i64,
+    pub last_transition_at: Option<i64>,
 }
 
 /// What the last enrich of an item left in `items`.
@@ -150,6 +154,15 @@ pub struct Stored {
     pub turn: Side,
     pub stage_since: Timestamp,
     pub updated_at: Timestamp,
+    pub last_transition_at: Option<Timestamp>,
+}
+
+impl Stored {
+    /// The latest moment Radar knows the stage or the turn changed.
+    pub fn last_change(&self) -> Timestamp {
+        self.last_transition_at
+            .map_or(self.stage_since, |at| at.max(self.stage_since))
+    }
 }
 
 impl TryFrom<StoredRecord> for Stored {
@@ -168,6 +181,7 @@ impl TryFrom<StoredRecord> for Stored {
             turn: untag::<Side>("turn", &r.turn)?,
             stage_since: Timestamp(r.stage_since),
             updated_at: Timestamp(r.updated_at),
+            last_transition_at: r.last_transition_at.map(Timestamp),
         })
     }
 }
