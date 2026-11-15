@@ -72,14 +72,49 @@ V1 ships three views (Your turn, Pipeline, Their turn); repo cards, trends and a
 | F5 | Header counters. The header tabs double as the counters, as [ADR 0003](adr/0003-design.md) describes: Your turn, Their turn, Pipeline (my open PRs), and Merged (my PRs merged this month) | P0 |
 | F6 | Activity feed: chronological stream of all ingested events, filterable by repo and event type | P1 |
 | F7 | **Repo cards**: per repo, my open/merged/closed PR counts, merge rate, median time to first maintainer response, last activity | P1 |
-| F8 | **Trends**: PRs opened vs merged per week, distinct repos contributed to, contribution heatmap | P1 |
+| F8 | **Trends**: PRs opened vs merged per week, distinct repos contributed to, contribution heatmap. F14 replaces this view, as [ADR 0010](adr/0010-contribution-facts.md) describes | P1 |
 | F9 | Local "seen" state: I can dismiss or snooze an item in Radar. Stored only in Radar; GitHub's read state is never changed | P0 |
 | F10 | Data freshness indicator: last sync time per source, current API budget used | P1 |
 | F11 | **Agent activity** lane: work in progress before a PR exists, from pushes to agent branches on my forks (branch prefix `agent/`) and optional agent check-ins to Radar's own API | P2 |
 | F12 | Mobile-friendly layout: Your turn first, readable at 375 px width | P1 |
 | F13 | Optional phone alert for mentions and review requests only (Telegram bot or ntfy) | P2 |
+| F14 | **Stats** page: how much I ship, whether it lands, how much I review, where I am trusted, and whether agents help, over the last 12 months and this year against last year. It replaces Trends (F8). The metrics are listed under "Stats page (F14)" below, and the data comes from [ADR 0010](adr/0010-contribution-facts.md) | P1 |
 
 **Read-only rule.** Radar's GitHub client allows only GET requests and read-only GraphQL queries, enforced in code, so a bug cannot change anything on GitHub. Agent check-ins (F11) write only to Radar's own database.
+
+### Stats page (F14)
+
+The Stats page answers one question: is my open-source track record getting stronger? It is for me only, like every other view.
+
+**Scope.** Every metric counts only external repos, meaning repos whose owner login is not mine, unless the metric says otherwise. A PR still open is never counted as a failure.
+
+**Periods.** A switch at the top picks the period:
+
+- **Last 12 months**, the default, shown weekly or monthly.
+- **This year vs last year**, by calendar month, with this year drawn in `text` and last year in `faint`. It appears once the facts hold a full previous year.
+
+Every number on the page comes from D1. The data is kept for good ([ADR 0010](adr/0010-contribution-facts.md)), so a later version can add longer periods without new collection.
+
+**Sections, in page order.**
+
+| ID | Section | Shows |
+| --- | --- | --- |
+| S1 | **Lands** | Merge rate, merged ÷ (merged + closed unmerged). Median and 75th percentile time from open to merge. Open PRs older than 30 days. Share of PRs that got changes requested. Share of PRs whose CI failed at least once. Monthly groups: of the PRs opened in each month, the share merged within 30 days |
+| S2 | **Reviews** | Reviews I gave per week or month, split by approved, changes requested, and commented. Repos I review in. Reviews in external repos against reviews in my own |
+| S3 | **Trust** | Repos with a first merged PR in the period. Repeat repos, with 2 or more merged PRs. A repo ranking by merge rate, median first response, and my merged count. Merges into repos with 1,000 or more stars. Languages I contributed in, from each repo's primary language |
+| S4 | **Agents** | Merge rate, time to merge, and changes-requested share for PRs from `agent/*` branches against PRs from other branches |
+| S5 | **Output** | PRs opened and merged per week or month with a rolling 4-week average. Best week and best month. Streak of weeks with at least one merged PR. Distinct repos per week. The contribution heatmap from F8 |
+| S6 | **Waiting** | Median time my PRs spend in each stage: CI running, CI failing, awaiting review, changes requested, approved. Total days my open PRs waited on maintainers against days they waited on me. Data starts the day stage and turn history ships |
+| S7 | **Shape** | Merge rate by PR size, in buckets by lines changed (under 50, 50 to 199, 200 to 499, 500 or more). Issues I opened or commented on that a merged PR of mine closed |
+| S8 | **Habits** | When I work, as a day-of-week by hour grid of my own events, in `settings.utc_offset_minutes`. Progress toward `settings.goal_merged_per_month` when it is set. Milestones reached in the period: first merge in a new repo, 50th and 100th merged PR, first merge into a repo with 1,000 or more stars |
+
+**Rules.**
+
+1. Charts stay grey, as [ADR 0003](adr/0003-design.md) requires. The page adds no colour.
+2. A metric with nothing to count shows a dash and a short reason, such as "No PRs closed yet", never `0%` or `NaN`.
+3. Each chart has `role="img"`, an `aria-label` with its totals, and a visually hidden table with the same numbers, as Trends does today.
+4. Each section reads one batch of indexed selects. The page stays under N7's 1.5 s first load and inside the UI size budget in [ADR 0009](adr/0009-ui-size-budget.md). If the page would push the UI past the budget, it starts the lazy-loaded second module that ADR 0009 names.
+5. `/trends` shows the Stats page, so old links keep working.
 
 ## Authentication and access
 
@@ -153,7 +188,12 @@ The email handler, the 10-minute cron, and the webhook endpoint each call `kick(
 | `items` | node ID, repo, number, `kind`, title, state, draft, review decision, CI state, last human actor, `authored_by_me`, derived `turn`, `reason`, `since`, `stage`, `updated_at`, `closed_at` | Pipeline, Your turn, Their turn |
 | `events` | ID = thread ID + `updated_at`, source (email / poll / webhook), kind, repo, actor, `occurred_at` | Feed, idempotency |
 | `repos` | full name, my open / merged / closed counts, median first-response hours | Repo cards |
-| `rollups_weekly` | week, PRs opened, PRs merged, repos touched | Trends |
+| `rollups_weekly` | week, PRs opened, PRs merged, repos touched | Trends, Stats heatmap |
+| `pr_facts` | PR node ID, repo, external, opened / merged / closed, first response, changes-requested rounds, CI failures, size, agent branch. Kept for good | Stats |
+| `review_facts` | review node ID, repo, external, PR author, state, submitted at. Kept for good | Stats |
+| `pr_transitions` | item, stage, turn, at. Kept for good | Stats waiting times |
+| `own_events` | my events the weekly rollup folded, with the `events` columns. Kept for good | Stats habits |
+| `pr_issue_links` | PR, issue it closes, whether I opened or commented on the issue. Kept for good | Stats issue to PR |
 | `local_state` | item ID, dismissed-until | Dismiss / snooze |
 | `auth` | GitHub user ID, encrypted token, granted scopes | Background sync |
 
@@ -182,7 +222,7 @@ Allowances from [Cloudflare plans](https://www.cloudflare.com/plans.md), [Worker
 - N3. Webhook payloads verified with `X-Hub-Signature-256` before processing; unsigned or mismatched requests get 401.
 - N4. No third-party analytics or scripts; strict Content-Security-Policy.
 - N5. Stored data is limited to metadata Radar displays (titles, states, timestamps, logins), not comment bodies. Snippets are fetched live when needed.
-- N6. Retention: events older than 180 days roll up into weekly aggregates and are deleted.
+- N6. Retention: events by other people older than 180 days roll up into weekly aggregates and are deleted. My own events and the contribution fact tables are kept for good, as [ADR 0010](adr/0010-contribution-facts.md) describes.
 
 **Performance and reliability**
 
@@ -208,6 +248,7 @@ V1 ("Your turn" + pipeline, live from email triggers) is four milestones away; e
 4. **M3: Email push.** Email Routing to the Email Worker, header parsing, forwarding, Syncer kicks, coalescing. *Done when* a test mention appears within 2 minutes.
 5. **M4: Insight.** Activity feed, repo cards, trends, nightly rollup. *Done when* the feed, repo cards, and trends show my real data on the preview deploy.
 6. **M5: Agent era (optional).** Webhooks on my forks, `agent/*` branch lane, agent check-in API, phone alerts. *Done when* a push to an `agent/` branch on a fork shows in the Agents view within 2 minutes and a mention reaches my phone through Telegram.
+7. **M6: Stats.** Contribution facts, the one-time history import, stage and turn history, then the Stats page (F14). *Done when* the Stats page shows 12 months of my real data on the preview deploy and the import has filled my history back to my account's creation.
 
 **Risks**
 
@@ -229,5 +270,6 @@ V1 ("Your turn" + pipeline, live from email triggers) is four milestones away; e
 
 - Should issues I opened or commented on get their own lane, or appear only inside "Your turn" and "Their turn"?
 - Should my own repos (where I'm the maintainer) get a separate "Maintainer" view, or stay out of v1?
+- Should repos owned by an organisation I run count as mine for F14? [ADR 0010](adr/0010-contribution-facts.md) counts them as external for now, and stores enough to change the rule later.
 - Frontend, closed: the options were React + Vite served as Workers static assets, or Next.js on Vercel. The UI is Leptos, built with Trunk and served as Workers static assets. See [ADR 0005](adr/0005-rust.md).
 - Alerts channel for F13: decided, Telegram. See [R24](plan/implementation-plan.md#send-phone-alerts-through-telegram-r24) in the implementation plan.
