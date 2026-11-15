@@ -45,15 +45,19 @@ struct Oldest {
     at: Option<i64>,
 }
 
-/// The statements that fold one week in, in the order D1 runs them.
+/// The statements that fold one week in, in the order D1 runs them. The delete
+/// always runs, so a week that writes no row still leaves the events table and
+/// the next unit moves on to the following week.
 pub fn fold(week: WeekStart, totals: RollupTotals) -> Vec<Statement> {
-    vec![
-        rollups::upsert(&RollupRow {
+    let mut statements = Vec::with_capacity(2);
+    if !totals.is_empty() {
+        statements.push(rollups::upsert(&RollupRow {
             week_start: week,
             totals,
-        }),
-        rollups::delete_week(week),
-    ]
+        }));
+    }
+    statements.push(rollups::delete_week(week));
+    statements
 }
 
 pub async fn run_unit(key: RollupKey, env: &Env, now: Timestamp) -> UnitOutcome {
@@ -74,21 +78,18 @@ async fn unit(key: RollupKey, env: &Env, now: Timestamp) -> Result<Vec<WorkKind>
         return Ok(Vec::new());
     };
     let totals = week_totals(&db, week).await?;
-    if totals.events == 0 {
-        console_log!("rollup week={} events=0 skipped", week.date());
-    } else {
-        run(&db, fold(week, totals))
-            .await
-            .map_err(|err| format!("d1 rollup batch: {err}"))?;
-        console_log!(
-            "rollup week={} events={} opened={} merged={} repos={}",
-            week.date(),
-            totals.events,
-            totals.prs_opened,
-            totals.prs_merged,
-            totals.repos_touched
-        );
-    }
+    run(&db, fold(week, totals))
+        .await
+        .map_err(|err| format!("d1 rollup batch: {err}"))?;
+    console_log!(
+        "rollup week={} events={} opened={} merged={} repos={} row={}",
+        week.date(),
+        totals.events,
+        totals.prs_opened,
+        totals.prs_merged,
+        totals.repos_touched,
+        !totals.is_empty()
+    );
     let next = oldest_week(&db, now).await?;
     Ok(next
         .filter(|next| *next != week)
@@ -192,5 +193,129 @@ mod tests {
         );
         assert_eq!(rows[0]["events"].as_i64(), Some(2));
         assert_eq!(rows[0]["repos_touched"].as_i64(), Some(2));
+    }
+
+    /// The SQL half of `unit`: read the week's totals, run `fold`, then name
+    /// the oldest week still before `cutoff`.
+    fn roll(conn: &rusqlite::Connection, w: WeekStart, cutoff: Timestamp) -> Option<WeekStart> {
+        let stmt = rollups::week_totals(w);
+        let row = query_json(conn, stmt.sql, &stmt.params).remove(0);
+        let totals: RollupTotals =
+            serde_json::from_value(serde_json::Value::Object(row)).expect("totals");
+        for stmt in fold(w, totals) {
+            exec(conn, &stmt).expect("statement");
+        }
+        let stmt = rollups::oldest_before(cutoff);
+        query_json(conn, stmt.sql, &stmt.params)[0]["at"]
+            .as_i64()
+            .map(|at| WeekStart::containing(Timestamp(at)))
+    }
+
+    fn seed_event(
+        conn: &rusqlite::Connection,
+        id: &str,
+        kind: &str,
+        item: &str,
+        at: i64,
+        mine: bool,
+    ) {
+        conn.execute(
+            "INSERT INTO events (id, item_node_id, repo, kind, actor_login, actor_is_me, \
+             actor_is_bot, occurred_at, source, ingested_at) \
+             VALUES (?1, ?2, 'o/one', ?3, 'alice', ?5, 0, ?4, 'poll', 0)",
+            rusqlite::params![id, item, kind, at, i64::from(mine)],
+        )
+        .expect("event");
+    }
+
+    fn seed_my_pr(conn: &rusqlite::Connection, node_id: &str) {
+        let mut row = crate::db::synthetic::items(8)
+            .expect("items")
+            .into_iter()
+            .find(|row| row.item_ref.kind == domain::ids::ItemKind::Pr)
+            .expect("a pull request");
+        row.node_id = node_id.to_owned();
+        exec(conn, &crate::db::items::upsert(&row)).expect("item");
+        conn.execute(
+            "UPDATE items SET authored_by_me = 1 WHERE node_id = ?1",
+            [node_id],
+        )
+        .expect("authorship");
+    }
+
+    #[test]
+    fn a_week_of_other_peoples_events_is_deleted_without_a_row() {
+        let conn = memory_db();
+        let (first, second) = (week("2026-01-05"), week("2026-01-12"));
+        seed(&conn, "a", "o/one", first.timestamp().0 + 10);
+        seed(&conn, "b", "o/two", first.timestamp().0 + 20);
+        seed(&conn, "c", "o/one", second.timestamp().0 + 10);
+        let cutoff = week("2026-02-02").timestamp();
+
+        let next = roll(&conn, first, cutoff);
+
+        assert_eq!(count_rows(&conn, "events"), 1);
+        assert_eq!(count_rows(&conn, "rollups_weekly"), 0);
+        assert_eq!(next, Some(second));
+        assert_eq!(roll(&conn, second, cutoff), None);
+        assert_eq!(count_rows(&conn, "events"), 0);
+        assert_eq!(count_rows(&conn, "rollups_weekly"), 0);
+    }
+
+    #[test]
+    fn a_maintainers_merge_of_my_pr_writes_a_row() {
+        let conn = memory_db();
+        seed_my_pr(&conn, "PR_mine");
+        let (first, second) = (week("2026-01-05"), week("2026-01-12"));
+        seed_event(
+            &conn,
+            "m",
+            "merged",
+            "PR_mine",
+            first.timestamp().0 + 10,
+            false,
+        );
+        seed_event(
+            &conn,
+            "n",
+            "commented",
+            "PR_mine",
+            second.timestamp().0 + 10,
+            false,
+        );
+        let cutoff = week("2026-02-02").timestamp();
+
+        let next = roll(&conn, first, cutoff);
+
+        assert_eq!(next, Some(second));
+        assert_eq!(count_rows(&conn, "events"), 1);
+        let rows = query_json(
+            &conn,
+            "SELECT week_start, events, prs_opened, prs_merged, repos_touched FROM rollups_weekly",
+            &[],
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["week_start"].as_i64(), Some(first.timestamp().0));
+        assert_eq!(rows[0]["prs_merged"].as_i64(), Some(1));
+        assert_eq!(rows[0]["prs_opened"].as_i64(), Some(0));
+        assert_eq!(rows[0]["events"].as_i64(), Some(0));
+        assert_eq!(rows[0]["repos_touched"].as_i64(), Some(0));
+    }
+
+    #[test]
+    fn an_empty_week_folds_to_the_delete_alone() {
+        let totals = RollupTotals {
+            events: 0,
+            prs_opened: 0,
+            prs_merged: 0,
+            repos_touched: 0,
+        };
+        let w = week("2026-01-05");
+        assert_eq!(fold(w, totals), vec![rollups::delete_week(w)]);
+        let merged = RollupTotals {
+            prs_merged: 1,
+            ..totals
+        };
+        assert_eq!(fold(w, merged).len(), 2);
     }
 }
