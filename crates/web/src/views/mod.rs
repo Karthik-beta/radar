@@ -6,6 +6,6 @@ pub mod not_found;
 pub mod pipeline;
 pub mod repos;
 pub mod sign_in;
+pub mod stats;
 pub mod their_turn;
-pub mod trends;
 pub mod your_turn;

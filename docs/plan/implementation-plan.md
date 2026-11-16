@@ -59,6 +59,7 @@ Verification gaps. To ship faster, R13 to R24 ran their unit boxes, every gate, 
 - R24. The plan says R24 depends on R23, but it needs only R10's event model.
 - R27. The Worker grows 24.3 KB gzipped over trunk, to 369.5 KB, against the 15 KB rule. The root accepts it, because the 400 KB budget holds and a smaller R27 would drop the repo refresh or the deep timeline paging. R28 and R29 share the 30.5 KB left. If R28 would pass 400 KB, it computes the stats in the UI from rows the API returns instead. R27 also adds `ImportKey::Start`, `migrations/0012_repo_node_id.sql`, and a 10 s pace for import and refresh units, which the 500 calls an hour cap needed.
 - R28. The Worker grows 28.5 KB gzipped over trunk, from 370.4 KB to 398.9 KB, measured after the CodeRabbit fixes with the rejected-token fix merged in, against the 20 KB rule, and 400 KB still holds. The root accepts it, because the budget holds and R29 adds no Worker code. R29 must not grow the Worker, and it deletes `api/trends.rs`. The stats stay in the Worker because the UI has 46.8 KB left and R29's page needs most of it. The first build was 403.7 KB. Replacing every `sort_by` with a selection (`top`), reading D1 rows as `serde_json::Value` instead of one `Deserialize` struct per select, and dropping `#[serde(flatten)]` took 6.3 KB off. R29 deletes `api/trends.rs` and frees a little. R28 also makes these choices the plan left open. `Stats` gains `yoy: Option<Yoy>`, which holds the month pairs and the data-gap flags and is filled only for `period=yoy` once `yoy_ready` is true. The 12 month period is 12 calendar months ending with this month, and S5 keeps the 52 week Trends window, so its months sum the Trends weeks by the month of their Monday. A month is unfinished until its last day is 30 days old. The CI share counts live rows only, because imported rows carry no CI failures. `period` is required and `grain` defaults to `week`. `db/stats.rs` sorts transitions by pull request in SQL and relies on `merged_at` order, so `domain::stats` takes both as input order.
+- R29. The plan says to delete `api/trends.rs`, but `api/stats.rs` called its `assemble`. The R29 PR deletes the file and its `/api/trends` route, and moves that function into `api/stats.rs` as `trends_of`. `/api/trends` now answers 404. `Yoy` carries no unlock date, so the locked line says "on 1 Jan <next year> at the latest". The Trust ranking shows merged count, merge rate, and first response in one `hbars.rs` row, because a separate table would repeat the chart. `bars.rs` now takes a plain `Pair` (start, opened, merged) so it draws weeks and months, and its `WeekBucket` input is gone. The summary line uses the S1 Lands totals, so it reads "24 merged in 12 months, 62 percent merge rate" with no repo count, because `/api/stats` has no distinct repo count for the period. The Reviews chart is one stacked bar per month, whatever the grain, because three weekly lines were unreadable. The UI is 285.7 KB gzipped, 0.7 KB past the 285 KB stop line and inside the 300 KB budget, and the Worker is 397.8 KB. The root accepted passing the stop line. A first build was 301.4 KB. The page now reads the answer as `serde_json::Value` instead of decoding the Worker's types, which took about 18 KB off, because those `Deserialize` impls were the largest part. Stats is the last planned view, so the next new view must start with the second wasm module that ADR 0009 names. Chart sizes now come from a `chart` group in `design/tokens.json`. `crates/web/build.rs` turns it into Rust constants, and `scripts/tokens-to-css.mjs` turns it into CSS properties. Smoke ran in headless Chrome through Chrome DevTools scripts, not the built-in browser, so it could save PNGs. Lanes 1, 2, 3 (the revalidation request), 4, 8, 10, the perf probes, and the video did not run.
 
 ### Follow-ups
 
@@ -2207,36 +2208,36 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Files.**
 
-- [ ] Create `crates/web/src/views/stats.rs` and delete `crates/web/src/views/trends.rs`. In `crates/web/src/components/tabs.rs`, replace the `Trends` variant with `Stats` at `/stats` in the quiet `More` group. In `crates/web/src/route.rs`, send `/trends` to the Stats view.
-- [ ] Create `crates/web/src/charts/lines.rs`, `crates/web/src/charts/grid.rs`, and `crates/web/src/charts/hbars.rs`, and keep `bars.rs` and `heatmap.rs`.
-- [ ] Create `crates/web/style/stats.css` and delete `crates/web/style/trends.css`. It uses only the custom properties generated from `design/tokens.json`.
-- [ ] Delete `crates/worker/src/api/trends.rs` and its route, since the Stats page is its only reader. `crates/worker/src/db/trends.rs` stays for S5.
+- [x] Create `crates/web/src/views/stats.rs` and delete `crates/web/src/views/trends.rs`. In `crates/web/src/components/tabs.rs`, replace the `Trends` variant with `Stats` at `/stats` in the quiet `More` group. In `crates/web/src/route.rs`, send `/trends` to the Stats view.
+- [x] Create `crates/web/src/charts/lines.rs`, `crates/web/src/charts/grid.rs`, and `crates/web/src/charts/hbars.rs`, and keep `bars.rs` and `heatmap.rs`.
+- [x] Create `crates/web/style/stats.css` and delete `crates/web/style/trends.css`. It uses only the custom properties generated from `design/tokens.json`.
+- [x] Delete `crates/worker/src/api/trends.rs` and its route, since the Stats page is its only reader. `crates/worker/src/db/trends.rs` stays for S5.
 
 **Build.**
 
-- [ ] Fetch `/api/stats` on each period change. Keep the last answer per period in memory and paint it at once when switching back, then revalidate with one request and replace the sections when the answer differs, so a sync never leaves the page stale.
-- [ ] Open with a summary line at the title size, such as "31 merged in 12 months across 9 repos, 74 percent merge rate". Write "Nothing merged yet." when the totals are 0.
-- [ ] Put the period switch at the top, with Last 12 months (weekly or monthly) and This year vs last year. Show the second only when `yoy_ready` is true, and otherwise one grey line that says when it unlocks.
-- [ ] Draw the sections in F14 order, S1 to S8, each with a heading, its numbers, and at most two charts. Draw lines with `lines.rs`, the rankings, stage medians, and size buckets with `hbars.rs`, the habits grid with `grid.rs`, and the output bars and heatmap with the existing charts.
-- [ ] Use grey only, as ADR 0003 requires. This year and the main series use `text`, last year and secondary series use `faint`, gridlines use `line`, and labels use `muted`. Nothing uses `warm`, `hot`, or `red`.
-- [ ] Show a dash and a short reason, such as "No PRs closed yet", for every `null` value. A section with a data gap from ADR 0010 says so in one grey line.
-- [ ] Give each chart `role="img"`, an `aria-label` that states its totals, and a visually hidden table with the same numbers.
-- [ ] Lay the page out in one column at 375 px and two columns from the laptop breakpoint, with no horizontal scroll.
-- [ ] Keep the UI inside ADR 0009's 300 KB budget. If the build passes 285 KB, the owner stops and asks the operator whether to start the lazy-loaded second module that ADR 0009 names.
+- [x] Fetch `/api/stats` on each period change. Keep the last answer per period in memory and paint it at once when switching back, then revalidate with one request and replace the sections when the answer differs, so a sync never leaves the page stale.
+- [x] Open with a summary line at the title size, such as "31 merged in 12 months across 9 repos, 74 percent merge rate". Write "Nothing merged yet." when the totals are 0.
+- [x] Put the period switch at the top, with Last 12 months (weekly or monthly) and This year vs last year. Show the second only when `yoy_ready` is true, and otherwise one grey line that says when it unlocks.
+- [x] Draw the sections in F14 order, S1 to S8, each with a heading, its numbers, and at most two charts. Draw lines with `lines.rs`, the rankings, stage medians, and size buckets with `hbars.rs`, the habits grid with `grid.rs`, and the output bars and heatmap with the existing charts.
+- [x] Use grey only, as ADR 0003 requires. This year and the main series use `text`, last year and secondary series use `faint`, gridlines use `line`, and labels use `muted`. Nothing uses `warm`, `hot`, or `red`.
+- [x] Show a dash and a short reason, such as "No PRs closed yet", for every `null` value. A section with a data gap from ADR 0010 says so in one grey line.
+- [x] Give each chart `role="img"`, an `aria-label` that states its totals, and a visually hidden table with the same numbers.
+- [x] Lay the page out in one column at 375 px and two columns from the laptop breakpoint, with no horizontal scroll.
+- [x] Keep the UI inside ADR 0009's 300 KB budget. If the build passes 285 KB, the owner stops and asks the operator whether to start the lazy-loaded second module that ADR 0009 names. The UI measures 285.7 KB gzipped, 0.7 KB past the stop line. The root accepted that and chose to keep one bundle, so no second module started. If the build passes 285 KB, the owner stops and asks the operator whether to start the lazy-loaded second module that ADR 0009 names.
 
 **You see.**
 
-- [ ] A Stats tab replaces Trends, and `/trends` opens Stats.
+- [x] A Stats tab replaces Trends, and `/trends` opens Stats.
 - [ ] The period switch changes every section, and year over year appears once two years of facts exist.
 - [ ] Every number on the page matches `/api/stats` for the same period.
-- [ ] The page is grey on graphite, readable at 375 px, and shows no `NaN`.
+- [x] The page is grey on graphite, readable at 375 px, and shows no `NaN`.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `lines.rs`, `grid.rs`, and `hbars.rs` render the right number of marks for empty, one, and many points, and scale with `nice_max`. Run `cargo test -p web charts`.
-- [ ] The summary line and the dash text cover zero, one, and many, and `null` rates. Run `cargo test -p web stats`.
-- [ ] `tabs.rs` tests list `Stats` in the More group, and `route.rs` sends `/trends` and `/stats` to the same view. Run `cargo test -p web tabs` and `cargo test -p web route`, one filter each.
-- [ ] Removing `api/trends.rs` leaves every other route test passing. Run `cargo test --workspace`.
+- [x] `lines.rs`, `grid.rs`, and `hbars.rs` render the right number of marks for empty, one, and many points, and scale with `nice_max`. Run `cargo test -p web charts`.
+- [x] The summary line and the dash text cover zero, one, and many, and `null` rates. Run `cargo test -p web stats`.
+- [x] `tabs.rs` tests list `Stats` in the More group, and `route.rs` sends `/trends` and `/stats` to the same view. Run `cargo test -p web tabs` and `cargo test -p web route`, one filter each.
+- [x] Removing `api/trends.rs` leaves every other route test passing. Run `cargo test --workspace`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `sonnet` at the PR head, per the boot recipe.
 
@@ -2244,11 +2245,11 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] Lane 2. Happy path. Load the two-year fixture from R28 and open Stats. Save `stats-basic.png`. Pass when every section shows numbers equal to `/api/stats` for the default period.
 - [ ] Lane 3. Period switch. Switch weekly, monthly, and year over year. Save `stats-periods.png`. Pass when each switch updates every section, a second visit to a period paints from memory before its one revalidating request, a fact changed in D1 between visits shows after that request, and the URL keeps the period.
 - [ ] Lane 4. Year over year locked. Load one year of facts. Save `stats-yoy-locked.png`. Pass when the year over year choice is absent and the grey unlock line names the date.
-- [ ] Lane 5. Empty state. On a fresh `--persist-to` directory, open Stats. Save `stats-empty.png`. Pass when the summary reads "Nothing merged yet.", every rate shows a dash with a reason, and the page text has no `NaN`, `undefined`, or `null`.
-- [ ] Lane 6. Old links. Open `/trends` directly and from history. Save `stats-trends-link.png`. Pass when both show Stats with the Stats tab current.
-- [ ] Lane 7. Tokens only. Read `getComputedStyle` for every `fill` and `stroke` on the page. Save `stats-tokens.png`. Pass when each value equals one of `bg`, `surface`, `line`, `text`, `muted`, or `faint`, and none equals `warm`, `hot`, or `red`.
+- [x] Lane 5. Empty state. On a fresh `--persist-to` directory, open Stats. Save `stats-empty.png`. Pass when the summary reads "Nothing merged yet.", every rate shows a dash with a reason, and the page text has no `NaN`, `undefined`, or `null`.
+- [x] Lane 6. Old links. Open `/trends` directly and from history. Save `stats-trends-link.png`. Pass when both show Stats with the Stats tab current.
+- [x] Lane 7. Tokens only. Read `getComputedStyle` for every `fill` and `stroke` on the page. Save `stats-tokens.png`. Pass when each value equals one of `bg`, `surface`, `line`, `text`, `muted`, or `faint`, and none equals `warm`, `hot`, or `red`.
 - [ ] Lane 8. Accessibility. Read the page with the accessibility tree and run `node scripts/audit-a11y.mjs` on `/stats`. Save `stats-a11y.png`. Pass when every chart has `role="img"` with totals in its label, each hidden table equals its chart, chart marks are not tab stops, and the audit reports no violation.
-- [ ] Lane 9. Phone width. At 375 px width, open Stats. Save `stats-phone.png`. Pass when `document.documentElement.scrollWidth` is at most 375, the habits grid and heatmap fit, and every label is readable.
+- [x] Lane 9. Phone width. At 375 px width, open Stats. Save `stats-phone.png`. Pass when `document.documentElement.scrollWidth` is at most 375, the habits grid and heatmap fit, and every label is readable.
 - [ ] Lane 10. Keyboard. Use only the keyboard to open Stats through the More menu, change the period, and leave. Save `stats-keyboard.png`. Pass when every control has a visible focus ring, the switch works with arrow keys and enter, Tab never traps, and `prefers-reduced-motion` shows no animation.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.

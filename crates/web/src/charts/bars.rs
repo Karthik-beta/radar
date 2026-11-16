@@ -1,7 +1,10 @@
-use domain::trends::{nice_max, WeekBucket};
+use domain::ids::Timestamp;
+use domain::trends::nice_max;
 use leptos::prelude::*;
 
-use super::short_date;
+use super::lines::Tone;
+use super::table::data_table;
+use super::{axis_slots, iso_date, month_label, short_date};
 
 const WIDTH: f64 = 400.0;
 const HEIGHT: f64 = 160.0;
@@ -9,8 +12,14 @@ const LEFT: f64 = 24.0;
 const RIGHT: f64 = 4.0;
 const TOP: f64 = 8.0;
 const BOTTOM: f64 = 20.0;
-/// The weeks that carry a date label on the axis.
-const LABELLED: [usize; 5] = [0, 13, 26, 39, 51];
+
+/// Opened and merged counts for one week or month.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pair {
+    pub start: Timestamp,
+    pub opened: u32,
+    pub merged: u32,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bar {
@@ -35,13 +44,13 @@ pub fn baseline() -> f64 {
     TOP + plot_height()
 }
 
-fn slot_width(weeks: usize) -> f64 {
-    (WIDTH - LEFT - RIGHT) / weeks.max(1) as f64
+fn slot_width(count: usize) -> f64 {
+    (WIDTH - LEFT - RIGHT) / count.max(1) as f64
 }
 
-/// Two bars per week, side by side. A week with a zero count has no bar, so an
+/// Two bars per slot, side by side. A slot with a zero count has no bar, so an
 /// empty chart is just its axes.
-pub fn layout(weeks: &[WeekBucket]) -> Layout {
+pub fn layout(weeks: &[Pair]) -> Layout {
     let peak = weeks
         .iter()
         .map(|w| w.opened.max(w.merged))
@@ -93,17 +102,23 @@ fn rects(bars: &[Option<Bar>], class: &'static str) -> impl IntoView {
         .collect_view()
 }
 
-/// Pull requests opened and merged per week. The hidden table beside it holds
-/// the same numbers for a screen reader.
-#[component]
-pub fn WeeklyBars(weeks: Vec<WeekBucket>) -> impl IntoView {
+/// Pull requests opened and merged per week or month (`unit`). The hidden table
+/// beside it holds the same numbers for a screen reader.
+pub fn pair_bars(weeks: Vec<Pair>, unit: &'static str) -> AnyView {
     let chart = layout(&weeks);
     let opened_total: u32 = weeks.iter().map(|w| w.opened).sum();
     let merged_total: u32 = weeks.iter().map(|w| w.merged).sum();
     let label = format!(
-        "Pull requests per week over {} weeks, {opened_total} opened and {merged_total} merged",
+        "Pull requests per {unit} over {} {unit}s, {opened_total} opened and {merged_total} merged",
         weeks.len()
     );
+    let date = move |at: Timestamp| {
+        if unit == "month" {
+            month_label(at)
+        } else {
+            short_date(at)
+        }
+    };
     let slot = slot_width(weeks.len());
     let grid = [0.0, 0.5, 1.0]
         .into_iter()
@@ -120,19 +135,20 @@ pub fn WeeklyBars(weeks: Vec<WeekBucket>) -> impl IntoView {
             }
         })
         .collect_view();
-    let dates = LABELLED
+    let last = weeks.len().saturating_sub(1);
+    let dates = axis_slots(weeks.len())
         .into_iter()
         .filter_map(|i| weeks.get(i).map(|w| (i, w)))
         .map(|(i, week)| {
             let x = LEFT + i as f64 * slot;
             let anchor = match i {
                 0 => "start",
-                51 => "end",
+                i if i == last => "end",
                 _ => "middle",
             };
             view! {
                 <text class="chart-label" x=format!("{x:.2}") y=format!("{:.2}", HEIGHT - 4.0) text-anchor=anchor>
-                    {short_date(week.week_start)}
+                    {date(week.start)}
                 </text>
             }
         })
@@ -168,55 +184,192 @@ pub fn WeeklyBars(weeks: Vec<WeekBucket>) -> impl IntoView {
                 <span><i class="chart-key chart-key-opened"></i>"Opened"</span>
                 <span><i class="chart-key chart-key-merged"></i>"Merged"</span>
             </figcaption>
-            <table class="sr-only">
-                <caption>"Pull requests per week"</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">"Week of"</th>
-                        <th scope="col">"Opened"</th>
-                        <th scope="col">"Merged"</th>
-                        <th scope="col">"Repos"</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {weeks
-                        .iter()
-                        .map(|w| {
-                            view! {
-                                <tr>
-                                    <th scope="row">{super::iso_date(w.week_start)}</th>
-                                    <td>{w.opened}</td>
-                                    <td>{w.merged}</td>
-                                    <td>{w.repos}</td>
-                                </tr>
-                            }
-                        })
-                        .collect_view()}
-                </tbody>
-            </table>
+            {data_table(
+                format!("Pull requests per {unit}"),
+                vec![
+                    (if unit == "month" { "Month of" } else { "Week of" }).to_owned(),
+                    "Opened".to_owned(),
+                    "Merged".to_owned(),
+                ],
+                weeks
+                    .iter()
+                    .map(|w| vec![iso_date(w.start), w.opened.to_string(), w.merged.to_string()])
+                    .collect(),
+            )}
         </figure>
     }
+    .into_any()
+}
+
+/// One part of a stacked bar, with a count per slot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stack {
+    pub name: &'static str,
+    pub tone: Tone,
+    pub counts: Vec<u32>,
+}
+
+/// Each part of each slot as a bar, stacked from the baseline in the order of
+/// `stacks`. A part with a zero count has no bar.
+pub fn stack_layout(stacks: &[Stack]) -> (u32, Vec<Vec<Option<Bar>>>) {
+    let slots = stacks.iter().map(|s| s.counts.len()).max().unwrap_or(0);
+    let total = |i: usize| -> u32 {
+        stacks
+            .iter()
+            .map(|s| s.counts.get(i).copied().unwrap_or(0))
+            .sum()
+    };
+    let ceiling = nice_max((0..slots).map(total).max().unwrap_or(0));
+    let slot = slot_width(slots);
+    let width = (slot - 0.5).max(0.5);
+    let mut below = vec![0.0; slots];
+    let bars = stacks
+        .iter()
+        .map(|stack| {
+            (0..slots)
+                .map(|i| {
+                    let count = stack.counts.get(i).copied().unwrap_or(0);
+                    (count > 0).then(|| {
+                        let height = f64::from(count) / f64::from(ceiling) * plot_height();
+                        let top = baseline() - below[i] - height;
+                        below[i] += height;
+                        Bar {
+                            x: LEFT + i as f64 * slot + 0.25,
+                            y: top,
+                            width,
+                            height,
+                        }
+                    })
+                })
+                .collect()
+        })
+        .collect();
+    (ceiling, bars)
+}
+
+/// Counts per week or month, split into parts and stacked. The hidden table
+/// holds every count.
+pub fn stacked_bars(labels: Vec<String>, stacks: Vec<Stack>, label: String) -> AnyView {
+    let (ceiling, bars) = stack_layout(&stacks);
+    let grid = [0.0, 0.5, 1.0]
+        .into_iter()
+        .map(|share| baseline() - share * plot_height())
+        .map(|y| {
+            view! {
+                <line
+                    class="chart-grid"
+                    x1=format!("{LEFT:.2}")
+                    x2=format!("{:.2}", WIDTH - RIGHT)
+                    y1=format!("{y:.2}")
+                    y2=format!("{y:.2}")
+                />
+            }
+        })
+        .collect_view();
+    let ticks = [(0.0, 0u32), (1.0, ceiling)]
+        .into_iter()
+        .map(|(share, value)| {
+            let y = baseline() - share * plot_height() + 4.0;
+            view! {
+                <text class="chart-label" x=format!("{:.2}", LEFT - 4.0) y=format!("{y:.2}") text-anchor="end">
+                    {value}
+                </text>
+            }
+        })
+        .collect_view();
+    let last = labels.len().saturating_sub(1);
+    let slot = slot_width(labels.len());
+    let axis = axis_slots(labels.len())
+        .into_iter()
+        .filter_map(|i| labels.get(i).map(|text| (i, text.clone())))
+        .map(|(i, text)| {
+            let anchor = match i {
+                0 => "start",
+                i if i == last => "end",
+                _ => "middle",
+            };
+            view! {
+                <text class="chart-label" x=format!("{:.2}", LEFT + i as f64 * slot) y=format!("{:.2}", HEIGHT - 4.0) text-anchor=anchor>
+                    {text}
+                </text>
+            }
+        })
+        .collect_view();
+    let drawn = stacks
+        .iter()
+        .zip(&bars)
+        .flat_map(|(stack, parts)| {
+            let class = stack.tone.bar_class();
+            parts.iter().flatten().map(move |bar| {
+                view! {
+                    <rect
+                        class=class
+                        x=format!("{:.2}", bar.x)
+                        y=format!("{:.2}", bar.y)
+                        width=format!("{:.2}", bar.width)
+                        height=format!("{:.2}", bar.height)
+                    />
+                }
+            })
+        })
+        .collect_view();
+    let keys = stacks
+        .iter()
+        .map(|s| view! { <span><i class=format!("chart-key {}", s.tone.key_class())></i>{s.name}</span> })
+        .collect_view();
+    let head = std::iter::once("Period".to_owned())
+        .chain(stacks.iter().map(|s| s.name.to_owned()))
+        .collect();
+    let rows = labels
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            std::iter::once(text.clone())
+                .chain(
+                    stacks
+                        .iter()
+                        .map(|s| s.counts.get(i).copied().unwrap_or(0).to_string()),
+                )
+                .collect()
+        })
+        .collect();
+    view! {
+        <figure class="chart">
+            <svg class="chart-svg" viewBox=format!("0 0 {WIDTH} {HEIGHT}") role="img" aria-label=label.clone()>
+                {grid}
+                {ticks}
+                {drawn}
+                {axis}
+            </svg>
+            <figcaption class="chart-legend">{keys}</figcaption>
+            {data_table(label, head, rows)}
+        </figure>
+    }
+    .into_any()
 }
 
 #[cfg(test)]
 mod tests {
-    use domain::ids::Timestamp;
-    use domain::trends::WeekSource;
-
     use super::*;
 
-    fn weeks(counts: &[(u32, u32)]) -> Vec<WeekBucket> {
+    fn weeks(counts: &[(u32, u32)]) -> Vec<Pair> {
         counts
             .iter()
             .enumerate()
-            .map(|(i, (opened, merged))| WeekBucket {
-                week_start: Timestamp(345_600 + i as i64 * 604_800),
+            .map(|(i, (opened, merged))| Pair {
+                start: Timestamp(345_600 + i as i64 * 604_800),
                 opened: *opened,
                 merged: *merged,
-                repos: 0,
-                source: WeekSource::Live,
             })
             .collect()
+    }
+
+    #[test]
+    fn one_pair_makes_one_bar_per_side() {
+        let chart = layout(&weeks(&[(3, 1)]));
+        assert_eq!(chart.opened.iter().flatten().count(), 1);
+        assert_eq!(chart.merged.iter().flatten().count(), 1);
+        assert_eq!(chart.ceiling, 4);
     }
 
     #[test]
@@ -249,5 +402,28 @@ mod tests {
         assert!(last.x + last.width <= WIDTH - RIGHT + 1e-9);
         let first = chart.opened[0].expect("bar");
         assert!(first.x >= LEFT);
+    }
+
+    #[test]
+    fn stacked_parts_sit_on_each_other_and_share_one_ceiling() {
+        let stack = |counts: &[u32]| Stack {
+            name: "x",
+            tone: Tone::Text,
+            counts: counts.to_vec(),
+        };
+        let (ceiling, bars) = stack_layout(&[stack(&[2, 0]), stack(&[3, 1])]);
+        assert_eq!(ceiling, 5);
+        let low = bars[0][0].expect("bottom part");
+        let high = bars[1][0].expect("top part");
+        assert!((low.y + low.height - baseline()).abs() < 1e-9);
+        assert!((high.y + high.height - low.y).abs() < 1e-9);
+        assert!((high.y - TOP).abs() < 1e-9);
+        assert!(bars[0][1].is_none() && bars[1][1].is_some());
+    }
+
+    #[test]
+    fn no_stacks_make_no_bars() {
+        let (ceiling, bars) = stack_layout(&[]);
+        assert_eq!((ceiling, bars.len()), (4, 0));
     }
 }

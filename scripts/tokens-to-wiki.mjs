@@ -39,7 +39,7 @@ function swatchPng(hex, size = 20) {
   ]);
 }
 
-const headings = { color: 'Colour', font: 'Type', space: 'Spacing', radius: 'Radius', motion: 'Motion', breakpoint: 'Breakpoints' };
+const headings = { color: 'Colour', font: 'Type', space: 'Spacing', radius: 'Radius', motion: 'Motion', breakpoint: 'Breakpoints', chart: 'Charts' };
 const cssName = (t) => `--${t.path.join('-')}`;
 const tokens = collect(tree);
 const groups = Map.groupBy(tokens, (t) => t.path[0]);

@@ -2,7 +2,6 @@ use domain::agents::AgentsPage;
 use domain::api::{Dashboard, Freshness, ItemId, SnoozeFor, SnoozeRequest};
 use domain::feed::{FeedCursor, FeedPage};
 use domain::repo_stats::RepoCard;
-use domain::trends::Trends;
 use gloo_net::http::{Request, Response};
 use serde::de::DeserializeOwned;
 
@@ -28,10 +27,6 @@ pub async fn freshness() -> Result<Freshness, ApiError> {
 
 pub async fn repos() -> Result<Vec<RepoCard>, ApiError> {
     get("/api/repos").await
-}
-
-pub async fn trends() -> Result<Trends, ApiError> {
-    get("/api/trends").await
 }
 
 pub async fn agents() -> Result<AgentsPage, ApiError> {

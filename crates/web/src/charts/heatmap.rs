@@ -1,10 +1,12 @@
 use domain::trends::{DayCell, HeatLevel, HEATMAP_WEEKS};
 use leptos::prelude::*;
 
+use super::table::data_table;
 use super::{events_title, iso_date};
+use crate::tokens;
 
-const CELL: usize = 10;
-const GAP: usize = 3;
+const CELL: usize = tokens::CELL as usize;
+const GAP: usize = tokens::GAP as usize;
 const DAYS: usize = 7;
 const WIDTH: usize = HEATMAP_WEEKS * CELL + (HEATMAP_WEEKS - 1) * GAP;
 const HEIGHT: usize = DAYS * CELL + (DAYS - 1) * GAP;
@@ -27,8 +29,7 @@ fn origin(index: usize) -> (usize, usize) {
 
 /// Events by me per day over 26 weeks, one column per week. The cells are not
 /// focusable. The hidden table holds each week's total.
-#[component]
-pub fn HeatMap(cells: Vec<DayCell>) -> impl IntoView {
+pub fn heat_map(cells: Vec<DayCell>) -> AnyView {
     let total: u32 = cells.iter().map(|c| c.count).sum();
     let label = format!("Daily activity over {HEATMAP_WEEKS} weeks, {total} events");
     let weeks: Vec<(String, u32)> = cells
@@ -62,7 +63,7 @@ pub fn HeatMap(cells: Vec<DayCell>) -> impl IntoView {
                                 y=y.to_string()
                                 width=CELL.to_string()
                                 height=CELL.to_string()
-                                rx="2"
+                                rx=tokens::CELL_RADIUS.to_string()
                             >
                                 <title>{events_title(cell.count, cell.date)}</title>
                             </rect>
@@ -70,30 +71,14 @@ pub fn HeatMap(cells: Vec<DayCell>) -> impl IntoView {
                     })
                     .collect_view()}
             </svg>
-            <table class="sr-only">
-                <caption>"Events per week"</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">"Week of"</th>
-                        <th scope="col">"Events"</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {weeks
-                        .into_iter()
-                        .map(|(week, count)| {
-                            view! {
-                                <tr>
-                                    <th scope="row">{week}</th>
-                                    <td>{count}</td>
-                                </tr>
-                            }
-                        })
-                        .collect_view()}
-                </tbody>
-            </table>
+            {data_table(
+                "Events per week".to_owned(),
+                vec!["Week of".to_owned(), "Events".to_owned()],
+                weeks.into_iter().map(|(week, count)| vec![week, count.to_string()]).collect(),
+            )}
         </figure>
     }
+    .into_any()
 }
 
 #[cfg(test)]

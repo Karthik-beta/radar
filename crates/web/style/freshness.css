@@ -1,5 +1,6 @@
 .sync-status {
   position: relative;
+  font-variant-numeric: normal;
 }
 
 .sync-button {

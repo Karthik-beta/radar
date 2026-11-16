@@ -19,6 +19,7 @@ const namespaces = [
   [['motion', 'duration'], 'duration'],
   [['motion', 'easing'], 'ease'],
   [['breakpoint'], 'breakpoint'],
+  [['chart'], 'chart'],
 ];
 
 function propertyName(token) {

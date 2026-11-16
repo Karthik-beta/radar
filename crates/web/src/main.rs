@@ -10,6 +10,7 @@ mod route;
 mod stage_label;
 mod store;
 mod sync_label;
+mod tokens;
 mod url;
 mod views;
 

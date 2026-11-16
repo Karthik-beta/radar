@@ -3,11 +3,13 @@
 use domain::error::ErrorCode;
 use domain::ids::Timestamp;
 use domain::stats::{build_stats, Period, Stats, StatsInput};
+use domain::trends::{build_trends, Trends};
 use serde_json::Value;
 use worker::{console_error, console_log, Env, Request, Result};
 
 use super::Reply;
 use crate::db::stats::{self, parse_merge, parse_pr, parse_review, parse_transition, RawStats};
+use crate::db::trends::RawTrends;
 use crate::db::RowError;
 
 /// The period the query names, or `None` for a missing or unknown value.
@@ -44,10 +46,26 @@ fn parsed<T>(
         .collect()
 }
 
+fn trends_of(raw: RawTrends, now: Timestamp) -> (Trends, Vec<RowError>) {
+    let mut errors = Vec::new();
+    let prs: Vec<_> = raw.prs.into_iter().map(|row| row.parse()).collect();
+    let events: Vec<_> = raw
+        .events
+        .into_iter()
+        .filter_map(|row| row.parse().map_err(|e| errors.push(e)).ok())
+        .collect();
+    let rollups: Vec<_> = raw
+        .rollups
+        .into_iter()
+        .filter_map(|row| row.parse().map_err(|e| errors.push(e)).ok())
+        .collect();
+    (build_trends(&prs, &events, &rollups, now), errors)
+}
+
 /// Validates every row and drops the ones that do not parse, so one bad row
 /// cannot blank a section.
 pub fn assemble(mut raw: RawStats, period: Period, now: Timestamp) -> (Stats, Vec<RowError>) {
-    let (trends, mut errors) = super::trends::assemble(std::mem::take(&mut raw.trends), now);
+    let (trends, mut errors) = trends_of(std::mem::take(&mut raw.trends), now);
     let input = StatsInput {
         now,
         utc_offset_minutes: i32::try_from(raw.utc_offset_minutes()).unwrap_or(0),
