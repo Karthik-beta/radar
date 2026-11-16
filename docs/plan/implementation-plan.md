@@ -2261,7 +2261,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 
 **Review gate.** The operator reviews before merge.
 
-- [x] Copy the lane 2, lane 3, and lane 9 screenshots into `artifacts/review/R29-review-stats.png`, `artifacts/review/R29-review-periods.png`, and `artifacts/review/R29-review-phone.png`.
+- [ ] Copy the lane 2, lane 3, and lane 9 screenshots into `artifacts/review/R29-review-stats.png`, `artifacts/review/R29-review-periods.png`, and `artifacts/review/R29-review-phone.png`.
 - [ ] Record a 30 to 60 second video of the Stats page at laptop and phone width, with a period switch, from a lane's `wrangler dev` session. Save it as `artifacts/review/R29-review.mp4`.
 - [ ] Post the screenshots and the video in chat. Stop at merge-ready. Wait for the operator's click.
 

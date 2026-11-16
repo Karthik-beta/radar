@@ -156,8 +156,18 @@ fn remember(period: Period, text: String) {
     });
 }
 
+/// The sections every answer carries, each a JSON object. An empty database
+/// still sends all of them, so only a malformed answer fails this check.
+const SECTIONS: [&str; 8] = [
+    "lands", "reviews", "trust", "agents", "output", "waiting", "shape", "habits",
+];
+
 fn parse(text: &str) -> Option<Arc<Value>> {
-    serde_json::from_str(text).ok().map(Arc::new)
+    let value: Value = serde_json::from_str(text).ok()?;
+    let shaped = value["yoy_ready"].is_boolean()
+        && value["period"].is_object()
+        && SECTIONS.iter().all(|key| value[*key].is_object());
+    shaped.then(|| Arc::new(value))
 }
 
 /// The period the address bar names, or the default for a missing or bad one.
@@ -288,7 +298,11 @@ fn load(period: Period, status: RwSignal<Status>, store: Store) {
         if !is_current(this_load) {
             return;
         }
-        let ready = matches!(status.get_untracked(), Status::Ready(_));
+        // Leaving Stats disposes the signal while the request is in flight.
+        let Some(current) = status.try_get_untracked() else {
+            return;
+        };
+        let ready = matches!(current, Status::Ready(_));
         match answer {
             Ok(text) if ready && remembered(period).as_deref() == Some(text.as_str()) => {}
             Ok(text) => match parse(&text) {
@@ -1124,6 +1138,20 @@ mod tests {
         assert!(remembered(Period::YearOverYear).is_none());
         assert_eq!(month_label(Timestamp(NOW)), "Nov");
         assert!(parse("not json").is_none());
+    }
+
+    #[test]
+    fn only_a_stats_shaped_answer_parses() {
+        for bad in ["{}", "null", "[]", r#"{"yoy_ready":"no"}"#] {
+            assert!(parse(bad).is_none(), "{bad}");
+        }
+        let mut shaped = json!({ "period": { "kind": "year_over_year" }, "yoy_ready": false });
+        for key in SECTIONS {
+            shaped[key] = json!({});
+        }
+        assert!(parse(&shaped.to_string()).is_some());
+        shaped["lands"] = json!(null);
+        assert!(parse(&shaped.to_string()).is_none());
     }
 
     #[test]
