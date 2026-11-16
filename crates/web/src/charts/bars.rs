@@ -1,7 +1,8 @@
-use domain::trends::{nice_max, WeekBucket};
+use domain::ids::Timestamp;
+use domain::trends::nice_max;
 use leptos::prelude::*;
 
-use super::short_date;
+use super::{axis_slots, iso_date, month_label, short_date};
 
 const WIDTH: f64 = 400.0;
 const HEIGHT: f64 = 160.0;
@@ -9,8 +10,14 @@ const LEFT: f64 = 24.0;
 const RIGHT: f64 = 4.0;
 const TOP: f64 = 8.0;
 const BOTTOM: f64 = 20.0;
-/// The weeks that carry a date label on the axis.
-const LABELLED: [usize; 5] = [0, 13, 26, 39, 51];
+
+/// Opened and merged counts for one week or month.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pair {
+    pub start: Timestamp,
+    pub opened: u32,
+    pub merged: u32,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bar {
@@ -35,13 +42,13 @@ pub fn baseline() -> f64 {
     TOP + plot_height()
 }
 
-fn slot_width(weeks: usize) -> f64 {
-    (WIDTH - LEFT - RIGHT) / weeks.max(1) as f64
+fn slot_width(count: usize) -> f64 {
+    (WIDTH - LEFT - RIGHT) / count.max(1) as f64
 }
 
-/// Two bars per week, side by side. A week with a zero count has no bar, so an
+/// Two bars per slot, side by side. A slot with a zero count has no bar, so an
 /// empty chart is just its axes.
-pub fn layout(weeks: &[WeekBucket]) -> Layout {
+pub fn layout(weeks: &[Pair]) -> Layout {
     let peak = weeks
         .iter()
         .map(|w| w.opened.max(w.merged))
@@ -93,17 +100,24 @@ fn rects(bars: &[Option<Bar>], class: &'static str) -> impl IntoView {
         .collect_view()
 }
 
-/// Pull requests opened and merged per week. The hidden table beside it holds
-/// the same numbers for a screen reader.
+/// Pull requests opened and merged per week or month (`unit`). The hidden table
+/// beside it holds the same numbers for a screen reader.
 #[component]
-pub fn WeeklyBars(weeks: Vec<WeekBucket>) -> impl IntoView {
+pub fn PairBars(weeks: Vec<Pair>, unit: &'static str) -> impl IntoView {
     let chart = layout(&weeks);
     let opened_total: u32 = weeks.iter().map(|w| w.opened).sum();
     let merged_total: u32 = weeks.iter().map(|w| w.merged).sum();
     let label = format!(
-        "Pull requests per week over {} weeks, {opened_total} opened and {merged_total} merged",
+        "Pull requests per {unit} over {} {unit}s, {opened_total} opened and {merged_total} merged",
         weeks.len()
     );
+    let date = move |at: Timestamp| {
+        if unit == "month" {
+            month_label(at)
+        } else {
+            short_date(at)
+        }
+    };
     let slot = slot_width(weeks.len());
     let grid = [0.0, 0.5, 1.0]
         .into_iter()
@@ -120,19 +134,20 @@ pub fn WeeklyBars(weeks: Vec<WeekBucket>) -> impl IntoView {
             }
         })
         .collect_view();
-    let dates = LABELLED
+    let last = weeks.len().saturating_sub(1);
+    let dates = axis_slots(weeks.len())
         .into_iter()
         .filter_map(|i| weeks.get(i).map(|w| (i, w)))
         .map(|(i, week)| {
             let x = LEFT + i as f64 * slot;
             let anchor = match i {
                 0 => "start",
-                51 => "end",
+                i if i == last => "end",
                 _ => "middle",
             };
             view! {
                 <text class="chart-label" x=format!("{x:.2}") y=format!("{:.2}", HEIGHT - 4.0) text-anchor=anchor>
-                    {short_date(week.week_start)}
+                    {date(week.start)}
                 </text>
             }
         })
@@ -169,13 +184,12 @@ pub fn WeeklyBars(weeks: Vec<WeekBucket>) -> impl IntoView {
                 <span><i class="chart-key chart-key-merged"></i>"Merged"</span>
             </figcaption>
             <table class="sr-only">
-                <caption>"Pull requests per week"</caption>
+                <caption>{format!("Pull requests per {unit}")}</caption>
                 <thead>
                     <tr>
-                        <th scope="col">"Week of"</th>
+                        <th scope="col">{if unit == "month" { "Month of" } else { "Week of" }}</th>
                         <th scope="col">"Opened"</th>
                         <th scope="col">"Merged"</th>
-                        <th scope="col">"Repos"</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -184,10 +198,9 @@ pub fn WeeklyBars(weeks: Vec<WeekBucket>) -> impl IntoView {
                         .map(|w| {
                             view! {
                                 <tr>
-                                    <th scope="row">{super::iso_date(w.week_start)}</th>
+                                    <th scope="row">{iso_date(w.start)}</th>
                                     <td>{w.opened}</td>
                                     <td>{w.merged}</td>
-                                    <td>{w.repos}</td>
                                 </tr>
                             }
                         })
@@ -200,23 +213,26 @@ pub fn WeeklyBars(weeks: Vec<WeekBucket>) -> impl IntoView {
 
 #[cfg(test)]
 mod tests {
-    use domain::ids::Timestamp;
-    use domain::trends::WeekSource;
-
     use super::*;
 
-    fn weeks(counts: &[(u32, u32)]) -> Vec<WeekBucket> {
+    fn weeks(counts: &[(u32, u32)]) -> Vec<Pair> {
         counts
             .iter()
             .enumerate()
-            .map(|(i, (opened, merged))| WeekBucket {
-                week_start: Timestamp(345_600 + i as i64 * 604_800),
+            .map(|(i, (opened, merged))| Pair {
+                start: Timestamp(345_600 + i as i64 * 604_800),
                 opened: *opened,
                 merged: *merged,
-                repos: 0,
-                source: WeekSource::Live,
             })
             .collect()
+    }
+
+    #[test]
+    fn one_pair_makes_one_bar_per_side() {
+        let chart = layout(&weeks(&[(3, 1)]));
+        assert_eq!(chart.opened.iter().flatten().count(), 1);
+        assert_eq!(chart.merged.iter().flatten().count(), 1);
+        assert_eq!(chart.ceiling, 4);
     }
 
     #[test]

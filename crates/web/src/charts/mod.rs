@@ -1,11 +1,13 @@
-//! Hand-written SVG charts for the Trends view. They use no chart library and
+//! Hand-written SVG charts for the Stats view. They use no chart library and
 //! no colour beyond the neutral tokens (ADR 0003).
 
 pub mod bars;
+pub mod grid;
+pub mod hbars;
 pub mod heatmap;
+pub mod lines;
 
 use domain::ids::Timestamp;
-use domain::trends::{Trends, HEATMAP_WEEKS};
 
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -34,31 +36,31 @@ pub fn events_title(count: u32, at: Timestamp) -> String {
     format!("{count} {noun} on {}", iso_date(at))
 }
 
-/// The line that opens the view.
-pub fn summary(trends: &Trends) -> String {
-    if trends.merged_total == 0 {
-        return "Nothing merged yet.".to_owned();
+/// The slots that carry a label on an axis: first, last, and three between.
+pub fn axis_slots(n: usize) -> Vec<usize> {
+    if n == 0 {
+        return Vec::new();
     }
-    let prs = if trends.merged_total == 1 {
-        "pull request"
-    } else {
-        "pull requests"
-    };
-    let repos = if trends.repos_total == 1 {
-        "repo"
-    } else {
-        "repos"
-    };
-    format!(
-        "{} {prs} merged in {HEATMAP_WEEKS} weeks across {} {repos}",
-        trends.merged_total, trends.repos_total
-    )
+    let mut slots: Vec<usize> = (0..5).map(|i| i * (n - 1) / 4).collect();
+    slots.dedup();
+    slots
+}
+
+/// `Oct`, for an axis label.
+pub fn month_label(at: Timestamp) -> String {
+    month_name(at.year_month().1).to_owned()
+}
+
+pub fn month_name(month: i64) -> &'static str {
+    usize::try_from(month - 1)
+        .ok()
+        .and_then(|m| MONTHS.get(m))
+        .copied()
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
-    use domain::trends::build_trends;
-
     use super::*;
 
     fn at(s: &str) -> Timestamp {
@@ -81,20 +83,17 @@ mod tests {
     }
 
     #[test]
-    fn the_summary_follows_the_totals() {
-        let mut trends = build_trends(&[], &[], &[], at("2026-10-14T12:00:00Z"));
-        assert_eq!(summary(&trends), "Nothing merged yet.");
-        trends.merged_total = 14;
-        trends.repos_total = 6;
-        assert_eq!(
-            summary(&trends),
-            "14 pull requests merged in 26 weeks across 6 repos"
-        );
-        trends.merged_total = 1;
-        trends.repos_total = 1;
-        assert_eq!(
-            summary(&trends),
-            "1 pull request merged in 26 weeks across 1 repo"
-        );
+    fn axis_labels_cover_empty_one_and_many() {
+        assert!(axis_slots(0).is_empty());
+        assert_eq!(axis_slots(1), [0]);
+        assert_eq!(axis_slots(13), [0, 3, 6, 9, 12]);
+        assert_eq!(axis_slots(52), [0, 12, 25, 38, 51]);
+    }
+
+    #[test]
+    fn a_month_reads_as_its_short_name() {
+        assert_eq!(month_label(at("2026-10-14T00:00:00Z")), "Oct");
+        assert_eq!(month_name(0), "");
+        assert_eq!(month_name(13), "");
     }
 }

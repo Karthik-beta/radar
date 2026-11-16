@@ -15,8 +15,8 @@ use crate::views::not_found::NotFound;
 use crate::views::pipeline::Pipeline;
 use crate::views::repos::Repos;
 use crate::views::sign_in::SignIn;
+use crate::views::stats::Stats;
 use crate::views::their_turn::TheirTurn;
-use crate::views::trends::Trends;
 use crate::views::your_turn::YourTurn;
 
 #[component]
@@ -67,7 +67,7 @@ fn Shell() -> impl IntoView {
                 Route::Tab(Tab::Merged) => view! { <Merged/> }.into_any(),
                 Route::Tab(Tab::Feed) => view! { <Feed/> }.into_any(),
                 Route::Tab(Tab::Repos) => view! { <Repos/> }.into_any(),
-                Route::Tab(Tab::Trends) => view! { <Trends/> }.into_any(),
+                Route::Tab(Tab::Stats) => view! { <Stats/> }.into_any(),
                 Route::Tab(Tab::Agents) => view! { <Agents/> }.into_any(),
                 Route::SignIn => {
                     queue_microtask(move || location.replace("/"));

@@ -2,7 +2,7 @@ use domain::agents::AgentsPage;
 use domain::api::{Dashboard, Freshness, ItemId, SnoozeFor, SnoozeRequest};
 use domain::feed::{FeedCursor, FeedPage};
 use domain::repo_stats::RepoCard;
-use domain::trends::Trends;
+use domain::stats::{Grain, Period, Stats};
 use gloo_net::http::{Request, Response};
 use serde::de::DeserializeOwned;
 
@@ -30,8 +30,17 @@ pub async fn repos() -> Result<Vec<RepoCard>, ApiError> {
     get("/api/repos").await
 }
 
-pub async fn trends() -> Result<Trends, ApiError> {
-    get("/api/trends").await
+pub async fn stats(period: Period) -> Result<Stats, ApiError> {
+    get(&format!("/api/stats?{}", period_query(period))).await
+}
+
+/// The query string `/api/stats` and `/stats` both take, with no leading `?`.
+pub fn period_query(period: Period) -> &'static str {
+    match period {
+        Period::Last12Months(Grain::Week) => "period=12m&grain=week",
+        Period::Last12Months(Grain::Month) => "period=12m&grain=month",
+        Period::YearOverYear => "period=yoy",
+    }
 }
 
 pub async fn agents() -> Result<AgentsPage, ApiError> {

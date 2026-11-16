@@ -1,4 +1,4 @@
-//! The batch behind `GET /api/trends`: my pull requests, my events, and the
+//! The batch behind the Stats page's output section (S5): my pull requests, my events, and the
 //! weekly rollups, each an indexed select over the 52 week window.
 
 use domain::ids::{RepoName, Timestamp};

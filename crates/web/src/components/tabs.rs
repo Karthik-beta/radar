@@ -10,7 +10,7 @@ pub enum Tab {
     Merged,
     Feed,
     Repos,
-    Trends,
+    Stats,
     Agents,
 }
 
@@ -31,9 +31,12 @@ const TABS: [(Tab, &str, &str, NavGroup); 8] = [
     (Tab::Merged, "Merged", "/merged", NavGroup::Counters),
     (Tab::Feed, "Feed", "/feed", NavGroup::More),
     (Tab::Repos, "Repos", "/repos", NavGroup::More),
-    (Tab::Trends, "Trends", "/trends", NavGroup::More),
+    (Tab::Stats, "Stats", "/stats", NavGroup::More),
     (Tab::Agents, "Agents", "/agents", NavGroup::More),
 ];
+
+/// The Trends page's address, which opens Stats so old links keep working (F14).
+const OLD_STATS_PATH: &str = "/trends";
 
 impl Tab {
     fn row(self) -> (Tab, &'static str, &'static str, NavGroup) {
@@ -69,7 +72,7 @@ impl Tab {
             Tab::Merged => views::merged::READY,
             Tab::Feed => views::feed::READY,
             Tab::Repos => views::repos::READY,
-            Tab::Trends => views::trends::READY,
+            Tab::Stats => views::stats::READY,
             Tab::Agents => views::agents::READY,
         }
     }
@@ -81,7 +84,7 @@ impl Tab {
             Tab::TheirTurn => Some(counters.their_turn),
             Tab::Pipeline => Some(counters.open_prs),
             Tab::Merged => Some(counters.merged_this_month),
-            Tab::Feed | Tab::Repos | Tab::Trends | Tab::Agents => None,
+            Tab::Feed | Tab::Repos | Tab::Stats | Tab::Agents => None,
         }
     }
 
@@ -91,6 +94,9 @@ impl Tab {
         } else {
             path
         };
+        if path == OLD_STATS_PATH {
+            return Some(Tab::Stats);
+        }
         TABS.into_iter()
             .find(|(_, _, href, _)| *href == path)
             .map(|(tab, ..)| tab)
@@ -119,6 +125,14 @@ mod tests {
     }
 
     #[test]
+    fn the_old_trends_path_opens_stats() {
+        assert_eq!(Tab::from_path("/trends"), Some(Tab::Stats));
+        assert_eq!(Tab::from_path("/trends/"), Some(Tab::Stats));
+        assert_eq!(Tab::from_path("/stats"), Tab::from_path("/trends"));
+        assert_eq!(Tab::Stats.href(), "/stats");
+    }
+
+    #[test]
     fn unknown_path_is_none() {
         assert_eq!(Tab::from_path("/zzz"), None);
         assert_eq!(Tab::from_path("/pipeline/extra"), None);
@@ -138,7 +152,7 @@ mod tests {
             .collect();
         assert_eq!(labels, ["Your turn", "Their turn", "Pipeline", "Merged"]);
         let more: Vec<_> = Tab::in_group(NavGroup::More).collect();
-        assert_eq!(more, [Tab::Feed, Tab::Repos, Tab::Trends, Tab::Agents]);
+        assert_eq!(more, [Tab::Feed, Tab::Repos, Tab::Stats, Tab::Agents]);
     }
 
     #[test]
@@ -154,6 +168,6 @@ mod tests {
             .collect();
         assert_eq!(counts, [Some(1), Some(2), Some(3), Some(4)]);
         assert_eq!(Tab::Feed.count(&counters), None);
-        assert_eq!(Tab::Trends.count(&counters), None);
+        assert_eq!(Tab::Stats.count(&counters), None);
     }
 }
