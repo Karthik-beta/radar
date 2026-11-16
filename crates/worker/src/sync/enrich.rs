@@ -29,7 +29,7 @@ use crate::github::enrich_response::{
     ActorNode, Decision, EnrichData, IssueState, ItemNode, PrState, RepoNode, ReviewStateNode,
     Reviewer, RollupState, TimelineNode,
 };
-use crate::github::{Client, GithubError};
+use crate::github::Client;
 
 /// What one thread became.
 #[derive(Debug, Clone, PartialEq)]
@@ -850,10 +850,7 @@ pub async fn run(
         .await
     {
         Ok(queried) => queried,
-        Err(GithubError::RateLimited { retry_after_secs }) => {
-            return UnitOutcome::RateLimited { retry_after_secs }
-        }
-        Err(err) => return retry(err.to_string()),
+        Err(err) => return err.into(),
     };
     state.record_rate(&queried.meta);
     let limit = &queried.data.rate_limit;

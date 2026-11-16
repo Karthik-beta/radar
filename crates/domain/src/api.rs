@@ -9,7 +9,7 @@ use crate::email_health::EmailHealth;
 use crate::ids::{ItemKind, Login, RepoName, Timestamp};
 use crate::settings::NudgeThresholds;
 use crate::stage::Stage;
-use crate::sync_status::{DeadWork, SyncKind, SyncStatus};
+use crate::sync_status::{DeadWork, DeferCause, SyncKind, SyncStatus};
 use crate::turn::Reason;
 
 /// Merged or closed items stay in `Dashboard.recent` this long.
@@ -274,7 +274,11 @@ impl Freshness {
                 reset_at: status.rate.reset,
             },
             dead: status.dead,
-            scope: ScopeState::parse(status.scopes.as_deref()),
+            scope: if status.blocked == Some(DeferCause::TokenRejected) {
+                ScopeState::Rejected
+            } else {
+                ScopeState::parse(status.scopes.as_deref())
+            },
             next_poll_at: status.next_poll_at,
             email,
         }
@@ -307,6 +311,8 @@ pub enum ScopeState {
     Ok,
     MissingNotifications,
     Unknown,
+    /// GitHub no longer accepts the token at all.
+    Rejected,
 }
 
 impl ScopeState {
@@ -455,5 +461,36 @@ mod tests {
         assert_eq!(with(None), ScopeState::Unknown);
         assert_eq!(with(Some("read:user")), ScopeState::MissingNotifications);
         assert_eq!(with(Some("notifications")), ScopeState::Ok);
+    }
+
+    #[test]
+    fn a_rejected_token_is_the_scope_whatever_github_last_sent() {
+        let out = Freshness::from_status(
+            SyncStatus {
+                scopes: Some("notifications".into()),
+                blocked: Some(DeferCause::TokenRejected),
+                ..SyncStatus::default()
+            },
+            QUIET,
+        );
+        assert_eq!(out.scope, ScopeState::Rejected);
+        let missing = Freshness::from_status(
+            SyncStatus {
+                scopes: Some("notifications".into()),
+                blocked: Some(DeferCause::NoToken),
+                ..SyncStatus::default()
+            },
+            QUIET,
+        );
+        assert_eq!(missing.scope, ScopeState::Ok);
+        assert_eq!(
+            serde_json::to_string(&ScopeState::Rejected).unwrap(),
+            r#""rejected""#
+        );
+        assert_eq!(
+            serde_json::to_string(&DeferCause::TokenRejected).unwrap(),
+            r#""token_rejected""#
+        );
+        assert_eq!(DeferCause::TokenRejected.as_str(), "token_rejected");
     }
 }

@@ -20,6 +20,9 @@ pub struct Throttle {
     pub retry_at: Option<Timestamp>,
     /// The last GitHub unit found no token. Only a kick clears it.
     pub no_token: bool,
+    /// GitHub answered 401 to the stored token. Only a sign-in kick or a
+    /// successful GitHub unit clears it.
+    pub token_rejected: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -81,6 +84,9 @@ impl SyncState {
 
 /// What GitHub work is held back by, if anything.
 pub fn blocked(state: &SyncState, now: Timestamp) -> Option<DeferCause> {
+    if state.throttle.token_rejected {
+        return Some(DeferCause::TokenRejected);
+    }
     if state.throttle.no_token {
         return Some(DeferCause::NoToken);
     }
@@ -224,5 +230,20 @@ mod tests {
         };
         assert_eq!(blocked(&state, now), Some(DeferCause::RateLimited));
         assert_eq!(blocked(&state, Timestamp(now.0 + 60)), None);
+    }
+
+    #[test]
+    fn a_rejected_token_is_named_before_a_missing_one_or_a_rate_limit() {
+        let now = Timestamp(1_000_000);
+        let state = SyncState {
+            throttle: Throttle {
+                retry_at: Some(Timestamp(now.0 + 60)),
+                no_token: true,
+                token_rejected: true,
+                ..Throttle::default()
+            },
+            ..SyncState::default()
+        };
+        assert_eq!(blocked(&state, now), Some(DeferCause::TokenRejected));
     }
 }
