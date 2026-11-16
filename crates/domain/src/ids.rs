@@ -181,6 +181,17 @@ impl Timestamp {
         Self(days_from_civil(year, month, 1) * SECONDS_PER_DAY)
     }
 
+    /// The calendar year and month (1 to 12) in UTC.
+    pub fn year_month(self) -> (i64, i64) {
+        let (year, month, _) = civil_from_days(self.0.div_euclid(SECONDS_PER_DAY));
+        (year, month)
+    }
+
+    /// 00:00:00 UTC on a calendar day.
+    pub fn from_ymd(year: i64, month: i64, day: i64) -> Self {
+        Self(days_from_civil(year, month, day) * SECONDS_PER_DAY)
+    }
+
     pub fn parse_rfc3339(s: &str) -> Result<Self, IdError> {
         let bad = || IdError::BadTimestamp(s.to_owned());
         let b = s.as_bytes();
