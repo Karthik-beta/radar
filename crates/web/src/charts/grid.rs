@@ -2,12 +2,15 @@ use domain::trends::HeatLevel;
 use leptos::prelude::*;
 
 use super::table::data_table;
+use crate::tokens;
 
-const CELL: usize = 10;
-const GAP: usize = 2;
+const CELL: usize = tokens::CELL as usize;
+const GAP: usize = tokens::GAP as usize;
 const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/// What the rows are called on the axis, two letters so they fit beside the cells.
+const SHORT: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const HOURS: usize = 24;
-const LEFT: usize = 30;
+const LEFT: usize = 22;
 const TOP: usize = 14;
 const WIDTH: usize = LEFT + HOURS * (CELL + GAP);
 const HEIGHT: usize = TOP + 7 * (CELL + GAP);
@@ -56,11 +59,11 @@ pub fn habit_grid(grid: Vec<Vec<u32>>, label: String) -> AnyView {
         .map(|(day, hour, count)| {
             let (x, y) = origin(day, hour);
             view! {
-                <rect class=level_class(level(count, max)) x=x.to_string() y=y.to_string() width=CELL.to_string() height=CELL.to_string() rx="2" />
+                <rect class=level_class(level(count, max)) x=x.to_string() y=y.to_string() width=CELL.to_string() height=CELL.to_string() rx=tokens::CELL_RADIUS.to_string() />
             }
         })
         .collect_view();
-    let days = DAYS
+    let days = SHORT
         .into_iter()
         .enumerate()
         .map(|(day, name)| {
@@ -95,7 +98,7 @@ pub fn habit_grid(grid: Vec<Vec<u32>>, label: String) -> AnyView {
         .collect();
     view! {
         <figure class="chart">
-            <svg class="grid-svg" viewBox=format!("0 0 {WIDTH} {HEIGHT}") role="img" aria-label=label.clone()>
+            <svg class="grid-svg" width=WIDTH.to_string() height=HEIGHT.to_string() viewBox=format!("0 0 {WIDTH} {HEIGHT}") role="img" aria-label=label.clone()>
                 {days}
                 {hours}
                 {cells}
@@ -112,7 +115,7 @@ mod tests {
 
     #[test]
     fn the_grid_fits_a_phone() {
-        assert_eq!((WIDTH, HEIGHT), (318, 98));
+        assert_eq!((WIDTH, HEIGHT), (334, 105));
         const { assert!(WIDTH + 2 * 16 <= 375) };
     }
 
@@ -128,6 +131,6 @@ mod tests {
     #[test]
     fn cells_run_across_an_hour_row_and_down_the_days() {
         assert_eq!(origin(0, 0), (LEFT, TOP));
-        assert_eq!(origin(6, 23), (LEFT + 23 * 12, TOP + 6 * 12));
+        assert_eq!(origin(6, 23), (LEFT + 23 * 13, TOP + 6 * 13));
     }
 }

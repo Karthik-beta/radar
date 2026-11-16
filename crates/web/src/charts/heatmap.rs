@@ -3,9 +3,10 @@ use leptos::prelude::*;
 
 use super::table::data_table;
 use super::{events_title, iso_date};
+use crate::tokens;
 
-const CELL: usize = 10;
-const GAP: usize = 3;
+const CELL: usize = tokens::CELL as usize;
+const GAP: usize = tokens::GAP as usize;
 const DAYS: usize = 7;
 const WIDTH: usize = HEATMAP_WEEKS * CELL + (HEATMAP_WEEKS - 1) * GAP;
 const HEIGHT: usize = DAYS * CELL + (DAYS - 1) * GAP;
@@ -62,7 +63,7 @@ pub fn heat_map(cells: Vec<DayCell>) -> AnyView {
                                 y=y.to_string()
                                 width=CELL.to_string()
                                 height=CELL.to_string()
-                                rx="2"
+                                rx=tokens::CELL_RADIUS.to_string()
                             >
                                 <title>{events_title(cell.count, cell.date)}</title>
                             </rect>

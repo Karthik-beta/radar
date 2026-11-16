@@ -3,6 +3,7 @@ use leptos::prelude::*;
 
 use super::axis_slots;
 use super::table::data_table;
+use crate::tokens;
 
 const WIDTH: f64 = 400.0;
 const HEIGHT: f64 = 160.0;
@@ -22,6 +23,22 @@ pub enum Tone {
 }
 
 impl Tone {
+    pub fn bar_class(self) -> &'static str {
+        match self {
+            Tone::Text => "bar-text",
+            Tone::Muted => "bar-muted",
+            Tone::Faint => "bar-faint",
+        }
+    }
+
+    pub fn key_class(self) -> &'static str {
+        match self {
+            Tone::Text => "line-text-key",
+            Tone::Muted => "line-muted-key",
+            Tone::Faint => "line-faint-key",
+        }
+    }
+
     fn class(self) -> &'static str {
         match self {
             Tone::Text => "line-text",
@@ -190,7 +207,7 @@ pub fn lines(labels: Vec<String>, series: Vec<Series>, scale: Scale, label: Stri
                     .iter()
                     .flatten()
                     .map(|(x, y)| {
-                        view! { <circle class=format!("{class}-dot") cx=format!("{x:.1}") cy=format!("{y:.1}") r="2"/> }
+                        view! { <circle class=format!("{class}-dot") cx=format!("{x:.1}") cy=format!("{y:.1}") r=tokens::DOT.to_string()/> }
                     })
                     .collect_view()
             });

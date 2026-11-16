@@ -3,6 +3,17 @@
   --*: initial;
 
   --breakpoint-phone: 600px;
+  --chart-bar: 10px;
+  --chart-cell: 10px;
+  --chart-cell-radius: 2px;
+  --chart-dot: 2px;
+  --chart-gap: 3px;
+  --chart-hairline: 1px;
+  --chart-line: 1.5px;
+  --chart-max-width: 480px;
+  --chart-ring: 2px;
+  --chart-row: 24px;
+  --chart-stat-min: 140px;
   --color-bg: #141519;
   --color-faint: #808490;
   --color-hot: #f07a5a;

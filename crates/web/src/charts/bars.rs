@@ -2,6 +2,7 @@ use domain::ids::Timestamp;
 use domain::trends::nice_max;
 use leptos::prelude::*;
 
+use super::lines::Tone;
 use super::table::data_table;
 use super::{axis_slots, iso_date, month_label, short_date};
 
@@ -200,6 +201,153 @@ pub fn pair_bars(weeks: Vec<Pair>, unit: &'static str) -> AnyView {
     .into_any()
 }
 
+/// One part of a stacked bar, with a count per slot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stack {
+    pub name: &'static str,
+    pub tone: Tone,
+    pub counts: Vec<u32>,
+}
+
+/// Each part of each slot as a bar, stacked from the baseline in the order of
+/// `stacks`. A part with a zero count has no bar.
+pub fn stack_layout(stacks: &[Stack]) -> (u32, Vec<Vec<Option<Bar>>>) {
+    let slots = stacks.iter().map(|s| s.counts.len()).max().unwrap_or(0);
+    let total = |i: usize| -> u32 {
+        stacks
+            .iter()
+            .map(|s| s.counts.get(i).copied().unwrap_or(0))
+            .sum()
+    };
+    let ceiling = nice_max((0..slots).map(total).max().unwrap_or(0));
+    let slot = slot_width(slots);
+    let width = (slot - 0.5).max(0.5);
+    let mut below = vec![0.0; slots];
+    let bars = stacks
+        .iter()
+        .map(|stack| {
+            (0..slots)
+                .map(|i| {
+                    let count = stack.counts.get(i).copied().unwrap_or(0);
+                    (count > 0).then(|| {
+                        let height = f64::from(count) / f64::from(ceiling) * plot_height();
+                        let top = baseline() - below[i] - height;
+                        below[i] += height;
+                        Bar {
+                            x: LEFT + i as f64 * slot + 0.25,
+                            y: top,
+                            width,
+                            height,
+                        }
+                    })
+                })
+                .collect()
+        })
+        .collect();
+    (ceiling, bars)
+}
+
+/// Counts per week or month, split into parts and stacked. The hidden table
+/// holds every count.
+pub fn stacked_bars(labels: Vec<String>, stacks: Vec<Stack>, label: String) -> AnyView {
+    let (ceiling, bars) = stack_layout(&stacks);
+    let grid = [0.0, 0.5, 1.0]
+        .into_iter()
+        .map(|share| baseline() - share * plot_height())
+        .map(|y| {
+            view! {
+                <line
+                    class="chart-grid"
+                    x1=format!("{LEFT:.2}")
+                    x2=format!("{:.2}", WIDTH - RIGHT)
+                    y1=format!("{y:.2}")
+                    y2=format!("{y:.2}")
+                />
+            }
+        })
+        .collect_view();
+    let ticks = [(0.0, 0u32), (1.0, ceiling)]
+        .into_iter()
+        .map(|(share, value)| {
+            let y = baseline() - share * plot_height() + 4.0;
+            view! {
+                <text class="chart-label" x=format!("{:.2}", LEFT - 4.0) y=format!("{y:.2}") text-anchor="end">
+                    {value}
+                </text>
+            }
+        })
+        .collect_view();
+    let last = labels.len().saturating_sub(1);
+    let slot = slot_width(labels.len());
+    let axis = axis_slots(labels.len())
+        .into_iter()
+        .filter_map(|i| labels.get(i).map(|text| (i, text.clone())))
+        .map(|(i, text)| {
+            let anchor = match i {
+                0 => "start",
+                i if i == last => "end",
+                _ => "middle",
+            };
+            view! {
+                <text class="chart-label" x=format!("{:.2}", LEFT + i as f64 * slot) y=format!("{:.2}", HEIGHT - 4.0) text-anchor=anchor>
+                    {text}
+                </text>
+            }
+        })
+        .collect_view();
+    let drawn = stacks
+        .iter()
+        .zip(&bars)
+        .flat_map(|(stack, parts)| {
+            let class = stack.tone.bar_class();
+            parts.iter().flatten().map(move |bar| {
+                view! {
+                    <rect
+                        class=class
+                        x=format!("{:.2}", bar.x)
+                        y=format!("{:.2}", bar.y)
+                        width=format!("{:.2}", bar.width)
+                        height=format!("{:.2}", bar.height)
+                    />
+                }
+            })
+        })
+        .collect_view();
+    let keys = stacks
+        .iter()
+        .map(|s| view! { <span><i class=format!("chart-key {}", s.tone.key_class())></i>{s.name}</span> })
+        .collect_view();
+    let head = std::iter::once("Period".to_owned())
+        .chain(stacks.iter().map(|s| s.name.to_owned()))
+        .collect();
+    let rows = labels
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            std::iter::once(text.clone())
+                .chain(
+                    stacks
+                        .iter()
+                        .map(|s| s.counts.get(i).copied().unwrap_or(0).to_string()),
+                )
+                .collect()
+        })
+        .collect();
+    view! {
+        <figure class="chart">
+            <svg class="chart-svg" viewBox=format!("0 0 {WIDTH} {HEIGHT}") role="img" aria-label=label.clone()>
+                {grid}
+                {ticks}
+                {drawn}
+                {axis}
+            </svg>
+            <figcaption class="chart-legend">{keys}</figcaption>
+            {data_table(label, head, rows)}
+        </figure>
+    }
+    .into_any()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,5 +402,28 @@ mod tests {
         assert!(last.x + last.width <= WIDTH - RIGHT + 1e-9);
         let first = chart.opened[0].expect("bar");
         assert!(first.x >= LEFT);
+    }
+
+    #[test]
+    fn stacked_parts_sit_on_each_other_and_share_one_ceiling() {
+        let stack = |counts: &[u32]| Stack {
+            name: "x",
+            tone: Tone::Text,
+            counts: counts.to_vec(),
+        };
+        let (ceiling, bars) = stack_layout(&[stack(&[2, 0]), stack(&[3, 1])]);
+        assert_eq!(ceiling, 5);
+        let low = bars[0][0].expect("bottom part");
+        let high = bars[1][0].expect("top part");
+        assert!((low.y + low.height - baseline()).abs() < 1e-9);
+        assert!((high.y + high.height - low.y).abs() < 1e-9);
+        assert!((high.y - TOP).abs() < 1e-9);
+        assert!(bars[0][1].is_none() && bars[1][1].is_some());
+    }
+
+    #[test]
+    fn no_stacks_make_no_bars() {
+        let (ceiling, bars) = stack_layout(&[]);
+        assert_eq!((ceiling, bars.len()), (4, 0));
     }
 }

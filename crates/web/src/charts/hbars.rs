@@ -1,10 +1,11 @@
 use leptos::prelude::*;
 
 use super::table::data_table;
+use crate::tokens;
 
 const WIDTH: f64 = 400.0;
-const ROW: f64 = 24.0;
-const BAR_HEIGHT: f64 = 10.0;
+const ROW: f64 = tokens::ROW;
+const BAR_HEIGHT: f64 = tokens::BAR;
 const LABEL_WIDTH: f64 = 118.0;
 const VALUE_WIDTH: f64 = 100.0;
 /// The longest label, in characters, before it is cut with an ellipsis.

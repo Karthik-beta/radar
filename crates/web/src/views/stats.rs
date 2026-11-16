@@ -1,24 +1,24 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
+use crate::stage_label::stage_label;
+use crate::store::{use_store, Store};
 use domain::ids::Timestamp;
 use domain::stats::{
     Best, Grain, Habits, Lands, MilestoneKind, Output, Period, Reviews, Shape, SizeClass,
     Stats as StatsData, Summary, Trust, Waiting, Yoy,
 };
+use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use web_sys::UrlSearchParams;
 
-use crate::api::{self, period_query, ApiError};
-use crate::charts::bars::{pair_bars, Pair};
+use crate::charts::bars::{pair_bars, stacked_bars, Pair, Stack};
 use crate::charts::grid::habit_grid;
 use crate::charts::hbars::{hbars, peak, Row};
 use crate::charts::heatmap::heat_map;
 use crate::charts::lines::{lines, Scale, Series, Tone};
 use crate::charts::{month_label, month_name, short_date};
-use crate::route::{query, use_location};
-use crate::stage_label::stage_label;
-use crate::store::{use_store, Store};
 
 /// Whether the tab links here. The header marks the tab `aria-disabled` until
 /// this view exists.
@@ -26,6 +26,64 @@ pub const READY: bool = true;
 
 pub const NOTHING_MERGED: &str = "Nothing merged yet.";
 const DASH: &str = "\u{2013}";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApiError {
+    Unauthorized,
+    Failed,
+}
+
+/// The query string `/api/stats` and `/stats` both take, with no leading `?`.
+pub fn period_query(period: Period) -> &'static str {
+    match period {
+        Period::Last12Months(Grain::Week) => "period=12m&grain=week",
+        Period::Last12Months(Grain::Month) => "period=12m&grain=month",
+        Period::YearOverYear => "period=yoy",
+    }
+}
+
+/// The raw JSON, so the page can tell a changed answer from an unchanged one.
+async fn fetch_text(period: Period) -> Result<String, ApiError> {
+    let response = Request::get(&format!("/api/stats?{}", period_query(period)))
+        .send()
+        .await
+        .map_err(|_| ApiError::Failed)?;
+    match response.status() {
+        200..=299 => response.text().await.map_err(|_| ApiError::Failed),
+        401 => Err(ApiError::Unauthorized),
+        _ => Err(ApiError::Failed),
+    }
+}
+
+fn query(name: &str) -> Option<String> {
+    let search = window().location().search().ok()?;
+    UrlSearchParams::new_with_str(&search).ok()?.get(name)
+}
+
+fn replace_address(to: &str) {
+    if let Ok(history) = window().history() {
+        let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(to));
+    }
+}
+
+fn now_secs() -> i64 {
+    (js_sys::Date::now() / 1000.0) as i64
+}
+
+thread_local! {
+    /// Counts loads, so a late answer to an older load is dropped.
+    static LOADS: Cell<u64> = const { Cell::new(0) };
+}
+
+/// Starts a load and returns its number.
+fn begin_load() -> u64 {
+    LOADS.replace(LOADS.get() + 1) + 1
+}
+
+/// Whether `load` is still the latest started.
+fn is_current(load: u64) -> bool {
+    LOADS.get() == load
+}
+
 const DEFAULT_PERIOD: Period = Period::Last12Months(Grain::Week);
 
 #[derive(Clone)]
@@ -72,38 +130,22 @@ pub fn href(period: Period) -> String {
     format!("/stats?{}", period_query(period))
 }
 
-/// "31 merged in 12 months across 9 repos, 74 percent merge rate".
+/// "24 merged in 12 months, 74 percent merge rate", from the S1 totals of the
+/// selected period.
 pub fn summary_line(stats: &StatsData) -> String {
-    if let Some(yoy) = stats
-        .yoy
-        .as_ref()
-        .filter(|_| stats.period == Period::YearOverYear)
-    {
-        let (this_year, last_year) = yoy.months.iter().fold((0, 0), |(a, b), m| {
-            (a + m.this_year.merged, b + m.last_year.merged)
-        });
-        if this_year + last_year == 0 {
-            return NOTHING_MERGED.to_owned();
-        }
-        return format!(
-            "{this_year} merged this year against {last_year} last year{}",
-            rate_clause(stats.lands.summary.merge_rate)
-        );
-    }
-    let output = &stats.output;
-    if output.merged_total == 0 {
+    let lands = &stats.lands.summary;
+    if lands.merged == 0 {
         return NOTHING_MERGED.to_owned();
     }
-    let repos = if output.repos_total == 1 {
-        "repo"
+    let span = if stats.period == Period::YearOverYear {
+        "this year"
     } else {
-        "repos"
+        "in 12 months"
     };
     format!(
-        "{} merged in 12 months across {} {repos}{}",
-        output.merged_total,
-        output.repos_total,
-        rate_clause(stats.lands.summary.merge_rate)
+        "{} merged {span}{}",
+        lands.merged,
+        rate_clause(lands.merge_rate)
     )
 }
 
@@ -174,14 +216,15 @@ fn milestone_text(kind: MilestoneKind, repo: Option<&str>) -> String {
     }
 }
 
-fn load(period: Period, current: RwSignal<Period>, status: RwSignal<Status>, store: Store) {
+fn load(period: Period, status: RwSignal<Status>, store: Store) {
     match remembered(period).and_then(|text| parse(&text)) {
         Some(hit) => status.set(Status::Ready(hit)),
         None => status.set(Status::Loading),
     }
+    let this_load = begin_load();
     spawn_local(async move {
-        let answer = api::stats_text(period).await;
-        if current.get_untracked() != period {
+        let answer = fetch_text(period).await;
+        if !is_current(this_load) {
             return;
         }
         let ready = matches!(status.get_untracked(), Status::Ready(_));
@@ -196,8 +239,8 @@ fn load(period: Period, current: RwSignal<Period>, status: RwSignal<Status>, sto
                 None => {}
             },
             Err(ApiError::Unauthorized) => store.refresh(),
-            Err(_) if !ready => status.set(Status::Failed),
-            Err(_) => {}
+            Err(ApiError::Failed) if !ready => status.set(Status::Failed),
+            Err(ApiError::Failed) => {}
         }
     });
 }
@@ -309,36 +352,34 @@ fn lands(lands: &Lands, yoy: Option<&Yoy>) -> impl IntoView {
     )
 }
 
-fn reviews(r: &Reviews, period: Period, yoy: Option<&Yoy>) -> impl IntoView {
-    let month = !weekly(period);
-    let labels: Vec<String> = r
-        .buckets
-        .iter()
-        .map(|b| {
-            if month {
-                month_label(b.start)
-            } else {
-                short_date(b.start)
-            }
-        })
-        .collect();
-    let series = |name, tone, pick: fn(&domain::stats::ReviewBucket) -> u32| Series {
+fn reviews(r: &Reviews, yoy: Option<&Yoy>) -> impl IntoView {
+    // One bar per month, whatever the grain, so the chart stays readable.
+    let mut months: Vec<(Timestamp, [u32; 3])> = Vec::new();
+    for bucket in &r.buckets {
+        let start = bucket.start.month_start();
+        if months.last().is_none_or(|(at, _)| *at != start) {
+            months.push((start, [0; 3]));
+        }
+        if let Some((_, sums)) = months.last_mut() {
+            sums[0] += bucket.approved;
+            sums[1] += bucket.changes_requested;
+            sums[2] += bucket.commented;
+        }
+    }
+    let labels: Vec<String> = months.iter().map(|(at, _)| month_label(*at)).collect();
+    let stack = |name, tone, part: usize| Stack {
         name,
         tone,
-        values: r.buckets.iter().map(|b| Some(f64::from(pick(b)))).collect(),
+        counts: months.iter().map(|(_, sums)| sums[part]).collect(),
     };
     let split = vec![
-        series("Approved", Tone::Text, |b| b.approved),
-        series("Changes requested", Tone::Muted, |b| b.changes_requested),
-        series("Commented", Tone::Faint, |b| b.commented),
+        stack("Approved", Tone::Text, 0),
+        stack("Changes requested", Tone::Muted, 1),
+        stack("Commented", Tone::Faint, 2),
     ];
     let label = format!(
-        "Reviews per {}: {} given, {} approved, {} changes requested, {} commented",
-        if month { "month" } else { "week" },
-        r.total,
-        r.approved,
-        r.changes_requested,
-        r.commented
+        "Reviews per month: {} given, {} approved, {} changes requested, {} commented",
+        r.total, r.approved, r.changes_requested, r.commented
     );
     let repos: Vec<Row> = r
         .top_repos
@@ -372,7 +413,7 @@ fn reviews(r: &Reviews, period: Period, yoy: Option<&Yoy>) -> impl IntoView {
             </dl>
             {compare}
             {chart_title("Reviews given")}
-            {lines(labels, split, Scale::Count, label.to_owned())}
+            {stacked_bars(labels, split, label)}
             {if repos.is_empty() {
                 stat("Repos I review in", None, "No reviews yet").into_any()
             } else {
@@ -705,7 +746,7 @@ fn body(stats: &StatsData) -> impl IntoView {
         <h1 class="stats-summary">{summary_line(stats)}</h1>
         <div class="stats-grid">
             {lands(&stats.lands, yoy)}
-            {reviews(&stats.reviews, stats.period, yoy)}
+            {reviews(&stats.reviews, yoy)}
             {trust(&stats.trust)}
             {agents(&stats.agents.agent, &stats.agents.other)}
             {output(&stats.output, stats.period, yoy)}
@@ -734,12 +775,10 @@ fn option(
 #[component]
 pub fn Stats() -> impl IntoView {
     let store = use_store();
-    let location = use_location();
-    let now = store.now_secs();
     let period = RwSignal::new(address_period());
     let status = RwSignal::new(Status::Loading);
     let yoy_ready = RwSignal::new(None::<bool>);
-    Effect::new(move |_| load(period.get(), period, status, store));
+    Effect::new(move |_| load(period.get(), status, store));
     Effect::new(move |_| {
         if let Status::Ready(stats) = status.get() {
             yoy_ready.set(Some(stats.yoy_ready));
@@ -747,7 +786,7 @@ pub fn Stats() -> impl IntoView {
     });
     let choose = move |next: Period| {
         period.set(next);
-        location.replace(&href(next));
+        replace_address(&href(next));
     };
     let is_yoy = move || period.get() == Period::YearOverYear;
     let grain_is = move |grain: Grain| period.get() == Period::Last12Months(grain);
@@ -788,7 +827,7 @@ pub fn Stats() -> impl IntoView {
             {move || {
                 (yoy_ready.get() == Some(false))
                     .then(|| {
-                        let year = Timestamp(now.get()).year_month().0 + 1;
+                        let year = Timestamp(now_secs()).year_month().0 + 1;
                         view! {
                             <p class="stats-note">
                                 {format!(
@@ -851,19 +890,19 @@ mod tests {
     }
 
     #[test]
-    fn the_summary_follows_one_and_many_and_drops_a_null_rate() {
+    fn the_summary_follows_the_lands_totals_and_drops_a_null_rate() {
         let mut stats = empty(DEFAULT_PERIOD);
-        stats.output.merged_total = 31;
-        stats.output.repos_total = 9;
+        stats.lands.summary.merged = 24;
         stats.lands.summary.merge_rate = Some(0.74);
         assert_eq!(
             summary_line(&stats),
-            "31 merged in 12 months across 9 repos, 74 percent merge rate"
+            "24 merged in 12 months, 74 percent merge rate"
         );
-        stats.output.merged_total = 1;
-        stats.output.repos_total = 1;
+        stats.lands.summary.merged = 1;
         stats.lands.summary.merge_rate = None;
-        assert_eq!(summary_line(&stats), "1 merged in 12 months across 1 repo");
+        assert_eq!(summary_line(&stats), "1 merged in 12 months");
+        stats.period = Period::YearOverYear;
+        assert_eq!(summary_line(&stats), "1 merged this year");
     }
 
     #[test]
@@ -929,5 +968,15 @@ mod tests {
         assert!(remembered(Period::YearOverYear).is_none());
         assert_eq!(month_label(Timestamp(NOW)), "Nov");
         assert!(parse("not json").is_none());
+    }
+
+    #[test]
+    fn only_the_latest_load_is_current() {
+        let first = begin_load();
+        assert!(is_current(first));
+        let second = begin_load();
+        let third = begin_load();
+        assert!(!is_current(first) && !is_current(second));
+        assert!(is_current(third));
     }
 }

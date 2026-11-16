@@ -5,13 +5,13 @@
 .chart-svg {
   display: block;
   width: 100%;
-  max-width: 480px;
+  max-width: var(--chart-max-width);
 }
 
 .chart-grid {
   fill: none;
   stroke: var(--color-line);
-  stroke-width: 1;
+  stroke-width: var(--chart-hairline);
 }
 
 .chart-label {
@@ -87,7 +87,7 @@
 
 .chart-line {
   fill: none;
-  stroke-width: 1.5;
+  stroke-width: var(--chart-line);
   stroke-linejoin: round;
   stroke-linecap: round;
 }
@@ -126,8 +126,7 @@
 
 .grid-svg {
   display: block;
-  width: 100%;
-  max-width: 480px;
+  max-width: 100%;
   height: auto;
 }
 
@@ -143,7 +142,7 @@
   gap: var(--spacing-1);
   margin: 0;
   padding: var(--spacing-1);
-  border: 1px solid var(--color-line);
+  border: var(--chart-hairline) solid var(--color-line);
   border-radius: var(--radius-md);
 }
 
@@ -172,8 +171,8 @@
 }
 
 .switch-option:has(input:focus-visible) {
-  outline: 2px solid var(--color-text);
-  outline-offset: 1px;
+  outline: var(--chart-ring) solid var(--color-text);
+  outline-offset: var(--chart-hairline);
   border-radius: var(--radius-sm);
 }
 
@@ -198,7 +197,7 @@
 .stats-section {
   min-width: 0;
   padding-top: var(--spacing-3);
-  border-top: 1px solid var(--color-line);
+  border-top: var(--chart-hairline) solid var(--color-line);
 }
 
 .stats-heading {
@@ -216,7 +215,7 @@
 
 .stats-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--chart-stat-min), 1fr));
   gap: var(--spacing-3);
   margin: 0;
 }
@@ -275,10 +274,26 @@
   justify-content: space-between;
   gap: var(--spacing-3);
   padding: var(--spacing-1) 0;
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: var(--chart-hairline) solid var(--color-line);
 }
 
 .stats-when {
   color: var(--color-muted);
   white-space: nowrap;
+}
+
+.bar-text {
+  fill: var(--color-text);
+}
+
+.bar-muted {
+  fill: var(--color-muted);
+}
+
+.bar-faint {
+  fill: var(--color-faint);
+}
+
+.stats {
+  font-variant-numeric: normal;
 }
