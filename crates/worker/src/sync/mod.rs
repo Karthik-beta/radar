@@ -159,9 +159,12 @@ impl Syncer {
             row: effect,
             throttle,
         } = apply(row, &outcome, sync.throttle, done_at);
-        if !scheduler::rejection_is_stale(&outcome, unit_started, sync.last_kick_at) {
+        let effect = if scheduler::rejection_is_stale(&outcome, unit_started, sync.last_kick_at) {
+            scheduler::after_stale_rejection(effect, done_at)
+        } else {
             sync.throttle = throttle;
-        }
+            effect
+        };
         let mut writes = vec![match &effect {
             RowEffect::Delete => store::delete(&kind),
             RowEffect::Update(row) | RowEffect::MarkDead(row) => store::upsert(row),
