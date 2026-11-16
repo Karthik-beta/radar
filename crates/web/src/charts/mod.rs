@@ -6,6 +6,7 @@ pub mod grid;
 pub mod hbars;
 pub mod heatmap;
 pub mod lines;
+mod table;
 
 use domain::ids::Timestamp;
 

@@ -2,6 +2,7 @@ use domain::ids::Timestamp;
 use domain::trends::nice_max;
 use leptos::prelude::*;
 
+use super::table::data_table;
 use super::{axis_slots, iso_date, month_label, short_date};
 
 const WIDTH: f64 = 400.0;
@@ -102,8 +103,7 @@ fn rects(bars: &[Option<Bar>], class: &'static str) -> impl IntoView {
 
 /// Pull requests opened and merged per week or month (`unit`). The hidden table
 /// beside it holds the same numbers for a screen reader.
-#[component]
-pub fn PairBars(weeks: Vec<Pair>, unit: &'static str) -> impl IntoView {
+pub fn pair_bars(weeks: Vec<Pair>, unit: &'static str) -> AnyView {
     let chart = layout(&weeks);
     let opened_total: u32 = weeks.iter().map(|w| w.opened).sum();
     let merged_total: u32 = weeks.iter().map(|w| w.merged).sum();
@@ -183,32 +183,21 @@ pub fn PairBars(weeks: Vec<Pair>, unit: &'static str) -> impl IntoView {
                 <span><i class="chart-key chart-key-opened"></i>"Opened"</span>
                 <span><i class="chart-key chart-key-merged"></i>"Merged"</span>
             </figcaption>
-            <table class="sr-only">
-                <caption>{format!("Pull requests per {unit}")}</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">{if unit == "month" { "Month of" } else { "Week of" }}</th>
-                        <th scope="col">"Opened"</th>
-                        <th scope="col">"Merged"</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {weeks
-                        .iter()
-                        .map(|w| {
-                            view! {
-                                <tr>
-                                    <th scope="row">{iso_date(w.start)}</th>
-                                    <td>{w.opened}</td>
-                                    <td>{w.merged}</td>
-                                </tr>
-                            }
-                        })
-                        .collect_view()}
-                </tbody>
-            </table>
+            {data_table(
+                format!("Pull requests per {unit}"),
+                vec![
+                    (if unit == "month" { "Month of" } else { "Week of" }).to_owned(),
+                    "Opened".to_owned(),
+                    "Merged".to_owned(),
+                ],
+                weeks
+                    .iter()
+                    .map(|w| vec![iso_date(w.start), w.opened.to_string(), w.merged.to_string()])
+                    .collect(),
+            )}
         </figure>
     }
+    .into_any()
 }
 
 #[cfg(test)]

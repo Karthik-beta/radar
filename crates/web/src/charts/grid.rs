@@ -1,6 +1,8 @@
 use domain::trends::HeatLevel;
 use leptos::prelude::*;
 
+use super::table::data_table;
+
 const CELL: usize = 10;
 const GAP: usize = 2;
 const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -39,25 +41,22 @@ fn origin(day: usize, hour: usize) -> (usize, usize) {
 
 /// Events by weekday and hour, Monday first. The cells are not focusable, and
 /// the hidden table holds every count.
-#[component]
-pub fn Grid(grid: Vec<Vec<u32>>, #[prop(into)] label: String) -> impl IntoView {
+pub fn habit_grid(grid: Vec<Vec<u32>>, label: String) -> AnyView {
     let max = grid.iter().flatten().copied().max().unwrap_or(0);
     let cells = grid
         .iter()
         .zip(DAYS)
         .enumerate()
-        .flat_map(|(day, (row, name))| {
+        .flat_map(|(day, (row, _))| {
             row.iter()
                 .take(HOURS)
                 .enumerate()
-                .map(move |(hour, count)| (day, name, hour, *count))
+                .map(move |(hour, count)| (day, hour, *count))
         })
-        .map(|(day, name, hour, count)| {
+        .map(|(day, hour, count)| {
             let (x, y) = origin(day, hour);
             view! {
-                <rect class=level_class(level(count, max)) x=x.to_string() y=y.to_string() width=CELL.to_string() height=CELL.to_string() rx="2">
-                    <title>{format!("{count} on {name} at {hour:02}:00")}</title>
-                </rect>
+                <rect class=level_class(level(count, max)) x=x.to_string() y=y.to_string() width=CELL.to_string() height=CELL.to_string() rx="2" />
             }
         })
         .collect_view();
@@ -82,26 +81,18 @@ pub fn Grid(grid: Vec<Vec<u32>>, #[prop(into)] label: String) -> impl IntoView {
             }
         })
         .collect_view();
-    let head = (0..HOURS)
-        .map(|hour| view! { <th scope="col">{format!("{hour:02}")}</th> })
-        .collect_view();
+    let head = std::iter::once("Day".to_owned())
+        .chain((0..HOURS).map(|hour| format!("{hour:02}")))
+        .collect();
     let rows = grid
         .iter()
         .zip(DAYS)
         .map(|(row, name)| {
-            let counts = row
-                .iter()
-                .take(HOURS)
-                .map(|count| view! { <td>{*count}</td> })
-                .collect_view();
-            view! {
-                <tr>
-                    <th scope="row">{name}</th>
-                    {counts}
-                </tr>
-            }
+            std::iter::once(name.to_owned())
+                .chain(row.iter().take(HOURS).map(|count| count.to_string()))
+                .collect()
         })
-        .collect_view();
+        .collect();
     view! {
         <figure class="chart">
             <svg class="grid-svg" viewBox=format!("0 0 {WIDTH} {HEIGHT}") role="img" aria-label=label.clone()>
@@ -109,18 +100,10 @@ pub fn Grid(grid: Vec<Vec<u32>>, #[prop(into)] label: String) -> impl IntoView {
                 {hours}
                 {cells}
             </svg>
-            <table class="sr-only">
-                <caption>{label}</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">"Day"</th>
-                        {head}
-                    </tr>
-                </thead>
-                <tbody>{rows}</tbody>
-            </table>
+            {data_table(label, head, rows)}
         </figure>
     }
+    .into_any()
 }
 
 #[cfg(test)]

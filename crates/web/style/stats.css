@@ -9,6 +9,7 @@
 }
 
 .chart-grid {
+  fill: none;
   stroke: var(--color-line);
   stroke-width: 1;
 }

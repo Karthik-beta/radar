@@ -1,6 +1,7 @@
 use domain::trends::{DayCell, HeatLevel, HEATMAP_WEEKS};
 use leptos::prelude::*;
 
+use super::table::data_table;
 use super::{events_title, iso_date};
 
 const CELL: usize = 10;
@@ -27,8 +28,7 @@ fn origin(index: usize) -> (usize, usize) {
 
 /// Events by me per day over 26 weeks, one column per week. The cells are not
 /// focusable. The hidden table holds each week's total.
-#[component]
-pub fn HeatMap(cells: Vec<DayCell>) -> impl IntoView {
+pub fn heat_map(cells: Vec<DayCell>) -> AnyView {
     let total: u32 = cells.iter().map(|c| c.count).sum();
     let label = format!("Daily activity over {HEATMAP_WEEKS} weeks, {total} events");
     let weeks: Vec<(String, u32)> = cells
@@ -70,30 +70,14 @@ pub fn HeatMap(cells: Vec<DayCell>) -> impl IntoView {
                     })
                     .collect_view()}
             </svg>
-            <table class="sr-only">
-                <caption>"Events per week"</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">"Week of"</th>
-                        <th scope="col">"Events"</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {weeks
-                        .into_iter()
-                        .map(|(week, count)| {
-                            view! {
-                                <tr>
-                                    <th scope="row">{week}</th>
-                                    <td>{count}</td>
-                                </tr>
-                            }
-                        })
-                        .collect_view()}
-                </tbody>
-            </table>
+            {data_table(
+                "Events per week".to_owned(),
+                vec!["Week of".to_owned(), "Events".to_owned()],
+                weeks.into_iter().map(|(week, count)| vec![week, count.to_string()]).collect(),
+            )}
         </figure>
     }
+    .into_any()
 }
 
 #[cfg(test)]

@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 
+use super::table::data_table;
+
 const WIDTH: f64 = 400.0;
 const ROW: f64 = 24.0;
 const BAR_HEIGHT: f64 = 10.0;
@@ -52,13 +54,7 @@ fn cut(label: &str) -> String {
 
 /// Ranked or bucketed values as horizontal bars. The hidden table holds the
 /// same rows.
-#[component]
-pub fn HBars(
-    rows: Vec<Row>,
-    /// Bars run from 0 to this value.
-    max: f64,
-    #[prop(into)] label: String,
-) -> impl IntoView {
+pub fn hbars(rows: Vec<Row>, max: f64, label: String) -> AnyView {
     let lengths = widths(&rows, max);
     let height = rows.len() as f64 * ROW;
     let marks = rows
@@ -83,32 +79,17 @@ pub fn HBars(
         .collect_view();
     let table = rows
         .iter()
-        .map(|row| {
-            view! {
-                <tr>
-                    <th scope="row">{row.label.clone()}</th>
-                    <td>{row.text.clone()}</td>
-                </tr>
-            }
-        })
-        .collect_view();
+        .map(|row| vec![row.label.clone(), row.text.clone()])
+        .collect();
     view! {
         <figure class="chart">
             <svg class="chart-svg" viewBox=format!("0 0 {WIDTH} {height}") role="img" aria-label=label.clone()>
                 {marks}
             </svg>
-            <table class="sr-only">
-                <caption>{label}</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">"Name"</th>
-                        <th scope="col">"Value"</th>
-                    </tr>
-                </thead>
-                <tbody>{table}</tbody>
-            </table>
+            {data_table(label, vec!["Name".to_owned(), "Value".to_owned()], table)}
         </figure>
     }
+    .into_any()
 }
 
 #[cfg(test)]

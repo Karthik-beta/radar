@@ -10,6 +10,7 @@ gloo-net = { version = "0.7", default-features = false, features = ["http", "jso
 js-sys = "0.3"
 leptos.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 wasm-bindgen.workspace = true
 web-sys = { version = "0.3", features = [
   "CssStyleDeclaration",

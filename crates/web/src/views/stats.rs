@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::sync::Arc;
 
 use domain::ids::Timestamp;
 use domain::stats::{
@@ -9,11 +10,11 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::api::{self, period_query, ApiError};
-use crate::charts::bars::{Pair, PairBars};
-use crate::charts::grid::Grid;
-use crate::charts::hbars::{peak, HBars, Row};
-use crate::charts::heatmap::HeatMap;
-use crate::charts::lines::{Lines, Scale, Series, Tone};
+use crate::charts::bars::{pair_bars, Pair};
+use crate::charts::grid::habit_grid;
+use crate::charts::hbars::{hbars, peak, Row};
+use crate::charts::heatmap::heat_map;
+use crate::charts::lines::{lines, Scale, Series, Tone};
 use crate::charts::{month_label, month_name, short_date};
 use crate::route::{query, use_location};
 use crate::stage_label::stage_label;
@@ -27,31 +28,35 @@ pub const NOTHING_MERGED: &str = "Nothing merged yet.";
 const DASH: &str = "\u{2013}";
 const DEFAULT_PERIOD: Period = Period::Last12Months(Grain::Week);
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 enum Status {
     Loading,
-    Ready(Box<StatsData>),
+    Ready(Arc<StatsData>),
     Failed,
 }
 
 thread_local! {
     /// The last answer for each period, so a second visit paints at once.
-    static ANSWERS: RefCell<Vec<(Period, StatsData)>> = const { RefCell::new(Vec::new()) };
+    static ANSWERS: RefCell<Vec<(Period, String)>> = const { RefCell::new(Vec::new()) };
 }
 
-fn remembered(period: Period) -> Option<StatsData> {
+fn remembered(period: Period) -> Option<String> {
     ANSWERS.with_borrow(|all| {
         all.iter()
             .find(|(p, _)| *p == period)
-            .map(|(_, stats)| stats.clone())
+            .map(|(_, text)| text.clone())
     })
 }
 
-fn remember(period: Period, stats: &StatsData) {
+fn remember(period: Period, text: String) {
     ANSWERS.with_borrow_mut(|all| {
         all.retain(|(p, _)| *p != period);
-        all.push((period, stats.clone()));
+        all.push((period, text));
     });
+}
+
+fn parse(text: &str) -> Option<Arc<StatsData>> {
+    serde_json::from_str(text).ok().map(Arc::new)
 }
 
 /// The period the address bar names, or the default for a missing or bad one.
@@ -170,29 +175,29 @@ fn milestone_text(kind: MilestoneKind, repo: Option<&str>) -> String {
 }
 
 fn load(period: Period, current: RwSignal<Period>, status: RwSignal<Status>, store: Store) {
-    match remembered(period) {
-        Some(hit) => status.set(Status::Ready(Box::new(hit))),
+    match remembered(period).and_then(|text| parse(&text)) {
+        Some(hit) => status.set(Status::Ready(hit)),
         None => status.set(Status::Loading),
     }
     spawn_local(async move {
-        let answer = api::stats(period).await;
+        let answer = api::stats_text(period).await;
         if current.get_untracked() != period {
             return;
         }
+        let ready = matches!(status.get_untracked(), Status::Ready(_));
         match answer {
-            Ok(fresh) => {
-                remember(period, &fresh);
-                let same = matches!(status.get_untracked(), Status::Ready(old) if *old == fresh);
-                if !same {
-                    status.set(Status::Ready(Box::new(fresh)));
+            Ok(text) if ready && remembered(period).as_deref() == Some(text.as_str()) => {}
+            Ok(text) => match parse(&text) {
+                Some(fresh) => {
+                    remember(period, text);
+                    status.set(Status::Ready(fresh));
                 }
-            }
+                None if !ready => status.set(Status::Failed),
+                None => {}
+            },
             Err(ApiError::Unauthorized) => store.refresh(),
-            Err(_) => {
-                if !matches!(status.get_untracked(), Status::Ready(_)) {
-                    status.set(Status::Failed);
-                }
-            }
+            Err(_) if !ready => status.set(Status::Failed),
+            Err(_) => {}
         }
     });
 }
@@ -282,7 +287,7 @@ fn lands(lands: &Lands, yoy: Option<&Yoy>) -> impl IntoView {
         let label = "Merge rate by month, this year against last year";
         view! {
             {chart_title("Merge rate by month")}
-            <Lines labels=yoy_labels(y) series=yoy_series(y, |m| m.merge_rate) scale=Scale::Percent label=label/>
+            {lines(yoy_labels(y), yoy_series(y, |m| m.merge_rate), Scale::Percent, label.to_owned())}
         }
     });
     section(
@@ -299,12 +304,7 @@ fn lands(lands: &Lands, yoy: Option<&Yoy>) -> impl IntoView {
             {ci_gap.then(|| note("Last year has no CI results, because the import carries none."))}
             {compare}
             {chart_title("Merged within 30 days, by month opened")}
-            <Lines
-                labels=cohort_labels
-                series=cohort_series
-                scale=Scale::Percent
-                label=format!("Share of pull requests merged within 30 days, by month opened: {merged} of {opened}")
-            />
+            {lines(cohort_labels, cohort_series, Scale::Percent, format!("Share of pull requests merged within 30 days, by month opened: {merged} of {opened}"))}
         },
     )
 }
@@ -354,7 +354,7 @@ fn reviews(r: &Reviews, period: Period, yoy: Option<&Yoy>) -> impl IntoView {
         let label = "Reviews by month, this year against last year";
         view! {
             {chart_title("Reviews by month")}
-            <Lines labels=yoy_labels(y) series=yoy_series(y, |m| Some(f64::from(m.reviews))) scale=Scale::Count label=label/>
+            {lines(yoy_labels(y), yoy_series(y, |m| Some(f64::from(m.reviews))), Scale::Count, label.to_owned())}
         }
     });
     let top_label = format!(
@@ -372,13 +372,13 @@ fn reviews(r: &Reviews, period: Period, yoy: Option<&Yoy>) -> impl IntoView {
             </dl>
             {compare}
             {chart_title("Reviews given")}
-            <Lines labels=labels series=split scale=Scale::Count label=label/>
+            {lines(labels, split, Scale::Count, label.to_owned())}
             {if repos.is_empty() {
                 stat("Repos I review in", None, "No reviews yet").into_any()
             } else {
                 view! {
                     {chart_title("Repos I review in")}
-                    <HBars rows=repos max=max label=top_label/>
+                    {hbars(repos, max, top_label)}
                 }
                     .into_any()
             }}
@@ -432,7 +432,7 @@ fn trust(t: &Trust) -> impl IntoView {
             } else {
                 view! {
                     {chart_title("Repos: merged, merge rate, first response")}
-                    <HBars rows=ranking max=rank_max label=rank_label/>
+                    {hbars(ranking, rank_max, rank_label)}
                 }
                     .into_any()
             }}
@@ -441,7 +441,7 @@ fn trust(t: &Trust) -> impl IntoView {
             } else {
                 view! {
                     {chart_title("Languages")}
-                    <HBars rows=languages max=lang_max label=lang_label/>
+                    {hbars(languages, lang_max, lang_label)}
                 }
                     .into_any()
             }}
@@ -507,7 +507,7 @@ fn agents(agent: &Summary, other: &Summary) -> impl IntoView {
                         <tbody>{body}</tbody>
                     </table>
                     {chart_title("Merge rate")}
-                    <HBars rows=rates max=1.0 label=label/>
+                    {hbars(rates, 1.0, label)}
                 }
                     .into_any()
             }}
@@ -540,21 +540,15 @@ fn output(o: &Output, period: Period, yoy: Option<&Yoy>) -> impl IntoView {
         .weeks
         .last()
         .map(|w| format!("{:.1} a week", w.rolling_merged));
-    let heat_total: u32 = o.heatmap.iter().map(|c| c.count).sum();
     let chart = match yoy {
         Some(y) => view! {
             {chart_title("Merged by month")}
-            <Lines
-                labels=yoy_labels(y)
-                series=yoy_series(y, |m| Some(f64::from(m.merged)))
-                scale=Scale::Count
-                label="Pull requests merged by month, this year against last year"
-            />
+            {lines(yoy_labels(y), yoy_series(y, |m| Some(f64::from(m.merged))), Scale::Count, "Pull requests merged by month, this year against last year".to_owned())}
         }
         .into_any(),
         None => view! {
             {chart_title(if month { "Opened and merged by month" } else { "Opened and merged by week" })}
-            <PairBars weeks=pairs unit=if month { "month" } else { "week" }/>
+            {pair_bars(pairs, if month { "month" } else { "week" })}
         }
         .into_any(),
     };
@@ -571,8 +565,7 @@ fn output(o: &Output, period: Period, yoy: Option<&Yoy>) -> impl IntoView {
             </dl>
             {chart}
             {chart_title("Activity per day")}
-            <HeatMap cells=o.heatmap.clone()/>
-            <p class="sr-only">{format!("{heat_total} events in the heatmap")}</p>
+            {heat_map(o.heatmap.clone())}
         },
     )
 }
@@ -604,7 +597,7 @@ fn waiting(w: &Waiting, yoy: Option<&Yoy>) -> impl IntoView {
             {if any {
                 view! {
                     {chart_title("Median time in each stage")}
-                    <HBars rows=rows max=max label=label/>
+                    {hbars(rows, max, label)}
                 }
                     .into_any()
             } else {
@@ -638,7 +631,7 @@ fn shape(s: &Shape) -> impl IntoView {
             {if any {
                 view! {
                     {chart_title("Merge rate and PRs, by lines changed")}
-                    <HBars rows=rows max=1.0 label=label/>
+                    {hbars(rows, 1.0, label)}
                 }
                     .into_any()
             } else {
@@ -661,7 +654,7 @@ fn habits(h: &Habits, yoy: Option<&Yoy>) -> impl IntoView {
         );
         view! {
             {chart_title("Monthly goal")}
-            <HBars rows=rows max=1.0 label=label/>
+            {hbars(rows, 1.0, label)}
         }
     });
     let milestones = h
@@ -687,17 +680,20 @@ fn habits(h: &Habits, yoy: Option<&Yoy>) -> impl IntoView {
             } else {
                 view! {
                     {chart_title("When I work")}
-                    <Grid grid=h.grid.clone() label=format!("Activity by weekday and hour, {} events", h.events)/>
+                    {habit_grid(h.grid.clone(), format!("Activity by weekday and hour, {} events", h.events))}
                 }
                     .into_any()
             }}
             {gap.then(|| note("Last year has no activity history."))}
             {goal}
-            {chart_title("Milestones")}
             {if none {
                 stat("Milestones", None, "None reached in this period").into_any()
             } else {
-                view! { <ul class="stats-milestones">{milestones}</ul> }.into_any()
+                view! {
+                    {chart_title("Milestones")}
+                    <ul class="stats-milestones">{milestones}</ul>
+                }
+                    .into_any()
             }}
         },
     )
@@ -926,12 +922,12 @@ mod tests {
 
     #[test]
     fn the_last_answer_per_period_is_kept() {
-        let stats = empty(DEFAULT_PERIOD);
         assert!(remembered(DEFAULT_PERIOD).is_none());
-        remember(DEFAULT_PERIOD, &stats);
-        remember(DEFAULT_PERIOD, &stats);
-        assert_eq!(remembered(DEFAULT_PERIOD), Some(stats));
+        remember(DEFAULT_PERIOD, "a".to_owned());
+        remember(DEFAULT_PERIOD, "b".to_owned());
+        assert_eq!(remembered(DEFAULT_PERIOD).as_deref(), Some("b"));
         assert!(remembered(Period::YearOverYear).is_none());
         assert_eq!(month_label(Timestamp(NOW)), "Nov");
+        assert!(parse("not json").is_none());
     }
 }

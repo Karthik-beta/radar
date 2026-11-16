@@ -2,7 +2,7 @@ use domain::agents::AgentsPage;
 use domain::api::{Dashboard, Freshness, ItemId, SnoozeFor, SnoozeRequest};
 use domain::feed::{FeedCursor, FeedPage};
 use domain::repo_stats::RepoCard;
-use domain::stats::{Grain, Period, Stats};
+use domain::stats::{Grain, Period};
 use gloo_net::http::{Request, Response};
 use serde::de::DeserializeOwned;
 
@@ -30,8 +30,13 @@ pub async fn repos() -> Result<Vec<RepoCard>, ApiError> {
     get("/api/repos").await
 }
 
-pub async fn stats(period: Period) -> Result<Stats, ApiError> {
-    get(&format!("/api/stats?{}", period_query(period))).await
+/// The raw JSON, so the page can tell a changed answer from an unchanged one.
+pub async fn stats_text(period: Period) -> Result<String, ApiError> {
+    let response = Request::get(&format!("/api/stats?{}", period_query(period)))
+        .send()
+        .await
+        .map_err(|_| ApiError::Network)?;
+    accept(response)?.text().await.map_err(|_| ApiError::Decode)
 }
 
 /// The query string `/api/stats` and `/stats` both take, with no leading `?`.

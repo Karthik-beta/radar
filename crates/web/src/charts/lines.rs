@@ -2,10 +2,11 @@ use domain::trends::nice_max;
 use leptos::prelude::*;
 
 use super::axis_slots;
+use super::table::data_table;
 
 const WIDTH: f64 = 400.0;
 const HEIGHT: f64 = 160.0;
-const LEFT: f64 = 30.0;
+const LEFT: f64 = 36.0;
 const RIGHT: f64 = 6.0;
 const TOP: f64 = 8.0;
 const BOTTOM: f64 = 20.0;
@@ -129,13 +130,7 @@ pub fn cell(value: Option<f64>, scale: Scale) -> String {
 }
 
 /// One or more series over shared x labels. The hidden table holds every value.
-#[component]
-pub fn Lines(
-    labels: Vec<String>,
-    series: Vec<Series>,
-    scale: Scale,
-    #[prop(into)] label: String,
-) -> impl IntoView {
+pub fn lines(labels: Vec<String>, series: Vec<Series>, scale: Scale, label: String) -> AnyView {
     let chart = layout(&series, scale);
     let count = labels.len();
     let top = match scale {
@@ -211,26 +206,22 @@ pub fn Lines(
             view! { <span><i class=format!("chart-key {}-key", s.tone.class())></i>{s.name}</span> }
         })
         .collect_view();
-    let head = series
-        .iter()
-        .map(|s| view! { <th scope="col">{s.name}</th> })
-        .collect_view();
+    let head = std::iter::once("Period".to_owned())
+        .chain(series.iter().map(|s| s.name.to_owned()))
+        .collect();
     let rows = labels
         .iter()
         .enumerate()
         .map(|(i, text)| {
-            let cells = series
-                .iter()
-                .map(|s| view! { <td>{cell(s.values.get(i).copied().flatten(), scale)}</td> })
-                .collect_view();
-            view! {
-                <tr>
-                    <th scope="row">{text.clone()}</th>
-                    {cells}
-                </tr>
-            }
+            std::iter::once(text.clone())
+                .chain(
+                    series
+                        .iter()
+                        .map(|s| cell(s.values.get(i).copied().flatten(), scale)),
+                )
+                .collect()
         })
-        .collect_view();
+        .collect();
     view! {
         <figure class="chart">
             <svg class="chart-svg" viewBox=format!("0 0 {WIDTH} {HEIGHT}") role="img" aria-label=label.clone()>
@@ -240,18 +231,10 @@ pub fn Lines(
                 {axis}
             </svg>
             <figcaption class="chart-legend">{keys}</figcaption>
-            <table class="sr-only">
-                <caption>{label}</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">"Period"</th>
-                        {head}
-                    </tr>
-                </thead>
-                <tbody>{rows}</tbody>
-            </table>
+            {data_table(label, head, rows)}
         </figure>
     }
+    .into_any()
 }
 
 #[cfg(test)]
