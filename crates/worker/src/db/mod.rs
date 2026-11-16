@@ -17,6 +17,7 @@ pub mod repos;
 pub mod rollups;
 pub mod rows;
 pub mod sql;
+pub mod stats;
 pub mod threads;
 pub mod trends;
 

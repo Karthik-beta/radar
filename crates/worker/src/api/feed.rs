@@ -6,15 +6,19 @@ use worker::{console_error, console_log, Env, Request, Result};
 use super::Reply;
 use crate::db::feed::{self, RawFeed};
 
-/// The feed's query, parsed once at the boundary. It reads the raw URL string,
-/// because `Request::url` runs the full `Url` parser and its IDNA tables.
-fn query_of(req: &Request) -> Result<FeedQuery, domain::feed::FeedError> {
+/// The query's name and value pairs. It reads the raw URL string, because
+/// `Request::url` runs the full `Url` parser and its IDNA tables.
+pub(super) fn query_pairs(req: &Request) -> Vec<(String, String)> {
     let url = req.inner().url();
     let raw = url.split('#').next().and_then(|u| u.split_once('?'));
-    let pairs: Vec<(String, String)> =
-        form_urlencoded::parse(raw.map_or("", |(_, q)| q).as_bytes())
-            .map(|(name, value)| (name.into_owned(), value.into_owned()))
-            .collect();
+    form_urlencoded::parse(raw.map_or("", |(_, q)| q).as_bytes())
+        .map(|(name, value)| (name.into_owned(), value.into_owned()))
+        .collect()
+}
+
+/// The feed's query, parsed once at the boundary.
+fn query_of(req: &Request) -> Result<FeedQuery, domain::feed::FeedError> {
+    let pairs = query_pairs(req);
     FeedQuery::parse(pairs.iter().map(|(n, v)| (n.as_str(), v.as_str())))
 }
 

@@ -27,6 +27,8 @@ pub enum RowError {
         value: i64,
     },
     NotFinite(&'static str),
+    /// A column the select names is absent or has the wrong type.
+    Missing(&'static str),
     PartialLastHuman,
     BadReviewers,
     Settings(SettingsFallback),
@@ -42,6 +44,7 @@ impl fmt::Display for RowError {
             Self::BadId { column, source } => write!(f, "{column}: {source}"),
             Self::BadNumber { column, value } => write!(f, "{column}: {value} is out of range"),
             Self::NotFinite(column) => write!(f, "{column}: not a finite number"),
+            Self::Missing(column) => write!(f, "{column}: missing or the wrong type"),
             Self::PartialLastHuman => f.write_str("last_human columns are only partly set"),
             Self::BadReviewers => f.write_str("requested_reviewers is not a JSON array of logins"),
             Self::Settings(fallback) => write!(f, "{fallback}"),
