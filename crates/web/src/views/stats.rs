@@ -1,16 +1,14 @@
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-use crate::stage_label::stage_label;
 use crate::store::{use_store, Store};
 use domain::ids::Timestamp;
-use domain::stats::{
-    Best, Grain, Habits, Lands, MilestoneKind, Output, Period, Reviews, Shape, SizeClass,
-    Stats as StatsData, Summary, Trust, Waiting, Yoy,
-};
+use domain::stats::{Grain, Period};
+use domain::trends::{DayCell, HeatLevel};
 use gloo_net::http::Request;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use serde_json::Value;
 use web_sys::UrlSearchParams;
 
 use crate::charts::bars::{pair_bars, stacked_bars, Pair, Stack};
@@ -25,6 +23,51 @@ use crate::charts::{month_label, month_name, short_date};
 pub const READY: bool = true;
 
 pub const NOTHING_MERGED: &str = "Nothing merged yet.";
+static NULL: Value = Value::Null;
+
+/// A read-only view of one place in the answer. The page reads the answer as
+/// JSON, not as the Worker's types, because decoding all of those types costs
+/// more of the UI budget than the page itself.
+#[derive(Clone, Copy)]
+struct J<'a>(&'a Value);
+
+impl<'a> J<'a> {
+    /// The member named `key`, or nothing when it is missing.
+    fn at(self, key: &str) -> J<'a> {
+        J(self.0.get(key).unwrap_or(&NULL))
+    }
+
+    fn has(self) -> bool {
+        !self.0.is_null()
+    }
+
+    fn each(self) -> impl Iterator<Item = J<'a>> {
+        self.0.as_array().into_iter().flatten().map(J)
+    }
+
+    fn num(self) -> Option<f64> {
+        self.0.as_f64().filter(|n| n.is_finite())
+    }
+
+    fn n(self) -> u32 {
+        self.0
+            .as_u64()
+            .map_or(0, |n| u32::try_from(n).unwrap_or(u32::MAX))
+    }
+
+    fn text(self) -> &'a str {
+        self.0.as_str().unwrap_or_default()
+    }
+
+    fn on(self) -> bool {
+        self.0.as_bool().unwrap_or(false)
+    }
+
+    fn when(self) -> Timestamp {
+        Timestamp::parse_rfc3339(self.text()).unwrap_or(Timestamp(0))
+    }
+}
+
 const DASH: &str = "\u{2013}";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ApiError {
@@ -89,7 +132,7 @@ const DEFAULT_PERIOD: Period = Period::Last12Months(Grain::Week);
 #[derive(Clone)]
 enum Status {
     Loading,
-    Ready(Arc<StatsData>),
+    Ready(Arc<Value>),
     Failed,
 }
 
@@ -113,7 +156,7 @@ fn remember(period: Period, text: String) {
     });
 }
 
-fn parse(text: &str) -> Option<Arc<StatsData>> {
+fn parse(text: &str) -> Option<Arc<Value>> {
     serde_json::from_str(text).ok().map(Arc::new)
 }
 
@@ -132,20 +175,20 @@ pub fn href(period: Period) -> String {
 
 /// "24 merged in 12 months, 74 percent merge rate", from the S1 totals of the
 /// selected period.
-pub fn summary_line(stats: &StatsData) -> String {
-    let lands = &stats.lands.summary;
-    if lands.merged == 0 {
+fn summary_line(stats: J, period: Period) -> String {
+    let lands = stats.at("lands").at("summary");
+    let merged = lands.at("merged").n();
+    if merged == 0 {
         return NOTHING_MERGED.to_owned();
     }
-    let span = if stats.period == Period::YearOverYear {
+    let span = if period == Period::YearOverYear {
         "this year"
     } else {
         "in 12 months"
     };
     format!(
-        "{} merged {span}{}",
-        lands.merged,
-        rate_clause(lands.merge_rate)
+        "{merged} merged {span}{}",
+        rate_clause(lands.at("merge_rate").num())
     )
 }
 
@@ -186,34 +229,52 @@ fn weekly(period: Period) -> bool {
     period == Period::Last12Months(Grain::Week)
 }
 
-fn best_text(best: Option<Best>, month: bool) -> Option<String> {
-    best.map(|b| {
-        let when = if month {
-            month_label(b.start)
-        } else {
-            short_date(b.start)
-        };
-        format!("{when}, {} merged", b.merged)
-    })
+fn size_label(index: usize) -> &'static str {
+    [
+        "Under 50 lines",
+        "50 to 199 lines",
+        "200 to 499 lines",
+        "500 or more",
+    ]
+    .get(index)
+    .copied()
+    .unwrap_or_default()
 }
 
-fn size_label(size: SizeClass) -> &'static str {
-    match size {
-        SizeClass::Under50 => "Under 50 lines",
-        SizeClass::From50To199 => "50 to 199 lines",
-        SizeClass::From200To499 => "200 to 499 lines",
-        SizeClass::From500Up => "500 or more",
+fn stage_name(key: &str) -> &'static str {
+    match key {
+        "draft" => "Draft",
+        "ci_running" => "CI running",
+        "ci_failing" => "CI failing",
+        "awaiting_review" => "Awaiting review",
+        "changes_requested" => "Changes requested",
+        "approved" => "Approved",
+        _ => "Other",
     }
 }
 
-fn milestone_text(kind: MilestoneKind, repo: Option<&str>) -> String {
-    let repo = repo.unwrap_or("a repo");
+fn milestone_text(kind: &str, repo: &str) -> String {
     match kind {
-        MilestoneKind::FirstMergeInRepo => format!("First merge in {repo}"),
-        MilestoneKind::Merged50 => "50th merged pull request".to_owned(),
-        MilestoneKind::Merged100 => "100th merged pull request".to_owned(),
-        MilestoneKind::FirstStarMerge => format!("First merge into {repo}, 1,000 or more stars"),
+        "first_merge_in_repo" => format!("First merge in {repo}"),
+        "merged50" => "50th merged pull request".to_owned(),
+        "merged100" => "100th merged pull request".to_owned(),
+        _ => format!("First merge into {repo}, 1,000 or more stars"),
     }
+}
+
+fn heat_cells(days: J) -> Vec<DayCell> {
+    days.each()
+        .map(|day| DayCell {
+            date: day.at("date").when(),
+            count: day.at("count").n(),
+            level: match day.at("level").text() {
+                "low" => HeatLevel::Low,
+                "mid" => HeatLevel::Mid,
+                "high" => HeatLevel::High,
+                _ => HeatLevel::None,
+            },
+        })
+        .collect()
 }
 
 fn load(period: Period, status: RwSignal<Status>, store: Store) {
@@ -286,65 +347,75 @@ fn note(text: &'static str) -> impl IntoView {
     view! { <p class="stats-note">{text}</p> }
 }
 
-fn yoy_series(yoy: &Yoy, pick: fn(&domain::stats::MonthStats) -> Option<f64>) -> Vec<Series> {
-    let months = |last: bool| {
-        yoy.months
-            .iter()
-            .map(|m| pick(if last { &m.last_year } else { &m.this_year }))
-            .collect()
-    };
+/// This year and last year as two series, one value per month, from `key` of
+/// each `yoy.months` entry.
+fn yoy_series(yoy: J, pick: fn(J) -> Option<f64>) -> Vec<Series> {
+    let months = |year: &str| yoy.at("months").each().map(|m| pick(m.at(year))).collect();
     vec![
         Series {
             name: "This year",
             tone: Tone::Text,
-            values: months(false),
+            values: months("this_year"),
         },
         Series {
             name: "Last year",
             tone: Tone::Faint,
-            values: months(true),
+            values: months("last_year"),
         },
     ]
 }
 
-fn yoy_labels(yoy: &Yoy) -> Vec<String> {
-    yoy.months
-        .iter()
-        .map(|m| month_name(i64::from(m.month)).to_owned())
+fn yoy_labels(yoy: J) -> Vec<String> {
+    yoy.at("months")
+        .each()
+        .map(|m| month_name(i64::from(m.at("month").n())).to_owned())
         .collect()
 }
 
-fn lands(lands: &Lands, yoy: Option<&Yoy>) -> impl IntoView {
-    let s = &lands.summary;
-    let ci_gap = yoy.is_some_and(|y| y.gaps.ci_failures);
-    let cohort = lands.months.iter();
-    let cohort_labels: Vec<String> = cohort.clone().map(|m| month_label(m.start)).collect();
-    let opened: u32 = cohort.clone().map(|m| m.opened).sum();
-    let merged: u32 = cohort.clone().map(|m| m.merged_within_30_days).sum();
+fn gap(yoy: J, key: &str) -> bool {
+    yoy.at("gaps").at(key).on()
+}
+
+fn lands(lands: J, yoy: J) -> impl IntoView {
+    let s = lands.at("summary");
+    let cohort_labels: Vec<String> = lands
+        .at("months")
+        .each()
+        .map(|m| month_label(m.at("start").when()))
+        .collect();
+    let opened: u32 = lands.at("months").each().map(|m| m.at("opened").n()).sum();
+    let merged: u32 = lands
+        .at("months")
+        .each()
+        .map(|m| m.at("merged_within_30_days").n())
+        .sum();
     let cohort_series = vec![Series {
         name: "Merged within 30 days",
         tone: Tone::Text,
-        values: cohort.map(|m| m.share).collect(),
+        values: lands
+            .at("months")
+            .each()
+            .map(|m| m.at("share").num())
+            .collect(),
     }];
-    let compare = yoy.map(|y| {
-        let label = "Merge rate by month, this year against last year";
+    let compare = yoy.has().then(|| {
         view! {
             {chart_title("Merge rate by month")}
-            {lines(yoy_labels(y), yoy_series(y, |m| m.merge_rate), Scale::Percent, label.to_owned())}
+            {lines(yoy_labels(yoy), yoy_series(yoy, |m| m.at("merge_rate").num()), Scale::Percent, "Merge rate by month, this year against last year".to_owned())}
         }
     });
     section(
         "Lands",
         view! {
             <dl class="stats-list">
-                {stat("Merge rate", percent(s.merge_rate), "No PRs closed yet")}
-                {stat("Median to merge", duration(s.median_hours_to_merge), "No PRs merged yet")}
-                {stat("75th percentile", duration(s.p75_hours_to_merge), "No PRs merged yet")}
-                {count_stat("Open over 30 days", lands.open_over_30_days)}
-                {stat("Changes requested", percent(s.changes_requested_share), "No PRs yet")}
-                {stat("CI failed at least once", percent(lands.ci_failed_share), "No CI results yet")}
+                {stat("Merge rate", percent(s.at("merge_rate").num()), "No PRs closed yet")}
+                {stat("Median to merge", duration(s.at("median_hours_to_merge").num()), "No PRs merged yet")}
+                {stat("75th percentile", duration(s.at("p75_hours_to_merge").num()), "No PRs merged yet")}
+                {count_stat("Open over 30 days", lands.at("open_over_30_days").n())}
+                {stat("Changes requested", percent(s.at("changes_requested_share").num()), "No PRs yet")}
+                {stat("CI failed at least once", percent(lands.at("ci_failed_share").num()), "No CI results yet")}
             </dl>
-            {ci_gap.then(|| note("Last year has no CI results, because the import carries none."))}
+            {(yoy.has() && gap(yoy, "ci_failures")).then(|| note("Last year has no CI results, because the import carries none."))}
             {compare}
             {chart_title("Merged within 30 days, by month opened")}
             {lines(cohort_labels, cohort_series, Scale::Percent, format!("Share of pull requests merged within 30 days, by month opened: {merged} of {opened}"))}
@@ -352,18 +423,18 @@ fn lands(lands: &Lands, yoy: Option<&Yoy>) -> impl IntoView {
     )
 }
 
-fn reviews(r: &Reviews, yoy: Option<&Yoy>) -> impl IntoView {
+fn reviews(r: J, yoy: J) -> impl IntoView {
     // One bar per month, whatever the grain, so the chart stays readable.
     let mut months: Vec<(Timestamp, [u32; 3])> = Vec::new();
-    for bucket in &r.buckets {
-        let start = bucket.start.month_start();
+    for bucket in r.at("buckets").each() {
+        let start = bucket.at("start").when().month_start();
         if months.last().is_none_or(|(at, _)| *at != start) {
             months.push((start, [0; 3]));
         }
         if let Some((_, sums)) = months.last_mut() {
-            sums[0] += bucket.approved;
-            sums[1] += bucket.changes_requested;
-            sums[2] += bucket.commented;
+            sums[0] += bucket.at("approved").n();
+            sums[1] += bucket.at("changes_requested").n();
+            sums[2] += bucket.at("commented").n();
         }
     }
     let labels: Vec<String> = months.iter().map(|(at, _)| month_label(*at)).collect();
@@ -377,39 +448,41 @@ fn reviews(r: &Reviews, yoy: Option<&Yoy>) -> impl IntoView {
         stack("Changes requested", Tone::Muted, 1),
         stack("Commented", Tone::Faint, 2),
     ];
+    let total = r.at("total").n();
     let label = format!(
-        "Reviews per month: {} given, {} approved, {} changes requested, {} commented",
-        r.total, r.approved, r.changes_requested, r.commented
+        "Reviews per month: {total} given, {} approved, {} changes requested, {} commented",
+        r.at("approved").n(),
+        r.at("changes_requested").n(),
+        r.at("commented").n()
     );
     let repos: Vec<Row> = r
-        .top_repos
-        .iter()
+        .at("top_repos")
+        .each()
         .map(|c| Row {
-            label: c.repo.to_string(),
-            value: f64::from(c.count),
-            text: c.count.to_string(),
+            label: c.at("repo").text().to_owned(),
+            value: f64::from(c.at("count").n()),
+            text: c.at("count").n().to_string(),
         })
         .collect();
     let max = peak(&repos);
-    let compare = yoy.map(|y| {
-        let label = "Reviews by month, this year against last year";
+    let compare = yoy.has().then(|| {
         view! {
             {chart_title("Reviews by month")}
-            {lines(yoy_labels(y), yoy_series(y, |m| Some(f64::from(m.reviews))), Scale::Count, label.to_owned())}
+            {lines(yoy_labels(yoy), yoy_series(yoy, |m| Some(f64::from(m.at("reviews").n()))), Scale::Count, "Reviews by month, this year against last year".to_owned())}
         }
     });
     let top_label = format!(
-        "Repos I review in, {} reviews across {} repos",
-        r.total, r.repos_reviewed
+        "Repos I review in, {total} reviews across {} repos",
+        r.at("repos_reviewed").n()
     );
     section(
         "Reviews",
         view! {
             <dl class="stats-list">
-                {count_stat("Reviews given", r.total)}
-                {count_stat("Repos reviewed", r.repos_reviewed)}
-                {count_stat("In other people's repos", r.external)}
-                {count_stat("In my own repos", r.own)}
+                {count_stat("Reviews given", total)}
+                {count_stat("Repos reviewed", r.at("repos_reviewed").n())}
+                {count_stat("In other people's repos", r.at("external").n())}
+                {count_stat("In my own repos", r.at("own").n())}
             </dl>
             {compare}
             {chart_title("Reviews given")}
@@ -427,28 +500,29 @@ fn reviews(r: &Reviews, yoy: Option<&Yoy>) -> impl IntoView {
     )
 }
 
-fn trust(t: &Trust) -> impl IntoView {
+fn trust(t: J) -> impl IntoView {
     let ranking: Vec<Row> = t
-        .ranking
-        .iter()
+        .at("ranking")
+        .each()
         .map(|r| Row {
-            label: r.repo.to_string(),
-            value: f64::from(r.merged),
+            label: r.at("repo").text().to_owned(),
+            value: f64::from(r.at("merged").n()),
             text: format!(
                 "{} \u{b7} {} \u{b7} {}",
-                r.merged,
-                percent(r.merge_rate).unwrap_or_else(|| DASH.to_owned()),
-                duration(r.median_first_response_hours).unwrap_or_else(|| DASH.to_owned())
+                r.at("merged").n(),
+                percent(r.at("merge_rate").num()).unwrap_or_else(|| DASH.to_owned()),
+                duration(r.at("median_first_response_hours").num())
+                    .unwrap_or_else(|| DASH.to_owned())
             ),
         })
         .collect();
     let languages: Vec<Row> = t
-        .languages
-        .iter()
+        .at("languages")
+        .each()
         .map(|l| Row {
-            label: l.language.clone(),
-            value: f64::from(l.merged),
-            text: l.merged.to_string(),
+            label: l.at("language").text().to_owned(),
+            value: f64::from(l.at("merged").n()),
+            text: l.at("merged").n().to_string(),
         })
         .collect();
     let rank_label = format!(
@@ -464,9 +538,9 @@ fn trust(t: &Trust) -> impl IntoView {
         "Trust",
         view! {
             <dl class="stats-list">
-                {count_stat("New repos", t.new_repos)}
-                {count_stat("Repeat repos", t.repeat_repos)}
-                {count_stat("Merges into 1,000+ stars", t.star_merges)}
+                {count_stat("New repos", t.at("new_repos").n())}
+                {count_stat("Repeat repos", t.at("repeat_repos").n())}
+                {count_stat("Merges into 1,000+ stars", t.at("star_merges").n())}
             </dl>
             {if ranking.is_empty() {
                 stat("Repo ranking", None, "No merged PRs yet").into_any()
@@ -490,19 +564,20 @@ fn trust(t: &Trust) -> impl IntoView {
     )
 }
 
-fn agents(agent: &Summary, other: &Summary) -> impl IntoView {
-    let both = |pick: fn(&Summary) -> Option<String>| (pick(agent), pick(other));
+fn agents(a: J) -> impl IntoView {
+    let (agent, other) = (a.at("agent"), a.at("other"));
+    let both = |pick: fn(J) -> Option<String>| (pick(agent), pick(other));
     let cell = |value: Option<String>| value.unwrap_or_else(|| DASH.to_owned());
     let rows = [
-        ("Pull requests", both(|s| Some(s.prs.to_string()))),
-        ("Merge rate", both(|s| percent(s.merge_rate))),
+        ("Pull requests", both(|s| Some(s.at("prs").n().to_string()))),
+        ("Merge rate", both(|s| percent(s.at("merge_rate").num()))),
         (
             "Median to merge",
-            both(|s| duration(s.median_hours_to_merge)),
+            both(|s| duration(s.at("median_hours_to_merge").num())),
         ),
         (
             "Changes requested",
-            both(|s| percent(s.changes_requested_share)),
+            both(|s| percent(s.at("changes_requested_share").num())),
         ),
     ];
     let body = rows
@@ -521,19 +596,19 @@ fn agents(agent: &Summary, other: &Summary) -> impl IntoView {
         .into_iter()
         .map(|(label, s)| Row {
             label: label.to_owned(),
-            value: s.merge_rate.unwrap_or(0.0),
-            text: percent(s.merge_rate).unwrap_or_else(|| DASH.to_owned()),
+            value: s.at("merge_rate").num().unwrap_or(0.0),
+            text: percent(s.at("merge_rate").num()).unwrap_or_else(|| DASH.to_owned()),
         })
         .collect::<Vec<_>>();
     let label = format!(
         "Merge rate, agent branches {}, other branches {}",
-        percent(agent.merge_rate).unwrap_or_else(|| "none yet".to_owned()),
-        percent(other.merge_rate).unwrap_or_else(|| "none yet".to_owned())
+        percent(agent.at("merge_rate").num()).unwrap_or_else(|| "none yet".to_owned()),
+        percent(other.at("merge_rate").num()).unwrap_or_else(|| "none yet".to_owned())
     );
     section(
         "Agents",
         view! {
-            {if agent.prs == 0 {
+            {if agent.at("prs").n() == 0 {
                 stat("Agent branches", None, "No agent PRs yet").into_any()
             } else {
                 view! {
@@ -556,84 +631,89 @@ fn agents(agent: &Summary, other: &Summary) -> impl IntoView {
     )
 }
 
-fn output(o: &Output, period: Period, yoy: Option<&Yoy>) -> impl IntoView {
+fn best_text(best: J, month: bool) -> Option<String> {
+    best.has().then(|| {
+        let at = best.at("start").when();
+        let when = if month {
+            month_label(at)
+        } else {
+            short_date(at)
+        };
+        format!("{when}, {} merged", best.at("merged").n())
+    })
+}
+
+fn output(o: J, period: Period, yoy: J) -> impl IntoView {
     let month = !weekly(period);
-    let pairs: Vec<Pair> = if month {
-        o.months
-            .iter()
-            .map(|m| Pair {
-                start: m.start,
-                opened: m.opened,
-                merged: m.merged,
-            })
-            .collect()
-    } else {
-        o.weeks
-            .iter()
-            .map(|w| Pair {
-                start: w.start,
-                opened: w.opened,
-                merged: w.merged,
-            })
-            .collect()
-    };
+    let pairs: Vec<Pair> = o
+        .at(if month { "months" } else { "weeks" })
+        .each()
+        .map(|p| Pair {
+            start: p.at("start").when(),
+            opened: p.at("opened").n(),
+            merged: p.at("merged").n(),
+        })
+        .collect();
     let average = o
-        .weeks
+        .at("weeks")
+        .each()
         .last()
-        .map(|w| format!("{:.1} a week", w.rolling_merged));
-    let chart = match yoy {
-        Some(y) => view! {
+        .map(|w| format!("{:.1} a week", w.at("rolling_merged").num().unwrap_or(0.0)));
+    let chart = if yoy.has() {
+        view! {
             {chart_title("Merged by month")}
-            {lines(yoy_labels(y), yoy_series(y, |m| Some(f64::from(m.merged))), Scale::Count, "Pull requests merged by month, this year against last year".to_owned())}
+            {lines(yoy_labels(yoy), yoy_series(yoy, |m| Some(f64::from(m.at("merged").n()))), Scale::Count, "Pull requests merged by month, this year against last year".to_owned())}
         }
-        .into_any(),
-        None => view! {
+        .into_any()
+    } else {
+        view! {
             {chart_title(if month { "Opened and merged by month" } else { "Opened and merged by week" })}
             {pair_bars(pairs, if month { "month" } else { "week" })}
         }
-        .into_any(),
+        .into_any()
     };
     section(
         "Output",
         view! {
             <dl class="stats-list">
-                {stat("Best week", best_text(o.best_week, false), "No merges yet")}
-                {stat("Best month", best_text(o.best_month, true), "No merges yet")}
+                {stat("Best week", best_text(o.at("best_week"), false), "No merges yet")}
+                {stat("Best month", best_text(o.at("best_month"), true), "No merges yet")}
                 {stat("4 week average", average, "No weeks yet")}
-                {count_stat("Streak of weeks", o.current_streak)}
-                {count_stat("Longest streak", o.longest_streak)}
-                {count_stat("Repos in 52 weeks", o.repos_total)}
+                {count_stat("Streak of weeks", o.at("current_streak").n())}
+                {count_stat("Longest streak", o.at("longest_streak").n())}
+                {count_stat("Repos in 52 weeks", o.at("repos_total").n())}
             </dl>
             {chart}
             {chart_title("Activity per day")}
-            {heat_map(o.heatmap.clone())}
+            {heat_map(heat_cells(o.at("heatmap")))}
         },
     )
 }
 
-fn waiting(w: &Waiting, yoy: Option<&Yoy>) -> impl IntoView {
+fn waiting(w: J, yoy: J) -> impl IntoView {
     let rows: Vec<Row> = w
-        .stages
-        .iter()
+        .at("stages")
+        .each()
         .map(|s| Row {
-            label: stage_label(s.stage).to_owned(),
-            value: s.median_hours.unwrap_or(0.0),
-            text: duration(s.median_hours).unwrap_or_else(|| DASH.to_owned()),
+            label: stage_name(s.at("stage").text()).to_owned(),
+            value: s.at("median_hours").num().unwrap_or(0.0),
+            text: duration(s.at("median_hours").num()).unwrap_or_else(|| DASH.to_owned()),
         })
         .collect();
-    let any = w.stages.iter().any(|s| s.median_hours.is_some());
+    let any = w
+        .at("stages")
+        .each()
+        .any(|s| s.at("median_hours").num().is_some());
     let max = peak(&rows);
-    let label = format!(
-        "Median time in each stage, {} pull requests with stage history",
-        w.prs
-    );
-    let gap = yoy.is_some_and(|y| y.gaps.stage_times || y.gaps.turn_times);
+    let prs = w.at("prs").n();
+    let label = format!("Median time in each stage, {prs} pull requests with stage history");
+    let days = |key: &str| (prs > 0).then(|| days(w.at(key).num().unwrap_or(0.0)));
     section(
         "Waiting",
         view! {
             <dl class="stats-list">
-                {stat("Waiting on maintainers", (w.prs > 0).then(|| days(w.days_waiting_on_them)), "No history yet")}
-                {stat("Waiting on me", (w.prs > 0).then(|| days(w.days_waiting_on_me)), "No history yet")}
+                {stat("Waiting on maintainers", days("days_waiting_on_them"), "No history yet")}
+                {stat("Waiting on me", days("days_waiting_on_me"), "No history yet")}
             </dl>
             {if any {
                 view! {
@@ -644,31 +724,41 @@ fn waiting(w: &Waiting, yoy: Option<&Yoy>) -> impl IntoView {
             } else {
                 stat("Stage times", None, "History starts the day it ships").into_any()
             }}
-            {gap.then(|| note("Last year has no stage or turn history."))}
+            {(yoy.has() && (gap(yoy, "stage_times") || gap(yoy, "turn_times"))).then(|| note("Last year has no stage or turn history."))}
         },
     )
 }
 
-fn shape(s: &Shape) -> impl IntoView {
+fn shape(s: J) -> impl IntoView {
     let rows: Vec<Row> = s
-        .buckets
-        .iter()
-        .map(|b| Row {
-            label: size_label(b.size).to_owned(),
-            value: b.summary.merge_rate.unwrap_or(0.0),
-            text: match (percent(b.summary.merge_rate), b.summary.prs) {
-                (Some(rate), n) => format!("{rate} \u{b7} {n}"),
-                (None, 0) => DASH.to_owned(),
-                (None, n) => format!("{DASH} \u{b7} {n}"),
-            },
+        .at("buckets")
+        .each()
+        .enumerate()
+        .map(|(i, b)| {
+            let (rate, prs) = (
+                b.at("summary").at("merge_rate").num(),
+                b.at("summary").at("prs").n(),
+            );
+            Row {
+                label: size_label(i).to_owned(),
+                value: rate.unwrap_or(0.0),
+                text: match (percent(rate), prs) {
+                    (Some(rate), n) => format!("{rate} \u{b7} {n}"),
+                    (None, 0) => DASH.to_owned(),
+                    (None, n) => format!("{DASH} \u{b7} {n}"),
+                },
+            }
         })
         .collect();
-    let any = s.buckets.iter().any(|b| b.summary.merge_rate.is_some());
-    let label = format!("Merge rate by size, {} size groups", s.buckets.len());
+    let any = s
+        .at("buckets")
+        .each()
+        .any(|b| b.at("summary").at("merge_rate").num().is_some());
+    let label = format!("Merge rate by size, {} size groups", rows.len());
     section(
         "Shape",
         view! {
-            <dl class="stats-list">{count_stat("Issues closed by my PRs", s.issues_closed)}</dl>
+            <dl class="stats-list">{count_stat("Issues closed by my PRs", s.at("issues_closed").n())}</dl>
             {if any {
                 view! {
                     {chart_title("Merge rate and PRs, by lines changed")}
@@ -682,16 +772,22 @@ fn shape(s: &Shape) -> impl IntoView {
     )
 }
 
-fn habits(h: &Habits, yoy: Option<&Yoy>) -> impl IntoView {
-    let goal = h.goal.map(|g| {
+fn habits(h: J, yoy: J) -> impl IntoView {
+    let goal = h.at("goal").has().then(|| {
+        let g = h.at("goal");
         let rows = vec![Row {
             label: "Merged this month".to_owned(),
-            value: g.progress.min(1.0),
-            text: format!("{} of {}", g.merged_this_month, g.target),
+            value: g.at("progress").num().unwrap_or(0.0).min(1.0),
+            text: format!(
+                "{} of {}",
+                g.at("merged_this_month").n(),
+                g.at("target").n()
+            ),
         }];
         let label = format!(
             "Progress toward the monthly goal, {} of {} merged",
-            g.merged_this_month, g.target
+            g.at("merged_this_month").n(),
+            g.at("target").n()
         );
         view! {
             {chart_title("Monthly goal")}
@@ -699,33 +795,38 @@ fn habits(h: &Habits, yoy: Option<&Yoy>) -> impl IntoView {
         }
     });
     let milestones = h
-        .milestones
-        .iter()
+        .at("milestones")
+        .each()
         .map(|m| {
-            let text = milestone_text(m.kind, m.repo.as_ref().map(|r| r.to_string()).as_deref());
+            let text = milestone_text(m.at("kind").text(), m.at("repo").text());
             view! {
                 <li>
                     <span>{text}</span>
-                    <span class="stats-when">{short_date(m.at)}</span>
+                    <span class="stats-when">{short_date(m.at("at").when())}</span>
                 </li>
             }
         })
         .collect_view();
-    let none = h.milestones.is_empty();
-    let gap = yoy.is_some_and(|y| y.gaps.habits);
+    let none = h.at("milestones").each().next().is_none();
+    let events = h.at("events").n();
+    let grid: Vec<Vec<u32>> = h
+        .at("grid")
+        .each()
+        .map(|row| row.each().map(|c| c.n()).collect())
+        .collect();
     section(
         "Habits",
         view! {
-            {if h.events == 0 {
+            {if events == 0 {
                 stat("When I work", None, "No activity of mine yet").into_any()
             } else {
                 view! {
                     {chart_title("When I work")}
-                    {habit_grid(h.grid.clone(), format!("Activity by weekday and hour, {} events", h.events))}
+                    {habit_grid(grid, format!("Activity by weekday and hour, {events} events"))}
                 }
                     .into_any()
             }}
-            {gap.then(|| note("Last year has no activity history."))}
+            {(yoy.has() && gap(yoy, "habits")).then(|| note("Last year has no activity history."))}
             {goal}
             {if none {
                 stat("Milestones", None, "None reached in this period").into_any()
@@ -740,19 +841,20 @@ fn habits(h: &Habits, yoy: Option<&Yoy>) -> impl IntoView {
     )
 }
 
-fn body(stats: &StatsData) -> impl IntoView {
-    let yoy = stats.yoy.as_ref();
+fn body(stats: &Value, period: Period) -> impl IntoView {
+    let s = J(stats);
+    let yoy = s.at("yoy");
     view! {
-        <h1 class="stats-summary">{summary_line(stats)}</h1>
+        <h1 class="stats-summary">{summary_line(s, period)}</h1>
         <div class="stats-grid">
-            {lands(&stats.lands, yoy)}
-            {reviews(&stats.reviews, yoy)}
-            {trust(&stats.trust)}
-            {agents(&stats.agents.agent, &stats.agents.other)}
-            {output(&stats.output, stats.period, yoy)}
-            {waiting(&stats.waiting, yoy)}
-            {shape(&stats.shape)}
-            {habits(&stats.habits, yoy)}
+            {lands(s.at("lands"), yoy)}
+            {reviews(s.at("reviews"), yoy)}
+            {trust(s.at("trust"))}
+            {agents(s.at("agents"))}
+            {output(s.at("output"), period, yoy)}
+            {waiting(s.at("waiting"), yoy)}
+            {shape(s.at("shape"))}
+            {habits(s.at("habits"), yoy)}
         </div>
     }
 }
@@ -781,7 +883,7 @@ pub fn Stats() -> impl IntoView {
     Effect::new(move |_| load(period.get(), status, store));
     Effect::new(move |_| {
         if let Status::Ready(stats) = status.get() {
-            yoy_ready.set(Some(stats.yoy_ready));
+            yoy_ready.set(Some(J(&stats).at("yoy_ready").on()));
         }
     });
     let choose = move |next: Period| {
@@ -847,7 +949,7 @@ pub fn Stats() -> impl IntoView {
                     }
                         .into_any()
                 }
-                Status::Ready(stats) => body(&stats).into_any(),
+                Status::Ready(stats) => body(&stats, period.get()).into_any(),
             }}
         </section>
     }
@@ -855,14 +957,16 @@ pub fn Stats() -> impl IntoView {
 
 #[cfg(test)]
 mod tests {
-    use domain::stats::{build_stats, ImportState, StatsInput};
+    use domain::stage::Stage;
+    use domain::stats::{build_stats, ImportState, MilestoneKind, StatsInput};
     use domain::trends::build_trends;
+    use serde_json::json;
 
     use super::*;
 
     const NOW: i64 = 1_794_830_400;
 
-    fn empty(period: Period) -> StatsData {
+    fn empty(period: Period) -> Value {
         let now = Timestamp(NOW);
         let input = StatsInput {
             now,
@@ -877,32 +981,43 @@ mod tests {
             events: Vec::new(),
             trends: build_trends(&[], &[], &[], now),
         };
-        build_stats(&input, period)
+        serde_json::to_value(build_stats(&input, period)).expect("stats serialize")
+    }
+
+    fn lands(merged: u32, rate: Option<f64>) -> Value {
+        json!({ "lands": { "summary": { "merged": merged, "merge_rate": rate } } })
     }
 
     #[test]
     fn the_summary_says_nothing_merged_for_zero() {
-        assert_eq!(summary_line(&empty(DEFAULT_PERIOD)), "Nothing merged yet.");
+        let stats = empty(DEFAULT_PERIOD);
         assert_eq!(
-            summary_line(&empty(Period::YearOverYear)),
+            summary_line(J(&stats), DEFAULT_PERIOD),
+            "Nothing merged yet."
+        );
+        let yoy = empty(Period::YearOverYear);
+        assert_eq!(
+            summary_line(J(&yoy), Period::YearOverYear),
             "Nothing merged yet."
         );
     }
 
     #[test]
     fn the_summary_follows_the_lands_totals_and_drops_a_null_rate() {
-        let mut stats = empty(DEFAULT_PERIOD);
-        stats.lands.summary.merged = 24;
-        stats.lands.summary.merge_rate = Some(0.74);
+        let many = lands(24, Some(0.74));
         assert_eq!(
-            summary_line(&stats),
+            summary_line(J(&many), DEFAULT_PERIOD),
             "24 merged in 12 months, 74 percent merge rate"
         );
-        stats.lands.summary.merged = 1;
-        stats.lands.summary.merge_rate = None;
-        assert_eq!(summary_line(&stats), "1 merged in 12 months");
-        stats.period = Period::YearOverYear;
-        assert_eq!(summary_line(&stats), "1 merged this year");
+        let one = lands(1, None);
+        assert_eq!(
+            summary_line(J(&one), DEFAULT_PERIOD),
+            "1 merged in 12 months"
+        );
+        assert_eq!(
+            summary_line(J(&one), Period::YearOverYear),
+            "1 merged this year"
+        );
     }
 
     #[test]
@@ -922,12 +1037,31 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_answer_has_no_stray_words() {
+    fn the_reader_gives_nothing_for_a_missing_or_wrong_value() {
+        let v = json!({ "a": { "n": 3, "f": 0.5, "t": "x", "on": true }, "nil": null });
+        let j = J(&v);
+        assert_eq!(j.at("a").at("n").n(), 3);
+        assert_eq!(j.at("a").at("f").num(), Some(0.5));
+        assert_eq!(j.at("a").at("t").text(), "x");
+        assert!(j.at("a").at("on").on());
+        assert!(!j.at("nil").has() && !j.at("missing").has());
+        assert_eq!(j.at("missing").at("deeper").n(), 0);
+        assert_eq!(j.at("a").at("t").num(), None);
+        assert_eq!(j.at("a").at("n").each().count(), 0);
+    }
+
+    #[test]
+    fn an_empty_answer_reads_as_dashes_and_no_rows() {
         let stats = empty(DEFAULT_PERIOD);
-        assert_eq!(stats.lands.summary.merge_rate, None);
-        assert_eq!(percent(stats.lands.summary.merge_rate), None);
-        assert!(stats.reviews.top_repos.is_empty());
-        assert!(stats.habits.milestones.is_empty());
+        let s = J(&stats);
+        assert_eq!(
+            percent(s.at("lands").at("summary").at("merge_rate").num()),
+            None
+        );
+        assert_eq!(s.at("reviews").at("top_repos").each().count(), 0);
+        assert_eq!(s.at("habits").at("milestones").each().count(), 0);
+        assert!(!s.at("habits").at("goal").has());
+        assert!(!s.at("yoy").has());
     }
 
     #[test]
@@ -947,15 +1081,37 @@ mod tests {
     }
 
     #[test]
-    fn size_and_milestone_labels_are_plain() {
-        assert_eq!(size_label(SizeClass::From500Up), "500 or more");
+    fn the_page_reads_the_names_the_worker_writes() {
+        for (kind, text) in [
+            (MilestoneKind::FirstMergeInRepo, "First merge in r"),
+            (MilestoneKind::Merged50, "50th merged pull request"),
+            (MilestoneKind::Merged100, "100th merged pull request"),
+            (
+                MilestoneKind::FirstStarMerge,
+                "First merge into r, 1,000 or more stars",
+            ),
+        ] {
+            let key = serde_json::to_value(kind).expect("kind");
+            assert_eq!(milestone_text(key.as_str().expect("text"), "r"), text);
+        }
+        for stage in [
+            Stage::CiRunning,
+            Stage::CiFailing,
+            Stage::AwaitingReview,
+            Stage::ChangesRequested,
+            Stage::Approved,
+        ] {
+            let key = serde_json::to_value(stage).expect("stage");
+            assert_ne!(stage_name(key.as_str().expect("text")), "Other");
+        }
+        assert_eq!(size_label(3), "500 or more");
+        assert_eq!(size_label(9), "");
+        let cell = json!({ "date": "2026-10-14T00:00:00Z", "count": 2, "level": "high" });
+        let cells = heat_cells(J(&json!([cell])));
+        assert_eq!((cells[0].count, cells[0].level), (2, HeatLevel::High));
         assert_eq!(
-            milestone_text(MilestoneKind::FirstMergeInRepo, Some("acme/alpha")),
-            "First merge in acme/alpha"
-        );
-        assert_eq!(
-            milestone_text(MilestoneKind::Merged50, None),
-            "50th merged pull request"
+            cells[0].date,
+            Timestamp::parse_rfc3339("2026-10-14T00:00:00Z").expect("ts")
         );
     }
 

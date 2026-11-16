@@ -44,7 +44,7 @@ const namespaceOf = (token) => {
   const [group, sub] = token.path;
   if (group === "font") return { family: "font", weight: "font-weight", size: "text" }[sub];
   if (group === "motion") return { duration: "duration", easing: "ease" }[sub];
-  return { color: "color", space: "spacing", radius: "radius", breakpoint: "breakpoint" }[group];
+  return { color: "color", space: "spacing", radius: "radius", breakpoint: "breakpoint", chart: "chart" }[group];
 };
 
 const tokenName = (token) => {
@@ -213,6 +213,7 @@ test("each_group_uses_its_tailwind_namespace", () => {
     "motion.duration": "--duration-",
     "motion.easing": "--ease-",
     breakpoint: "--breakpoint-",
+    chart: "--chart-",
   };
   const css = new Map(declarations(readFileSync(tokensCss, "utf8")));
   for (const token of tokens) {
