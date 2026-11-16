@@ -48,17 +48,17 @@ const REVIEWS: &str =
 /// Every transition since `?1`, and for each pull request still active at `?1` its
 /// last transition before it, so a segment that spans the start is counted.
 /// The rows come grouped by pull request, oldest first.
-const TRANSITIONS: &str = "SELECT t.item_node_id, f.external, t.stage, t.turn, t.at, \
+const TRANSITIONS: &str = "SELECT t.item_node_id, f.external, t.stage, t.turn, t.at, t.id, \
      COALESCE(f.merged_at, f.closed_at) AS ended_at \
      FROM pr_transitions t JOIN pr_facts f ON f.node_id = t.item_node_id WHERE t.at >= ?1 \
      UNION ALL \
-     SELECT t.item_node_id, f.external, t.stage, t.turn, t.at, \
+     SELECT t.item_node_id, f.external, t.stage, t.turn, t.at, t.id, \
      COALESCE(f.merged_at, f.closed_at) AS ended_at \
      FROM pr_transitions t JOIN pr_facts f ON f.node_id = t.item_node_id \
      WHERE t.at < ?1 AND COALESCE(f.merged_at, f.closed_at, ?1) >= ?1 \
      AND NOT EXISTS (SELECT 1 FROM pr_transitions n WHERE n.item_node_id = t.item_node_id \
        AND n.at < ?1 AND (n.at > t.at OR (n.at = t.at AND n.id > t.id))) \
-     ORDER BY item_node_id, at";
+     ORDER BY item_node_id, at, id";
 
 const ISSUES: &str = "SELECT COUNT(*) AS n FROM (SELECT DISTINCT l.issue_repo, l.issue_number \
      FROM pr_issue_links l JOIN pr_facts f ON f.node_id = l.pr_node_id \
@@ -391,6 +391,26 @@ mod tests {
         );
         assert_eq!(got[10][0]["utc_offset_minutes"], 330);
         assert_eq!(got[10][0]["goal_merged_per_month"], 4);
+    }
+
+    #[test]
+    fn transitions_at_the_same_second_keep_their_insert_order() {
+        let conn = memory_db();
+        seed(&conn);
+        let at = PERIOD.fetch_from(NOW).0 + 200;
+        conn.execute_batch(&format!(
+            "INSERT INTO pr_transitions (item_node_id, stage, turn, at) VALUES \
+               ('PR_a', 'changes_requested', 'me', {at}), \
+               ('PR_a', 'awaiting_review', 'them', {at});"
+        ))
+        .expect("seed");
+        let got = batch(&conn, PERIOD);
+        let same: Vec<&str> = got[6]
+            .iter()
+            .filter(|r| r["at"].as_i64() == Some(at))
+            .map(|r| r["stage"].as_str().unwrap_or(""))
+            .collect();
+        assert_eq!(same, ["changes_requested", "awaiting_review"]);
     }
 
     #[test]
