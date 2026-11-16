@@ -106,6 +106,7 @@ The first entry that still has requests left and matches wins. Faults run after 
 | `oauth-other-user` | `/user` is `someone-else` (id 2002). |
 | `oauth-deny` | The authorize endpoint redirects with `error=access_denied`. |
 | `oauth-bad-code` | The authorize endpoint issues a code the token endpoint refuses. |
+| `token-revoked` | `GET /notifications` and `POST /graphql` answer 401 `Bad credentials`, as GitHub does once the token is revoked. OAuth still works. |
 
 ## Log fields
 

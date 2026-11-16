@@ -49,6 +49,7 @@ impl SyncKind {
 pub enum DeferCause {
     RateLimited,
     NoToken,
+    TokenRejected,
 }
 
 impl DeferCause {
@@ -56,6 +57,7 @@ impl DeferCause {
         match self {
             Self::RateLimited => "rate_limited",
             Self::NoToken => "no_token",
+            Self::TokenRejected => "token_rejected",
         }
     }
 }

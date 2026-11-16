@@ -494,6 +494,23 @@ describe("scenarios", () => {
     }
   });
 
+  it("token_revoked_answers_401_to_notifications_and_graphql", async () => {
+    const stub = await start("token-revoked");
+    try {
+      const rest = await stub.authed("/notifications");
+      assert.equal(rest.status, 401);
+      assert.deepEqual(await rest.json(), { message: "Bad credentials" });
+      const graphql = await stub.authed("/graphql", {
+        method: "POST",
+        body: JSON.stringify({ query: "query Viewer { viewer { login } }" }),
+      });
+      assert.equal(graphql.status, 401);
+      assert.equal((await stub.authed("/user")).status, 200);
+    } finally {
+      await stub.close();
+    }
+  });
+
   it("slow_waits_before_an_api_response", async () => {
     const stub = await start("slow");
     try {

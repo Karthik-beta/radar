@@ -41,6 +41,7 @@ pub const SCHEMA: &str = concat!(
   strikes INTEGER NOT NULL DEFAULT 0 CHECK (strikes >= 0),
   retry_at INTEGER,
   no_token INTEGER NOT NULL DEFAULT 0 CHECK (no_token IN (0, 1)),
+  token_rejected INTEGER NOT NULL DEFAULT 0 CHECK (token_rejected IN (0, 1)),
   last_kick_at INTEGER,
   last_ok_poll_notifications INTEGER,
   last_ok_enrich INTEGER,
@@ -72,10 +73,45 @@ INSERT INTO kv (key, value) VALUES ('schema_version', '2')
 "
 );
 
+/// `CREATE TABLE IF NOT EXISTS` also leaves a `sync_state` table made before
+/// `token_rejected` without the column. SQLite has no `ADD COLUMN IF NOT
+/// EXISTS`, so this runs only when `SELECT_TOKEN_REJECTED_COLUMN` finds none.
+pub const ADD_TOKEN_REJECTED: &str =
+    "ALTER TABLE sync_state ADD COLUMN token_rejected INTEGER NOT NULL DEFAULT 0 \
+     CHECK (token_rejected IN (0, 1))";
+
+pub const SELECT_TOKEN_REJECTED_COLUMN: &str =
+    "SELECT COUNT(*) AS n FROM pragma_table_info('sync_state') WHERE name = 'token_rejected'";
+
+pub const SET_SCHEMA_VERSION_3: &str =
+    "INSERT INTO kv (key, value) VALUES ('schema_version', '3') \
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value";
+
 pub const SELECT_SCHEMA_VERSION: &str = "SELECT value FROM kv WHERE key = 'schema_version'";
 
+#[derive(Debug, Deserialize)]
+pub struct RawCount {
+    n: i64,
+}
+
+impl RawCount {
+    pub fn is_zero(&self) -> bool {
+        self.n == 0
+    }
+}
+
+fn version(stored: Option<&RawKv>) -> i64 {
+    stored
+        .and_then(|kv| kv.value.parse::<i64>().ok())
+        .unwrap_or(0)
+}
+
 pub fn needs_upgrade(stored: Option<&RawKv>) -> bool {
-    stored.and_then(|kv| kv.value.parse::<i64>().ok()) != Some(2)
+    version(stored) < 2
+}
+
+pub fn needs_token_rejected(stored: Option<&RawKv>) -> bool {
+    version(stored) < 3
 }
 
 const POLL_PHASE_KEY: &str = "poll_phase";
@@ -96,8 +132,8 @@ pub const SELECT_ROWS: &str =
     "SELECT kind, key, payload, due_at, attempts, dead, last_error FROM work";
 
 pub const SELECT_STATE: &str = "SELECT last_modified, next_poll_at, rl_limit, rl_remaining, \
-     rl_reset, scopes, strikes, retry_at, no_token, last_kick_at, last_ok_poll_notifications, \
-     last_ok_enrich, last_ok_backfill_page, last_ok_rollup FROM sync_state WHERE id = 1";
+     rl_reset, scopes, strikes, retry_at, no_token, token_rejected, last_kick_at, \
+     last_ok_poll_notifications, last_ok_enrich, last_ok_backfill_page, last_ok_rollup FROM sync_state WHERE id = 1";
 
 #[derive(Debug, Deserialize)]
 pub struct RawRow {
@@ -138,6 +174,7 @@ pub struct RawState {
     strikes: i64,
     retry_at: Option<i64>,
     no_token: i64,
+    token_rejected: i64,
     last_kick_at: Option<i64>,
     last_ok_poll_notifications: Option<i64>,
     last_ok_enrich: Option<i64>,
@@ -167,6 +204,7 @@ impl RawState {
                 strikes: count(Some(self.strikes)).unwrap_or(0),
                 retry_at: self.retry_at.map(Timestamp),
                 no_token: self.no_token == 1,
+                token_rejected: self.token_rejected == 1,
             },
             last_kick_at: self.last_kick_at.map(Timestamp),
             last_ok: last_ok
@@ -271,8 +309,8 @@ pub fn save_state(state: &SyncState) -> Statement {
         sql: "UPDATE sync_state SET last_modified = ?1, next_poll_at = ?2, rl_limit = ?3, \
               rl_remaining = ?4, rl_reset = ?5, scopes = ?6, strikes = ?7, retry_at = ?8, \
               no_token = ?9, last_kick_at = ?10, last_ok_poll_notifications = ?11, \
-              last_ok_enrich = ?12, last_ok_backfill_page = ?13, last_ok_rollup = ?14 \
-              WHERE id = 1",
+              last_ok_enrich = ?12, last_ok_backfill_page = ?13, last_ok_rollup = ?14, \
+              token_rejected = ?15 WHERE id = 1",
         params: vec![
             Param::opt_text(state.last_modified.clone()),
             Param::opt_ts(state.next_poll_at),
@@ -288,6 +326,7 @@ pub fn save_state(state: &SyncState) -> Statement {
             last_ok(SyncKind::Enrich),
             last_ok(SyncKind::BackfillPage),
             last_ok(SyncKind::Rollup),
+            Param::flag(state.throttle.token_rejected),
         ],
     }
 }
@@ -395,6 +434,75 @@ INSERT INTO work (kind, key, due_at, attempts, last_error)
         );
     }
 
+    const OLD_SYNC_STATE: &str = "CREATE TABLE sync_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  last_modified TEXT,
+  next_poll_at INTEGER,
+  rl_limit INTEGER,
+  rl_remaining INTEGER,
+  rl_reset INTEGER,
+  scopes TEXT,
+  strikes INTEGER NOT NULL DEFAULT 0 CHECK (strikes >= 0),
+  retry_at INTEGER,
+  no_token INTEGER NOT NULL DEFAULT 0 CHECK (no_token IN (0, 1)),
+  last_kick_at INTEGER,
+  last_ok_poll_notifications INTEGER,
+  last_ok_enrich INTEGER,
+  last_ok_backfill_page INTEGER,
+  last_ok_rollup INTEGER
+);
+INSERT INTO sync_state (id, strikes, no_token) VALUES (1, 1, 1);
+CREATE TABLE kv (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+INSERT INTO kv (key, value) VALUES ('schema_version', '2');";
+
+    /// The steps `Syncer::upgrade_schema` runs after `SCHEMA`.
+    fn upgrade(conn: &Connection) {
+        let stored = stored_version(conn);
+        if needs_upgrade(stored.as_ref()) {
+            conn.execute_batch(UPGRADE_WORK).unwrap();
+        }
+        if needs_token_rejected(stored.as_ref()) {
+            let count: RawCount = serde_json::from_value(Value::Object(
+                query_json(conn, SELECT_TOKEN_REJECTED_COLUMN, &[]).remove(0),
+            ))
+            .unwrap();
+            if count.is_zero() {
+                conn.execute_batch(ADD_TOKEN_REJECTED).unwrap();
+            }
+            conn.execute_batch(SET_SCHEMA_VERSION_3).unwrap();
+        }
+    }
+
+    #[test]
+    fn the_upgrade_adds_token_rejected_to_an_old_sync_state_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(OLD_SYNC_STATE).unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+        assert!(conn.prepare(SELECT_STATE).is_err());
+        upgrade(&conn);
+        let mut kept = state(&conn);
+        assert_eq!(kept.throttle.strikes, 1);
+        assert!(kept.throttle.no_token);
+        assert!(!kept.throttle.token_rejected);
+        kept.throttle.token_rejected = true;
+        exec(&conn, &save_state(&kept)).unwrap();
+        assert!(state(&conn).throttle.token_rejected);
+        assert!(conn
+            .execute("UPDATE sync_state SET token_rejected = 2", [])
+            .is_err());
+        assert!(!needs_token_rejected(stored_version(&conn).as_ref()));
+        upgrade(&conn);
+    }
+
+    #[test]
+    fn a_new_object_gets_token_rejected_from_the_schema_and_the_upgrade_skips_the_column() {
+        let conn = open();
+        upgrade(&conn);
+        assert!(!needs_upgrade(stored_version(&conn).as_ref()));
+        assert!(!needs_token_rejected(stored_version(&conn).as_ref()));
+        assert_eq!(state(&conn), SyncState::default());
+    }
+
     #[test]
     fn the_upgrade_is_safe_to_repeat() {
         let conn = open();
@@ -500,6 +608,7 @@ INSERT INTO work (kind, key, due_at, attempts, last_error)
                 strikes: 2,
                 retry_at: Some(Timestamp(220)),
                 no_token: true,
+                token_rejected: true,
             },
             last_kick_at: Some(Timestamp(100)),
             last_ok: BTreeMap::from([
