@@ -7,6 +7,7 @@ mod feed;
 mod items;
 mod repos;
 mod route;
+mod stats;
 mod trends;
 
 use domain::error::{ErrorBody, ErrorCode};
@@ -140,6 +141,7 @@ async fn respond(endpoint: Endpoint, req: &mut Request, env: &Env) -> Result<Rep
             }
             Reply::json(200, &trends)
         }
+        Protected::Stats => stats::respond(req, env, now).await?,
         Protected::Freshness => Reply {
             status: 200,
             body: Some(crate::sync::freshness_json(env).await?),
