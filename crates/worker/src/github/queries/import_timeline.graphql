@@ -1,0 +1,38 @@
+query ImportTimeline($id: ID!, $after: String) {
+  node(id: $id) {
+    ... on PullRequest {
+      createdAt
+      repository {
+        nameWithOwner
+      }
+      timelineItems(itemTypes: [ISSUE_COMMENT, PULL_REQUEST_REVIEW], first: 20, after: $after) {
+        nodes {
+          ... on IssueComment {
+            createdAt
+            author {
+              __typename
+              login
+            }
+          }
+          ... on PullRequestReview {
+            createdAt
+            submittedAt
+            author {
+              __typename
+              login
+            }
+          }
+        }
+        pageInfo {
+          endCursor
+          hasNextPage
+        }
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+}

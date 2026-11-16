@@ -2,18 +2,23 @@
 
 use std::fmt;
 
-use domain::ids::Timestamp;
+use domain::ids::{RepoName, Timestamp};
+use domain::rollup::WeekStart;
 use domain::sync_status::SyncKind;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::backfill::BackfillCursor;
-use super::config::ENRICH_BATCH;
+use super::backfill::{valid_cursor, BackfillCursor};
+use super::config::{ENRICH_BATCH, IMPORT_PAGE};
 use super::history::HistoryKey;
 use crate::rollup::RollupKey;
 
 const MAIN_KEY: &str = "main";
 const MAX_NODE_ID_LEN: usize = 128;
+const SECONDS_PER_DAY: i64 = 86_400;
+const START: &str = "start";
+const IMPORT_PREFIX: &str = "import";
+const REPOS_PREFIX: &str = "repos";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkError {
@@ -96,8 +101,242 @@ impl EnrichBatch {
     }
 
     fn key(&self) -> String {
-        let digest = Sha256::digest(self.payload().as_bytes());
-        digest[..8].iter().map(|b| format!("{b:02x}")).collect()
+        short_hash(&self.payload())
+    }
+}
+
+fn short_hash(payload: &str) -> String {
+    let digest = Sha256::digest(payload.as_bytes());
+    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn cursor_part(after: Option<&str>) -> &str {
+    after.unwrap_or(START)
+}
+
+fn parse_cursor(raw: &str) -> Option<Option<String>> {
+    match raw {
+        START => Some(None),
+        cursor if valid_cursor(cursor) => Some(Some(cursor.to_owned())),
+        _ => None,
+    }
+}
+
+/// A calendar day, held as 00:00 UTC and written `YYYY-MM-DD`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Day(Timestamp);
+
+impl Day {
+    pub fn of(at: Timestamp) -> Self {
+        Self(Timestamp(
+            at.0.div_euclid(SECONDS_PER_DAY) * SECONDS_PER_DAY,
+        ))
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        let at = Timestamp::parse_rfc3339(&format!("{raw}T00:00:00Z")).ok()?;
+        let day = Self(at);
+        (day.date() == raw).then_some(day)
+    }
+
+    pub fn year_start(year: i32) -> Option<Self> {
+        Self::parse(&format!("{year:04}-01-01"))
+    }
+
+    pub fn year_end(year: i32) -> Option<Self> {
+        Self::parse(&format!("{year:04}-12-31"))
+    }
+
+    pub fn date(self) -> String {
+        self.0.to_string().chars().take(10).collect()
+    }
+
+    pub fn year(self) -> i32 {
+        self.date()
+            .get(..4)
+            .and_then(|y| y.parse::<u32>().ok())
+            .and_then(|y| i32::try_from(y).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn start(self) -> Timestamp {
+        self.0
+    }
+
+    pub fn plus_days(self, days: i64) -> Self {
+        Self(Timestamp(self.0 .0 + days * SECONDS_PER_DAY))
+    }
+
+    /// Days from `self` to `last`, both included.
+    pub fn days_through(self, last: Day) -> i64 {
+        (last.0 .0 - self.0 .0).div_euclid(SECONDS_PER_DAY) + 1
+    }
+}
+
+/// The pull requests of one `Reviews` unit: 1 to `IMPORT_PAGE` distinct node ids,
+/// sorted so the same set always has the same key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrSet(Vec<NodeId>);
+
+impl PrSet {
+    pub fn new(mut prs: Vec<NodeId>) -> Option<Self> {
+        prs.sort();
+        prs.dedup();
+        (!prs.is_empty() && prs.len() <= IMPORT_PAGE).then_some(Self(prs))
+    }
+
+    pub fn ids(&self) -> Vec<&str> {
+        self.0.iter().map(NodeId::as_str).collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn payload(&self) -> String {
+        self.ids().join(",")
+    }
+
+    fn from_payload(payload: &str) -> Option<Self> {
+        let prs = payload
+            .split(',')
+            .map(NodeId::parse)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?;
+        Self::new(prs)
+    }
+}
+
+/// One unit of the history import (ADR 0010). Each is a `backfill_page` row under
+/// an `import.` key, so it shares that kind's rate gate, freshness, and dead-row
+/// revival. `Start` reads my account's creation date and queues the years.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportKey {
+    Start,
+    SearchRange {
+        from: Day,
+        to: Day,
+        after: Option<String>,
+    },
+    Timeline {
+        pr: NodeId,
+        after: String,
+    },
+    ReviewedPrs {
+        year: i32,
+        after: Option<String>,
+    },
+    /// A cursor pages the reviews of one pull request, so it comes with one id.
+    Reviews {
+        prs: PrSet,
+        after: Option<String>,
+    },
+}
+
+impl ImportKey {
+    pub fn is_import_key(key: &str) -> bool {
+        key.split('.').next() == Some(IMPORT_PREFIX)
+    }
+
+    pub fn key(&self) -> String {
+        match self {
+            Self::Start => format!("{IMPORT_PREFIX}.{START}"),
+            Self::SearchRange { from, to, after } => format!(
+                "{IMPORT_PREFIX}.range.{}.{}.{}",
+                from.date(),
+                to.date(),
+                cursor_part(after.as_deref())
+            ),
+            Self::Timeline { pr, after } => {
+                format!("{IMPORT_PREFIX}.timeline.{}.{after}", pr.as_str())
+            }
+            Self::ReviewedPrs { year, after } => format!(
+                "{IMPORT_PREFIX}.reviewed.{year:04}.{}",
+                cursor_part(after.as_deref())
+            ),
+            Self::Reviews { prs, after } => format!(
+                "{IMPORT_PREFIX}.reviews.{}.{}",
+                short_hash(&prs.payload()),
+                cursor_part(after.as_deref())
+            ),
+        }
+    }
+
+    fn payload(&self) -> Option<String> {
+        match self {
+            Self::Reviews { prs, .. } => Some(prs.payload()),
+            _ => None,
+        }
+    }
+
+    pub fn parse(key: &str, payload: Option<&str>) -> Option<Self> {
+        let parts: Vec<&str> = key.split('.').collect();
+        let parsed = match parts.as_slice() {
+            [IMPORT_PREFIX, START] => Self::Start,
+            [IMPORT_PREFIX, "range", from, to, after] => {
+                let (from, to) = (Day::parse(from)?, Day::parse(to)?);
+                (from <= to).then_some(())?;
+                Self::SearchRange {
+                    from,
+                    to,
+                    after: parse_cursor(after)?,
+                }
+            }
+            [IMPORT_PREFIX, "timeline", pr, after] => Self::Timeline {
+                pr: NodeId::parse(pr).ok()?,
+                after: parse_cursor(after)??,
+            },
+            [IMPORT_PREFIX, "reviewed", year, after] if year.len() == 4 => Self::ReviewedPrs {
+                year: i32::try_from(year.parse::<u32>().ok()?).ok()?,
+                after: parse_cursor(after)?,
+            },
+            [IMPORT_PREFIX, "reviews", _, after] => {
+                let prs = PrSet::from_payload(payload?)?;
+                let after = parse_cursor(after)?;
+                (after.is_none() || prs.len() == 1).then_some(())?;
+                Self::Reviews { prs, after }
+            }
+            _ => return None,
+        };
+        (parsed.key() == key).then_some(parsed)
+    }
+}
+
+/// One page of the weekly repo refresh: up to `IMPORT_PAGE` repos after `after`,
+/// in name order. A `backfill_page` row under a `repos.` key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoPage {
+    pub week: WeekStart,
+    pub after: Option<RepoName>,
+}
+
+impl RepoPage {
+    pub fn first(week: WeekStart) -> Self {
+        Self { week, after: None }
+    }
+
+    pub fn is_repos_key(key: &str) -> bool {
+        key.split('.').next() == Some(REPOS_PREFIX)
+    }
+
+    pub fn key(&self) -> String {
+        let after = self
+            .after
+            .as_ref()
+            .map_or_else(|| START.to_owned(), RepoName::to_string);
+        format!("{REPOS_PREFIX}.{}.{after}", self.week.date())
+    }
+
+    pub fn parse(key: &str) -> Option<Self> {
+        let mut parts = key.splitn(3, '.');
+        (parts.next()? == REPOS_PREFIX).then_some(())?;
+        let week = WeekStart::parse_date(parts.next()?)?;
+        let after = match parts.next()? {
+            START => None,
+            name => Some(RepoName::parse(name).ok()?),
+        };
+        let parsed = Self { week, after };
+        (parsed.key() == key).then_some(parsed)
     }
 }
 
@@ -109,6 +348,10 @@ pub enum WorkKind {
     /// Stored as a `backfill_page` row under a `seed.` key, so it shares that kind's
     /// rate gate, freshness, and dead-row revival.
     SeedHistory(HistoryKey),
+    /// Stored as a `backfill_page` row under an `import.` key.
+    ImportFacts(ImportKey),
+    /// Stored as a `backfill_page` row under a `repos.` key.
+    RefreshRepos(RepoPage),
     Rollup(RollupKey),
     SendAlerts,
 }
@@ -127,7 +370,10 @@ impl WorkKind {
         match self {
             Self::PollNotifications => SyncKind::PollNotifications,
             Self::Enrich(_) => SyncKind::Enrich,
-            Self::BackfillPage(_) | Self::SeedHistory(_) => SyncKind::BackfillPage,
+            Self::BackfillPage(_)
+            | Self::SeedHistory(_)
+            | Self::ImportFacts(_)
+            | Self::RefreshRepos(_) => SyncKind::BackfillPage,
             Self::Rollup(_) => SyncKind::Rollup,
             Self::SendAlerts => SyncKind::SendAlerts,
         }
@@ -139,6 +385,8 @@ impl WorkKind {
             Self::Enrich(batch) => batch.key(),
             Self::BackfillPage(cursor) => cursor.key(),
             Self::SeedHistory(key) => key.key(),
+            Self::ImportFacts(key) => key.key(),
+            Self::RefreshRepos(page) => page.key(),
             Self::Rollup(key) => key.key(),
             Self::SendAlerts => MAIN_KEY.to_owned(),
         }
@@ -150,9 +398,19 @@ impl WorkKind {
             key: self.key(),
             payload: match self {
                 Self::Enrich(batch) => Some(batch.payload()),
+                Self::ImportFacts(key) => key.payload(),
                 _ => None,
             },
         }
+    }
+
+    pub fn is_import(&self) -> bool {
+        matches!(self, Self::ImportFacts(_))
+    }
+
+    /// Import and repo refresh units wait for `SyncState::paced_until`.
+    pub fn is_paced(&self) -> bool {
+        matches!(self, Self::ImportFacts(_) | Self::RefreshRepos(_))
     }
 
     pub fn from_columns(kind: &str, key: &str, payload: Option<&str>) -> Result<Self, WorkError> {
@@ -167,6 +425,12 @@ impl WorkKind {
             SyncKind::Rollup => Self::Rollup(RollupKey::parse(key).ok_or_else(bad_key)?),
             SyncKind::BackfillPage if HistoryKey::is_seed_key(key) => {
                 Self::SeedHistory(HistoryKey::parse(key).ok_or_else(bad_key)?)
+            }
+            SyncKind::BackfillPage if ImportKey::is_import_key(key) => {
+                Self::ImportFacts(ImportKey::parse(key, payload).ok_or_else(bad_key)?)
+            }
+            SyncKind::BackfillPage if RepoPage::is_repos_key(key) => {
+                Self::RefreshRepos(RepoPage::parse(key).ok_or_else(bad_key)?)
             }
             SyncKind::BackfillPage => {
                 Self::BackfillPage(BackfillCursor::parse(key).ok_or_else(bad_key)?)
@@ -340,6 +604,133 @@ mod tests {
             let back = WorkKind::from_columns(c.kind.as_str(), &c.key, c.payload.as_deref());
             assert_eq!(back, Ok(kind));
         }
+    }
+
+    fn day(raw: &str) -> Day {
+        Day::parse(raw).unwrap()
+    }
+
+    fn prs(raw: &[&str]) -> PrSet {
+        PrSet::new(ids(raw)).unwrap()
+    }
+
+    fn import_and_repo_units() -> Vec<WorkKind> {
+        let week = WeekStart::parse_date("2026-11-09").unwrap();
+        [
+            ImportKey::Start,
+            ImportKey::SearchRange {
+                from: day("2025-01-01"),
+                to: day("2025-12-31"),
+                after: None,
+            },
+            ImportKey::SearchRange {
+                from: day("2025-04-02"),
+                to: day("2025-07-02"),
+                after: Some("Y3Vyc29yOjUw".into()),
+            },
+            ImportKey::Timeline {
+                pr: NodeId::parse("PR_kwDOAbc-1_=").unwrap(),
+                after: "Y3I6MjA=".into(),
+            },
+            ImportKey::ReviewedPrs {
+                year: 2024,
+                after: None,
+            },
+            ImportKey::ReviewedPrs {
+                year: 2026,
+                after: Some("Y3I=".into()),
+            },
+            ImportKey::Reviews {
+                prs: prs(&["PR_b", "PR_a", "PR_c"]),
+                after: None,
+            },
+            ImportKey::Reviews {
+                prs: prs(&["PR_a"]),
+                after: Some("cmV2OjEwMA==".into()),
+            },
+        ]
+        .into_iter()
+        .map(WorkKind::ImportFacts)
+        .chain([
+            WorkKind::RefreshRepos(RepoPage::first(week)),
+            WorkKind::RefreshRepos(RepoPage {
+                week,
+                after: Some(RepoName::parse("octo/widgets.js").unwrap()),
+            }),
+        ])
+        .collect()
+    }
+
+    #[test]
+    fn import_and_repos_keys_round_trip_through_columns_as_backfill_pages() {
+        for kind in import_and_repo_units() {
+            let c = kind.columns();
+            assert_eq!(c.kind, SyncKind::BackfillPage, "{}", c.key);
+            assert!(
+                c.key.starts_with("import.") || c.key.starts_with("repos."),
+                "{}",
+                c.key
+            );
+            let back = WorkKind::from_columns(c.kind.as_str(), &c.key, c.payload.as_deref());
+            assert_eq!(back, Ok(kind));
+        }
+        assert_eq!(
+            WorkKind::ImportFacts(ImportKey::Start).key(),
+            "import.start"
+        );
+        assert_eq!(
+            import_and_repo_units()[9].key(),
+            "repos.2026-11-09.octo/widgets.js"
+        );
+    }
+
+    #[test]
+    fn import_and_repos_keys_reject_everything_else() {
+        let payload = Some("PR_a,PR_b");
+        for bad in [
+            "import",
+            "import.",
+            "import.stop",
+            "import.range.2025-01-01.2025-12-31",
+            "import.range.2025-12-31.2025-01-01.start",
+            "import.range.2025-02-30.2025-12-31.start",
+            "import.range.2025-01-01.2025-12-31.a.b",
+            "import.timeline.PR_a.start",
+            "import.timeline.PR,a.Y3I=",
+            "import.reviewed.25.start",
+            "import.reviewed.2025.",
+            "import.reviews.0000000000000000.start",
+            "repos",
+            "repos.2026-11-10.start",
+            "repos.2026-11-09.",
+            "repos.2026-11-09.widgets",
+        ] {
+            assert!(
+                WorkKind::from_columns("backfill_page", bad, payload).is_err(),
+                "{bad}"
+            );
+        }
+        let two = ImportKey::Reviews {
+            prs: prs(&["PR_a", "PR_b"]),
+            after: None,
+        };
+        let paged = two.key().replace(".start", ".Y3I=");
+        assert!(WorkKind::from_columns("backfill_page", &paged, payload).is_err());
+        assert!(WorkKind::from_columns("backfill_page", &two.key(), None).is_err());
+        let many: Vec<String> = (0..=IMPORT_PAGE).map(|n| format!("PR_{n}")).collect();
+        let many: Vec<&str> = many.iter().map(String::as_str).collect();
+        assert!(PrSet::new(ids(&many)).is_none());
+        assert!(PrSet::new(ids(&many[..IMPORT_PAGE])).is_some());
+    }
+
+    #[test]
+    fn a_day_reads_its_year_and_counts_days() {
+        let first = day("2024-01-01");
+        assert_eq!(first.year(), 2024);
+        assert_eq!(first.days_through(day("2024-12-31")), 366);
+        assert_eq!(first.plus_days(59).date(), "2024-02-29");
+        assert_eq!(Day::of(Timestamp(first.start().0 + 86_399)), first);
+        assert_eq!(Day::year_end(2025), Some(day("2025-12-31")));
     }
 
     #[test]

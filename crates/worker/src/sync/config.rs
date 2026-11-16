@@ -5,6 +5,15 @@ use super::work::KickReason;
 /// `Syncer { batch: 10 }`.
 pub const ENRICH_BATCH: usize = 10;
 
+/// Pull requests per search page and per `nodes` query of the history import and
+/// the weekly repo refresh (ADR 0010). If an import alarm passes 7 ms of CPU, this
+/// drops to 25.
+pub const IMPORT_PAGE: usize = 50;
+
+/// One import or repo refresh unit at most this often, so the import stays near
+/// 360 GitHub calls an hour and Radar under its cap of 500.
+pub const IMPORT_SPACING_SECS: i64 = 10;
+
 pub const RECONCILE_CRON: &str = "*/10 * * * *";
 pub const NIGHTLY_CRON: &str = "0 3 * * *";
 

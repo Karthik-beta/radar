@@ -121,6 +121,11 @@ pub fn is_external(repo: &RepoName, me: &Login) -> bool {
     !repo.owner().eq_ignore_ascii_case(me.as_str())
 }
 
+/// Radar's agents push to branches under `agent/`.
+pub fn is_agent_branch(head_ref: &str) -> bool {
+    head_ref.starts_with(AGENT_PREFIX)
+}
+
 /// The fact for a pull request I authored, or `None` for anyone else's.
 /// `events` holds what Radar knows of the pull request, from `events` and
 /// `own_events` together.
@@ -155,7 +160,7 @@ pub fn pr_fact(item: &Item, enriched: &PrDetails, events: &[Event], me: &Login) 
         additions: enriched.additions,
         deletions: enriched.deletions,
         changed_files: enriched.changed_files,
-        agent: enriched.head_ref.starts_with(AGENT_PREFIX),
+        agent: is_agent_branch(&enriched.head_ref),
         source: FactSource::Live,
     })
 }

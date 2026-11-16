@@ -44,7 +44,26 @@ pub const VIEWER: QueryDoc = query_doc!("Viewer", "viewer.graphql");
 pub const CONTRIBUTION_HISTORY: QueryDoc =
     query_doc!("ContributionHistory", "contribution_history.graphql");
 
-pub const ALL: &[&QueryDoc] = &[&VIEWER, &CONTRIBUTION_HISTORY];
+pub const IMPORT_PRS: QueryDoc = query_doc!("ImportPrs", "import_prs.graphql");
+
+pub const IMPORT_TIMELINE: QueryDoc = query_doc!("ImportTimeline", "import_timeline.graphql");
+
+pub const IMPORT_REVIEWED_PRS: QueryDoc =
+    query_doc!("ImportReviewedPrs", "import_reviewed_prs.graphql");
+
+pub const IMPORT_REVIEWS: QueryDoc = query_doc!("ImportReviews", "import_reviews.graphql");
+
+pub const REPO_META: QueryDoc = query_doc!("RepoMeta", "repo_meta.graphql");
+
+pub const ALL: &[&QueryDoc] = &[
+    &VIEWER,
+    &CONTRIBUTION_HISTORY,
+    &IMPORT_PRS,
+    &IMPORT_TIMELINE,
+    &IMPORT_REVIEWED_PRS,
+    &IMPORT_REVIEWS,
+    &REPO_META,
+];
 
 pub fn find(name: &str) -> Option<&'static QueryDoc> {
     ALL.iter().copied().find(|doc| doc.name == name)
@@ -222,6 +241,22 @@ mod tests {
                 "{} names its own operation",
                 doc.name()
             );
+        }
+    }
+
+    #[test]
+    fn no_import_document_asks_for_a_body_or_a_title() {
+        for doc in [
+            &IMPORT_PRS,
+            &IMPORT_TIMELINE,
+            &IMPORT_REVIEWED_PRS,
+            &IMPORT_REVIEWS,
+            &REPO_META,
+        ] {
+            let text = doc.text().to_ascii_lowercase();
+            for word in ["body", "title", "mutation"] {
+                assert!(!text.contains(word), "{} has {word}", doc.name());
+            }
         }
     }
 

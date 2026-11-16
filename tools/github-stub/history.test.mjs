@@ -33,6 +33,11 @@ test("a page holds 100 contributions inside the window and names the next", () =
   );
 });
 
+test("resetAt has whole seconds, as GitHub sends it", () => {
+  const withMillis = { ...scenario(1), rate: { ...rate, reset: "2026-11-07T13:00:00.123Z" } };
+  assert.equal(answerHistory(withMillis, { ...window, after: null }).body.data.rateLimit.resetAt, "2026-11-07T13:00:00Z");
+});
+
 test("a bad cursor is an error and an empty window has no cursor", () => {
   assert.ok(answerHistory(scenario(1), { ...window, after: "nope" }).body.errors);
   const empty = answerHistory(scenario(1), { from: "2030-01-01T00:00:00Z", to: "2031-01-01T00:00:00Z" });

@@ -2,6 +2,7 @@
 //! outcome does to its row, and what a kick enqueues.
 
 use domain::ids::Timestamp;
+use domain::rollup::WeekStart;
 use domain::sync_status::SyncKind;
 
 use super::backfill::{BackfillCursor, SearchWindow};
@@ -9,7 +10,7 @@ use super::config::{BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, MAX_ATTEMPTS, RETRY_DEL
 use super::gate::{gate, Gate};
 use super::history::HistoryKey;
 use super::state::{SyncState, Throttle};
-use super::work::{KickReason, RowState, WorkKind, WorkRow};
+use super::work::{ImportKey, KickReason, RepoPage, RowState, WorkKind, WorkRow};
 use crate::rollup::RollupKey;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +77,9 @@ fn ready_at(row: &WorkRow, state: &SyncState, now: Timestamp) -> Option<Timestam
         if let Some(next_poll) = state.next_poll_at {
             at = at.max(next_poll);
         }
+    }
+    if let Some(paced) = state.paced_until.filter(|_| row.kind.is_paced()) {
+        at = at.max(paced);
     }
     Some(at)
 }
@@ -220,6 +224,30 @@ fn start_window(rows: &[WorkRow], window: SearchWindow, now: Timestamp) -> Vec<W
         .collect()
 }
 
+/// The history import starts while it never finished and none of its rows is
+/// queued, dead ones included. The repo refresh runs once a week.
+fn nightly_import(rows: &[WorkRow], state: &mut SyncState, now: Timestamp) -> Vec<WorkRow> {
+    let mut queued = Vec::new();
+    if state.facts_imported_at.is_none() && !rows.iter().any(|row| row.kind.is_import()) {
+        queued.push(WorkRow::pending(
+            WorkKind::ImportFacts(ImportKey::Start),
+            now,
+        ));
+    }
+    let week = WeekStart::containing(now);
+    let refreshing = rows
+        .iter()
+        .any(|row| matches!(row.kind, WorkKind::RefreshRepos(_)));
+    if state.repos_refreshed_week != Some(week) && !refreshing {
+        queued.push(WorkRow::pending(
+            WorkKind::RefreshRepos(RepoPage::first(week)),
+            now,
+        ));
+        state.repos_refreshed_week = Some(week);
+    }
+    queued
+}
+
 /// Deferred, not dropped (ADR 0002). Returns the rows to upsert by key.
 pub fn kick(
     reason: KickReason,
@@ -249,6 +277,7 @@ pub fn kick(
                     now,
                 ));
             }
+            queued.extend(nightly_import(rows, state, now));
             let dead_backfills = rows
                 .iter()
                 .filter(|row| row.is_dead() && row.kind.kind() == SyncKind::BackfillPage)
@@ -305,6 +334,8 @@ mod tests {
         SyncState {
             backfill_done_at: Some(at(-500)),
             history_seeded_at: Some(at(-500)),
+            facts_imported_at: Some(at(-500)),
+            repos_refreshed_week: Some(WeekStart::containing(NOW)),
             ..SyncState::default()
         }
     }
@@ -413,6 +444,29 @@ mod tests {
         assert_eq!(
             plan(&rows, &state, NOW),
             Decision::Run(row(WorkKind::Rollup(RollupKey::Nightly), 0))
+        );
+    }
+
+    #[test]
+    fn import_and_repo_rows_wait_for_the_pace_and_others_do_not() {
+        let state = SyncState {
+            paced_until: Some(at(10)),
+            ..SyncState::default()
+        };
+        let import = row(WorkKind::ImportFacts(ImportKey::Start), -5);
+        let repos = row(
+            WorkKind::RefreshRepos(RepoPage::first(WeekStart::containing(NOW))),
+            -5,
+        );
+        assert_eq!(
+            plan(&[import.clone(), repos], &state, NOW),
+            Decision::Sleep(at(10))
+        );
+        assert!(matches!(plan(&[import], &state, at(10)), Decision::Run(_)));
+        let backfill = row(backfill_start(SearchWindow::Backfill90d), 0);
+        assert_eq!(
+            plan(std::slice::from_ref(&backfill), &state, NOW),
+            Decision::Run(backfill)
         );
     }
 

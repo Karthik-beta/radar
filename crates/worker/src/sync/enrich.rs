@@ -124,7 +124,7 @@ fn person(reviewer: Option<&Reviewer>) -> Option<Login> {
         .map(login)
 }
 
-fn review_state(node: ReviewStateNode) -> ReviewState {
+pub(super) fn review_state(node: ReviewStateNode) -> ReviewState {
     match node {
         ReviewStateNode::Approved => ReviewState::Approved,
         ReviewStateNode::ChangesRequested => ReviewState::ChangesRequested,

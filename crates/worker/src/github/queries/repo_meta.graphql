@@ -1,0 +1,29 @@
+query RepoMeta($ids: [ID!]!, $q: String!, $byName: Boolean!) {
+  nodes(ids: $ids) {
+    ... on Repository {
+      id
+      nameWithOwner
+      stargazerCount
+      primaryLanguage {
+        name
+      }
+    }
+  }
+  search(type: REPOSITORY, query: $q, first: 50) @include(if: $byName) {
+    nodes {
+      ... on Repository {
+        id
+        nameWithOwner
+        stargazerCount
+        primaryLanguage {
+          name
+        }
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    resetAt
+  }
+}
