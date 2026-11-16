@@ -70,7 +70,8 @@ pub(crate) fn habits(
     }
 
     let external: Vec<&MergeRow> = merges.iter().filter(|m| m.external).collect();
-    let this_month = now.month_start();
+    // The month starts at local midnight, so shift `now`, cut, and shift back.
+    let this_month = Timestamp(Timestamp(now.0 + offset).month_start().0 - offset);
     let goal = goal.filter(|target| *target > 0).map(|target| {
         let merged = count(
             external
@@ -191,6 +192,29 @@ mod tests {
             (goal.target, goal.merged_this_month, goal.progress),
             (4, 1, 0.25)
         );
+    }
+
+    #[test]
+    fn the_goal_month_is_the_local_month_across_a_boundary() {
+        let goal = |now: &str, offset: i32, merges: &[MergeRow]| {
+            habits(&[], merges, span(), offset, Some(10), at(now))
+                .goal
+                .map(|g| g.merged_this_month)
+        };
+        // 00:30 UTC on Nov 1 is still Oct 31 at UTC-1, so October is the month.
+        let west = [
+            merge("a/x", "2026-10-15T00:00:00Z", None),
+            merge("a/x", "2026-10-01T00:30:00Z", None),
+        ];
+        assert_eq!(goal("2026-11-01T00:30:00Z", -60, &west), Some(1));
+        assert_eq!(goal("2026-11-01T00:30:00Z", 0, &west), Some(0));
+        // 23:30 UTC on Oct 31 is already Nov 1 at UTC+1, so November is the month.
+        let east = [
+            merge("a/x", "2026-10-31T23:10:00Z", None),
+            merge("a/x", "2026-10-31T22:30:00Z", None),
+        ];
+        assert_eq!(goal("2026-10-31T23:30:00Z", 60, &east), Some(1));
+        assert_eq!(goal("2026-10-31T23:30:00Z", 0, &east), Some(2));
     }
 
     #[test]

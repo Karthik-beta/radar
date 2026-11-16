@@ -41,6 +41,14 @@ pub struct RepoCount {
     pub count: u32,
 }
 
+/// Dismissed and pending reviews are not counted as reviews I gave.
+pub(crate) fn counts(state: ReviewState) -> bool {
+    matches!(
+        state,
+        ReviewState::Approved | ReviewState::ChangesRequested | ReviewState::Commented
+    )
+}
+
 pub(crate) fn reviews(rows: &[ReviewRow], span: Span, starts: &[Timestamp]) -> Reviews {
     let mut buckets: Vec<ReviewBucket> = starts
         .iter()

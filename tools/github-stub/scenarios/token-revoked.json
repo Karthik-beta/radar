@@ -1,0 +1,7 @@
+{
+  "extends": "basic",
+  "faults": [
+    { "match": "GET /notifications", "status": 401, "body": { "message": "Bad credentials" } },
+    { "match": "POST /graphql", "status": 401, "body": { "message": "Bad credentials" } }
+  ]
+}

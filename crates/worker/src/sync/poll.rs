@@ -412,7 +412,7 @@ async fn poll(env: &Env, state: &mut SyncState) -> Result<Handled, UnitOutcome> 
             console_log!("sync.poll status=429 retry_at={retry_at}");
             return Err(UnitOutcome::RateLimited { retry_after_secs });
         }
-        Err(err) => return Err(retry(err)),
+        Err(err) => return Err(err.into()),
     };
     let known = match &received.body {
         Body::Page { threads, .. } => known_updated_at(env, threads).await.map_err(retry)?,
@@ -854,6 +854,22 @@ mod tests {
         let before_page_one =
             replay_poll(last.finished_from, Some(at(-41)), last.next_poll_at, NOW);
         assert_eq!(before_page_one, None);
+    }
+
+    #[test]
+    fn a_401_to_the_notifications_request_is_a_rejected_token() {
+        let got = crate::github::client::interpret_get::<Vec<NotificationThread>>(
+            "/notifications",
+            401,
+            &|_: &str| None,
+            r#"{"message":"Bad credentials"}"#,
+            crate::github::Timestamp(0),
+        );
+        let outcome = match got {
+            Ok(_) => panic!("a 401 must fail"),
+            Err(err) => UnitOutcome::from(err),
+        };
+        assert_eq!(outcome, UnitOutcome::TokenRejected);
     }
 
     #[test]

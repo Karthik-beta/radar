@@ -144,6 +144,7 @@ impl Syncer {
         let phase_before = observed.poll_phase.clone();
         let done_before = observed.backfill_done_at;
         let seeded_before = observed.history_seeded_at;
+        let unit_started = now();
         let imported_before = observed.facts_imported_at;
         let Handled {
             outcome,
@@ -158,7 +159,9 @@ impl Syncer {
             row: effect,
             throttle,
         } = apply(row, &outcome, sync.throttle, done_at);
-        sync.throttle = throttle;
+        if !scheduler::rejection_is_stale(&outcome, unit_started, sync.last_kick_at) {
+            sync.throttle = throttle;
+        }
         let mut writes = vec![match &effect {
             RowEffect::Delete => store::delete(&kind),
             RowEffect::Update(row) | RowEffect::MarkDead(row) => store::upsert(row),
@@ -225,6 +228,9 @@ impl Syncer {
             ),
             (_, UnitOutcome::NoToken) => {
                 console_log!("unit deferred kind={name} key={key} cause=no_token")
+            }
+            (_, UnitOutcome::TokenRejected) => {
+                console_log!("unit deferred kind={name} key={key} cause=token_rejected")
             }
             _ => {}
         }
@@ -308,6 +314,20 @@ impl Syncer {
             .to_array::<store::RawKv>()?;
         if store::needs_upgrade(stored.first()) {
             self.exec_sql(store::UPGRADE_WORK, Vec::new())?;
+        }
+        if store::needs_token_rejected(stored.first()) {
+            let missing = self
+                .state
+                .storage()
+                .sql()
+                .exec(store::SELECT_TOKEN_REJECTED_COLUMN, None)?
+                .to_array::<store::RawCount>()?
+                .first()
+                .is_none_or(store::RawCount::is_zero);
+            if missing {
+                self.exec_sql(store::ADD_TOKEN_REJECTED, Vec::new())?;
+            }
+            self.exec_sql(store::SET_SCHEMA_VERSION_3, Vec::new())?;
         }
         Ok(())
     }
