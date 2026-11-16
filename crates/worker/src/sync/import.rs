@@ -34,7 +34,7 @@ use crate::github::query::{
     IMPORT_PRS, IMPORT_REVIEWED_PRS, IMPORT_REVIEWS, IMPORT_TIMELINE, REPO_META, VIEWER,
 };
 use crate::github::search::PageInfo;
-use crate::github::{Client, GithubError, QueryDoc};
+use crate::github::{Client, QueryDoc};
 
 /// GitHub's search returns at most this many results for one query.
 const SEARCH_LIMIT: u32 = 1_000;
@@ -697,10 +697,7 @@ impl Unit {
                 }
                 Ok(queried.data)
             }
-            Err(GithubError::RateLimited { retry_after_secs }) => {
-                Err(UnitOutcome::RateLimited { retry_after_secs })
-            }
-            Err(err) => Err(retry(err.to_string())),
+            Err(err) => Err(err.into()),
         }
     }
 }

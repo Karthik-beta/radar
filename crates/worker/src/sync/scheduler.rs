@@ -11,6 +11,7 @@ use super::gate::{gate, Gate};
 use super::history::HistoryKey;
 use super::state::{SyncState, Throttle};
 use super::work::{ImportKey, KickReason, RepoPage, RowState, WorkKind, WorkRow};
+use crate::github::GithubError;
 use crate::rollup::RollupKey;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +20,7 @@ pub enum UnitOutcome {
     Retry { error: String },
     RateLimited { retry_after_secs: u64 },
     NoToken,
+    TokenRejected,
 }
 
 impl UnitOutcome {
@@ -28,6 +30,19 @@ impl UnitOutcome {
             Self::Retry { .. } => "retry",
             Self::RateLimited { .. } => "rate_limited",
             Self::NoToken => "no_token",
+            Self::TokenRejected => "token_rejected",
+        }
+    }
+}
+
+impl From<GithubError> for UnitOutcome {
+    fn from(err: GithubError) -> Self {
+        match err {
+            GithubError::Unauthorized => Self::TokenRejected,
+            GithubError::RateLimited { retry_after_secs } => Self::RateLimited { retry_after_secs },
+            other => Self::Retry {
+                error: other.to_string(),
+            },
         }
     }
 }
@@ -66,7 +81,8 @@ pub struct Applied {
 /// The earliest time `row` may run, or `None` while it cannot run at all.
 fn ready_at(row: &WorkRow, state: &SyncState, now: Timestamp) -> Option<Timestamp> {
     let kind = row.kind.kind();
-    if row.is_dead() || (kind.calls_github() && state.throttle.no_token) {
+    let parked = state.throttle.no_token || state.throttle.token_rejected;
+    if row.is_dead() || (kind.calls_github() && parked) {
         return None;
     }
     let mut at = row.due_at;
@@ -167,6 +183,7 @@ pub fn apply(row: WorkRow, outcome: &UnitOutcome, throttle: Throttle, now: Times
                     strikes: throttle.strikes.saturating_add(1),
                     retry_at: Some(until),
                     no_token: false,
+                    ..throttle
                 },
             }
         }
@@ -174,6 +191,14 @@ pub fn apply(row: WorkRow, outcome: &UnitOutcome, throttle: Throttle, now: Times
             row: RowEffect::Update(row),
             throttle: Throttle {
                 no_token: true,
+                ..throttle
+            },
+        },
+        UnitOutcome::TokenRejected => Applied {
+            row: RowEffect::Update(row),
+            throttle: Throttle {
+                no_token: true,
+                token_rejected: true,
                 ..throttle
             },
         },
@@ -256,7 +281,13 @@ pub fn kick(
     now: Timestamp,
 ) -> Vec<WorkRow> {
     state.last_kick_at = Some(now);
-    state.throttle.no_token = false;
+    // A rejected token stays rejected until sign-in stores a new one.
+    if reason == KickReason::SignedIn {
+        state.throttle.token_rejected = false;
+    }
+    if !state.throttle.token_rejected {
+        state.throttle.no_token = false;
+    }
     let backfill_wanted = state.backfill_done_at.is_none();
     match reason {
         KickReason::Rollup => {
@@ -295,6 +326,14 @@ pub fn kick(
             if backfill_wanted {
                 queued.extend(start_window(rows, SearchWindow::Backfill90d, now));
             }
+            let rejected = rows
+                .iter()
+                .filter(|row| row.is_dead() && row.kind.kind().calls_github())
+                .filter(|row| row.last_error.as_deref() == Some(GithubError::Unauthorized.code()))
+                .filter(|row| !queued.iter().any(|q| q.kind == row.kind))
+                .map(|row| row.clone().revived(now))
+                .collect::<Vec<_>>();
+            queued.extend(rejected);
             queued
         }
         KickReason::Reconcile | KickReason::Email | KickReason::Webhook | KickReason::Manual => {
@@ -484,6 +523,173 @@ mod tests {
         assert_eq!(plan(&rows, &state, NOW), Decision::Idle);
         kick(KickReason::Reconcile, &rows, &mut state, NOW);
         assert!(matches!(plan(&rows, &state, NOW), Decision::Run(_)));
+    }
+
+    #[test]
+    fn unauthorized_maps_to_token_rejected_and_other_errors_keep_their_outcome() {
+        assert_eq!(
+            UnitOutcome::from(GithubError::Unauthorized),
+            UnitOutcome::TokenRejected
+        );
+        assert_eq!(
+            UnitOutcome::from(GithubError::RateLimited {
+                retry_after_secs: 30
+            }),
+            UnitOutcome::RateLimited {
+                retry_after_secs: 30
+            }
+        );
+        assert_eq!(
+            UnitOutcome::from(GithubError::Server(502)),
+            UnitOutcome::Retry {
+                error: "server status=502".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_rejected_token_keeps_the_row_without_an_attempt_and_sets_both_flags() {
+        let poll = WorkRow {
+            attempts: 2,
+            ..row(WorkKind::PollNotifications, 0)
+        };
+        let applied = apply(
+            poll.clone(),
+            &UnitOutcome::TokenRejected,
+            Throttle::default(),
+            NOW,
+        );
+        assert_eq!(applied.row, RowEffect::Update(poll));
+        assert!(applied.throttle.no_token);
+        assert!(applied.throttle.token_rejected);
+    }
+
+    fn rejected_state() -> SyncState {
+        let mut state = done_state();
+        state.throttle = apply(
+            row(WorkKind::PollNotifications, 0),
+            &UnitOutcome::TokenRejected,
+            Throttle::default(),
+            NOW,
+        )
+        .throttle;
+        state
+    }
+
+    #[test]
+    fn a_rejected_token_parks_github_rows_through_every_kick_but_sign_in() {
+        let rows = vec![row(WorkKind::PollNotifications, 0), row(enrich("PR_a"), 0)];
+        for reason in [
+            KickReason::Reconcile,
+            KickReason::Email,
+            KickReason::Webhook,
+            KickReason::Manual,
+            KickReason::Rollup,
+        ] {
+            let mut state = rejected_state();
+            kick(reason, &rows, &mut state, NOW);
+            assert!(state.throttle.no_token, "{reason:?}");
+            assert!(state.throttle.token_rejected, "{reason:?}");
+            assert_eq!(plan(&rows, &state, NOW), Decision::Idle, "{reason:?}");
+        }
+    }
+
+    #[test]
+    fn a_rejected_token_still_lets_the_rollup_run() {
+        let mut state = rejected_state();
+        let rows = vec![
+            row(WorkKind::PollNotifications, -1),
+            row(WorkKind::Rollup(RollupKey::Nightly), 0),
+        ];
+        kick(KickReason::Reconcile, &rows, &mut state, NOW);
+        assert_eq!(
+            plan(&rows, &state, NOW),
+            Decision::Run(row(WorkKind::Rollup(RollupKey::Nightly), 0))
+        );
+    }
+
+    #[test]
+    fn a_failed_rollup_does_not_unpark_a_rejected_token() {
+        let retry = UnitOutcome::Retry {
+            error: "d1 write".into(),
+        };
+        let throttle = apply(
+            row(WorkKind::Rollup(RollupKey::Nightly), 0),
+            &retry,
+            rejected_state().throttle,
+            NOW,
+        )
+        .throttle;
+        let state = SyncState {
+            throttle,
+            ..SyncState::default()
+        };
+        let rows = vec![row(WorkKind::PollNotifications, 0)];
+        assert_eq!(plan(&rows, &state, NOW), Decision::Idle);
+    }
+
+    #[test]
+    fn sign_in_clears_a_rejected_token_and_revives_a_dead_poll_row() {
+        let mut state = rejected_state();
+        let dead_poll = WorkRow {
+            last_error: Some("unauthorized".into()),
+            ..dead(WorkKind::PollNotifications)
+        };
+        let queued = kick(KickReason::SignedIn, &[dead_poll], &mut state, NOW);
+        assert_eq!(queued, vec![row(WorkKind::PollNotifications, 0)]);
+        assert!(!state.throttle.no_token);
+        assert!(!state.throttle.token_rejected);
+        assert!(matches!(plan(&queued, &state, NOW), Decision::Run(_)));
+    }
+
+    #[test]
+    fn sign_in_revives_github_rows_that_died_on_a_401_and_leaves_other_dead_rows() {
+        let mut state = done_state();
+        let unauthorized = |kind| WorkRow {
+            last_error: Some("unauthorized".into()),
+            ..dead(kind)
+        };
+        let rows = vec![
+            unauthorized(enrich("PR_a")),
+            dead(enrich("PR_b")),
+            unauthorized(WorkKind::Rollup(RollupKey::Nightly)),
+        ];
+        let queued = kick(KickReason::SignedIn, &rows, &mut state, NOW);
+        assert_eq!(
+            queued,
+            vec![row(WorkKind::PollNotifications, 0), row(enrich("PR_a"), 0)]
+        );
+    }
+
+    #[test]
+    fn a_successful_github_unit_clears_a_rejected_token() {
+        let done = UnitOutcome::Done { follow_ups: vec![] };
+        let throttle = apply(
+            row(WorkKind::PollNotifications, 0),
+            &done,
+            rejected_state().throttle,
+            NOW,
+        )
+        .throttle;
+        assert!(!throttle.token_rejected);
+        assert!(!throttle.no_token);
+    }
+
+    #[test]
+    fn a_missing_token_is_still_cleared_by_any_kick() {
+        for reason in [
+            KickReason::Reconcile,
+            KickReason::Email,
+            KickReason::Webhook,
+            KickReason::Manual,
+            KickReason::Rollup,
+            KickReason::SignedIn,
+        ] {
+            let mut state = done_state();
+            state.throttle.no_token = true;
+            kick(reason, &[], &mut state, NOW);
+            assert!(!state.throttle.no_token, "{reason:?}");
+        }
     }
 
     #[test]

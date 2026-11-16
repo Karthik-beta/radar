@@ -20,7 +20,7 @@ use crate::db::rollups::{self, RollupTotals};
 use crate::github::enrich_response::RateLimit;
 use crate::github::query::CONTRIBUTION_HISTORY;
 use crate::github::search::PageInfo;
-use crate::github::{Client, GithubError};
+use crate::github::Client;
 
 const SECONDS_PER_DAY: i64 = 86_400;
 /// GitHub answers `contributionsCollection` for at most one year.
@@ -261,10 +261,7 @@ pub async fn run(
         .await
     {
         Ok(queried) => queried,
-        Err(GithubError::RateLimited { retry_after_secs }) => {
-            return UnitOutcome::RateLimited { retry_after_secs }
-        }
-        Err(err) => return retry(err.to_string()),
+        Err(err) => return err.into(),
     };
     state.record_rate(&queried.meta);
     state.rate.remaining = Some(queried.data.rate_limit.remaining);

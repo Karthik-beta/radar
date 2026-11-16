@@ -21,7 +21,7 @@ use crate::db::facts::Facts;
 use crate::db::items::ItemRow;
 use crate::github::enrich_response::ItemNode;
 use crate::github::search::{PageInfo, SearchData, SEARCH_QUERY};
-use crate::github::{Client, GithubError};
+use crate::github::Client;
 
 const SECONDS_PER_DAY: i64 = 86_400;
 const START: &str = "start";
@@ -348,10 +348,7 @@ pub async fn run(
     });
     let queried = match client.query::<SearchData>(&SEARCH_QUERY, variables).await {
         Ok(queried) => queried,
-        Err(GithubError::RateLimited { retry_after_secs }) => {
-            return UnitOutcome::RateLimited { retry_after_secs }
-        }
-        Err(err) => return retry(err.to_string()),
+        Err(err) => return err.into(),
     };
     state.record_rate(&queried.meta);
     let limit = &queried.data.rate_limit;

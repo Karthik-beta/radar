@@ -684,3 +684,19 @@ fn first_response_uses_review_submission_time() {
         .expect("the review event");
     assert_eq!(review_event.occurred_at, Timestamp(NOW.0 - 300 * 60));
 }
+
+#[test]
+fn a_401_to_the_enrich_query_is_a_rejected_token() {
+    let now = GithubTimestamp(u64::try_from(NOW.0).expect("positive"));
+    let got = interpret_query::<EnrichData>(
+        401,
+        &|_: &str| None,
+        r#"{"message":"Bad credentials"}"#,
+        now,
+    );
+    let outcome = match got {
+        Ok(_) => panic!("a 401 must fail"),
+        Err(err) => UnitOutcome::from(err),
+    };
+    assert_eq!(outcome, UnitOutcome::TokenRejected);
+}
