@@ -134,6 +134,18 @@ pub fn rate_limit_until(strikes: u32, retry_after_secs: u64, now: Timestamp) -> 
     after(now, doubled.max(retry_after_secs).min(BACKOFF_MAX_SECS))
 }
 
+/// Whether a 401 may come from a token that a sign-in replaced while the unit
+/// awaited GitHub. A kick does not record its reason, so any kick after the
+/// unit started counts. Such a 401 leaves the flags alone, and the kept row
+/// runs again with whatever token is stored now.
+pub fn rejection_is_stale(
+    outcome: &UnitOutcome,
+    started: Timestamp,
+    last_kick_at: Option<Timestamp>,
+) -> bool {
+    *outcome == UnitOutcome::TokenRejected && last_kick_at.is_some_and(|at| at >= started)
+}
+
 pub fn apply(row: WorkRow, outcome: &UnitOutcome, throttle: Throttle, now: Timestamp) -> Applied {
     match outcome {
         UnitOutcome::Done { .. } => Applied {
@@ -1025,5 +1037,19 @@ mod tests {
             enqueue(&rows, enrich("PR_b"), NOW),
             Some(row(enrich("PR_b"), 0))
         );
+    }
+
+    #[test]
+    fn a_rejection_after_a_kick_mid_unit_is_stale() {
+        let rejected = UnitOutcome::TokenRejected;
+        assert!(rejection_is_stale(&rejected, at(10), Some(at(10))));
+        assert!(rejection_is_stale(&rejected, at(10), Some(at(11))));
+        assert!(!rejection_is_stale(&rejected, at(10), Some(at(9))));
+        assert!(!rejection_is_stale(&rejected, at(10), None));
+        assert!(!rejection_is_stale(
+            &UnitOutcome::NoToken,
+            at(10),
+            Some(at(11))
+        ));
     }
 }

@@ -144,6 +144,7 @@ impl Syncer {
         let phase_before = observed.poll_phase.clone();
         let done_before = observed.backfill_done_at;
         let seeded_before = observed.history_seeded_at;
+        let unit_started = now();
         let imported_before = observed.facts_imported_at;
         let Handled {
             outcome,
@@ -158,7 +159,9 @@ impl Syncer {
             row: effect,
             throttle,
         } = apply(row, &outcome, sync.throttle, done_at);
-        sync.throttle = throttle;
+        if !scheduler::rejection_is_stale(&outcome, unit_started, sync.last_kick_at) {
+            sync.throttle = throttle;
+        }
         let mut writes = vec![match &effect {
             RowEffect::Delete => store::delete(&kind),
             RowEffect::Update(row) | RowEffect::MarkDead(row) => store::upsert(row),
