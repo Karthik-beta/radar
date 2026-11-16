@@ -146,6 +146,22 @@ pub fn rejection_is_stale(
     *outcome == UnitOutcome::TokenRejected && last_kick_at.is_some_and(|at| at >= started)
 }
 
+/// Runs the kept row again only after the second the stale 401 came back in.
+/// `now()` has one-second steps, so a retry in that second would count the
+/// same kick again and skip the flag a second time.
+pub fn after_stale_rejection(effect: RowEffect, done_at: Timestamp) -> RowEffect {
+    match effect {
+        RowEffect::Update(row) => {
+            let next = Timestamp(done_at.0.saturating_add(1));
+            RowEffect::Update(WorkRow {
+                due_at: row.due_at.max(next),
+                ..row
+            })
+        }
+        other => other,
+    }
+}
+
 pub fn apply(row: WorkRow, outcome: &UnitOutcome, throttle: Throttle, now: Timestamp) -> Applied {
     match outcome {
         UnitOutcome::Done { .. } => Applied {
@@ -1050,6 +1066,20 @@ mod tests {
             &UnitOutcome::NoToken,
             at(10),
             Some(at(11))
+        ));
+    }
+
+    #[test]
+    fn a_stale_rejection_retries_after_the_kick_second() {
+        let kept = row(WorkKind::PollNotifications, 0);
+        let RowEffect::Update(next) = after_stale_rejection(RowEffect::Update(kept), at(10)) else {
+            panic!("the row is kept");
+        };
+        assert_eq!(next.due_at, at(11));
+        assert!(!rejection_is_stale(
+            &UnitOutcome::TokenRejected,
+            next.due_at,
+            Some(at(10))
         ));
     }
 }
