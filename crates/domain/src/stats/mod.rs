@@ -320,15 +320,13 @@ fn yoy(input: &StatsInput) -> Yoy {
         from: last_year,
         to: this_year,
     };
-    let no_transitions = !input
-        .transitions
-        .iter()
-        .any(|row| row.external && last.contains(row.at));
+    let history = waiting::waiting(&input.transitions, last, now);
+    let no_turns = !waiting::contributes(&input.transitions, last, now);
     Yoy {
         months,
         gaps: YoyGaps {
-            stage_times: no_transitions,
-            turn_times: no_transitions,
+            stage_times: history.stages.iter().all(|stage| stage.samples == 0),
+            turn_times: no_turns,
             ci_failures: !input
                 .prs
                 .iter()
@@ -367,7 +365,7 @@ fn month_stats(input: &StatsInput, start: Timestamp) -> MonthStats {
             input
                 .reviews
                 .iter()
-                .filter(|row| row.external && span.contains(row.at))
+                .filter(|row| row.external && span.contains(row.at) && reviews::counts(row.state))
                 .count(),
         ),
         awaiting_review_median_hours: awaiting,
@@ -530,6 +528,63 @@ mod tests {
         assert_eq!(march.last_year.median_hours_to_merge, Some(48.0));
         assert_eq!(yoy.months[3].last_year.merge_rate, None);
         assert!(yoy.gaps.stage_times && yoy.gaps.ci_failures && yoy.gaps.habits);
+    }
+
+    #[test]
+    fn year_over_year_counts_only_the_reviews_the_reviews_section_counts() {
+        let mut input = empty_input("2026-11-16T12:00:00Z");
+        input.import = ImportState {
+            facts_imported_at: Some(at("2026-11-01T00:00:00Z")),
+            account_created_at: Some(at("2020-01-01T00:00:00Z")),
+        };
+        for state in [
+            ReviewState::Approved,
+            ReviewState::Dismissed,
+            ReviewState::Pending,
+        ] {
+            input.reviews.push(ReviewRow {
+                repo: repo("o/one"),
+                external: true,
+                state,
+                at: at("2026-03-05T00:00:00Z"),
+            });
+        }
+        let stats = build_stats(&input, Period::YearOverYear);
+        let march = stats.yoy.expect("ready").months[2].this_year.reviews;
+        assert_eq!(march, 1);
+    }
+
+    #[test]
+    fn a_turn_interval_that_starts_before_last_year_still_ends_the_gap() {
+        let mut input = empty_input("2026-11-16T12:00:00Z");
+        input.import = ImportState {
+            facts_imported_at: Some(at("2026-11-01T00:00:00Z")),
+            account_created_at: Some(at("2020-01-01T00:00:00Z")),
+        };
+        let row = |stage, when: &str| StageRow {
+            item: "a".into(),
+            external: true,
+            stage,
+            side: Side::Them,
+            at: at(when),
+            ended_at: Some(at("2025-02-01T00:00:00Z")),
+        };
+        input.transitions = vec![
+            row(Stage::AwaitingReview, "2024-12-20T00:00:00Z"),
+            row(Stage::Closed, "2025-02-01T00:00:00Z"),
+        ];
+        let gaps = build_stats(&input, Period::YearOverYear)
+            .yoy
+            .expect("ready")
+            .gaps;
+        assert!(!gaps.turn_times);
+        assert!(gaps.stage_times, "no stage visit started in 2025");
+        input.transitions.clear();
+        let gaps = build_stats(&input, Period::YearOverYear)
+            .yoy
+            .expect("ready")
+            .gaps;
+        assert!(gaps.turn_times);
     }
 
     #[test]

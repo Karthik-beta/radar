@@ -38,6 +38,26 @@ pub struct StageTime {
     pub samples: u32,
 }
 
+/// Whether any segment of an external pull request overlaps `span`, open or ended.
+pub(crate) fn contributes(rows: &[StageRow], span: Span, now: Timestamp) -> bool {
+    rows.iter().enumerate().any(|(i, row)| {
+        let next = rows
+            .get(i + 1)
+            .filter(|next| next.item == row.item)
+            .map(|next| next.at);
+        let end = next
+            .into_iter()
+            .chain(row.ended_at)
+            .min()
+            .unwrap_or(now)
+            .min(now);
+        row.external
+            && !matches!(row.stage, Stage::Merged | Stage::Closed)
+            && end > row.at
+            && end.min(span.to) > row.at.max(span.from)
+    })
+}
+
 pub(crate) fn waiting(rows: &[StageRow], span: Span, now: Timestamp) -> Waiting {
     let kept: Vec<&StageRow> = rows.iter().filter(|row| row.external).collect();
     let mut samples: [Vec<f64>; 5] = Default::default();
@@ -62,7 +82,8 @@ pub(crate) fn waiting(rows: &[StageRow], span: Span, now: Timestamp) -> Waiting 
             continue;
         }
         let (from, to) = (row.at.max(span.from), end.min(span.to));
-        if to > from {
+        // Days count only while the pull request is open. Ended ones keep their stage samples.
+        if to > from && row.ended_at.is_none() {
             match row.side {
                 Side::Them => them += to.0 - from.0,
                 Side::Me => me += to.0 - from.0,
@@ -123,6 +144,14 @@ mod tests {
         }
     }
 
+    /// Every row of an ended pull request carries its end, as the SQL joins it on.
+    fn all_ended(rows: &mut [StageRow]) {
+        let end = rows.last().and_then(|row| row.ended_at);
+        for row in rows {
+            row.ended_at = end;
+        }
+    }
+
     fn stage(w: &Waiting, which: Stage) -> &StageTime {
         w.stages.iter().find(|s| s.stage == which).expect("stage")
     }
@@ -142,8 +171,8 @@ mod tests {
     }
 
     #[test]
-    fn one_closed_pr_gives_stage_times_and_turn_days_and_skips_the_terminal_row() {
-        let rows = [
+    fn one_closed_pr_gives_stage_times_but_no_days_and_skips_the_terminal_row() {
+        let mut rows = [
             row(
                 "a",
                 Stage::CiRunning,
@@ -173,6 +202,7 @@ mod tests {
                 Some("2026-03-04T06:00:00Z"),
             ),
         ];
+        all_ended(&mut rows);
         let got = waiting(&rows, span(), at(NOW));
         assert_eq!(stage(&got, Stage::CiRunning).median_hours, Some(6.0));
         assert_eq!(stage(&got, Stage::AwaitingReview).median_hours, Some(48.0));
@@ -180,9 +210,11 @@ mod tests {
             stage(&got, Stage::ChangesRequested).median_hours,
             Some(24.0)
         );
-        assert_eq!(got.days_waiting_on_them, 2.25);
-        assert_eq!(got.days_waiting_on_me, 1.0);
-        assert_eq!(got.prs, 1);
+        // An ended pull request adds samples but no days.
+        assert_eq!(
+            (got.days_waiting_on_them, got.days_waiting_on_me),
+            (0.0, 0.0)
+        );
     }
 
     #[test]
@@ -202,20 +234,14 @@ mod tests {
                 "2026-03-02T00:00:00Z",
                 None,
             ),
-            row(
-                "a",
-                Stage::Closed,
-                Side::Them,
-                "2026-03-04T00:00:00Z",
-                Some("2026-03-04T00:00:00Z"),
-            ),
         ];
         let got = waiting(&rows, span(), at(NOW));
         assert_eq!(stage(&got, Stage::AwaitingReview).samples, 2);
         assert_eq!(stage(&got, Stage::AwaitingReview).median_hours, Some(24.0));
+        let to_now = (at(NOW).0 - at("2026-03-02T00:00:00Z").0) as f64 / 86_400.0;
         assert_eq!(
             (got.days_waiting_on_them, got.days_waiting_on_me),
-            (1.0, 2.0)
+            (1.0, to_now)
         );
     }
 
@@ -250,26 +276,44 @@ mod tests {
 
     #[test]
     fn days_are_clipped_to_the_span_while_the_stage_sample_keeps_its_full_length() {
-        let rows = [row(
+        let jan = Span {
+            from: at("2026-01-01T00:00:00Z"),
+            to: at("2026-02-01T00:00:00Z"),
+        };
+        let feb = Span {
+            from: at("2026-02-01T00:00:00Z"),
+            to: at("2026-03-01T00:00:00Z"),
+        };
+        let open = [row(
+            "a",
+            Stage::AwaitingReview,
+            Side::Them,
+            "2026-01-30T00:00:00Z",
+            None,
+        )];
+        assert_eq!(waiting(&open, jan, at(NOW)).days_waiting_on_them, 2.0);
+        assert_eq!(waiting(&open, feb, at(NOW)).days_waiting_on_them, 28.0);
+        let ended = [row(
             "a",
             Stage::AwaitingReview,
             Side::Them,
             "2026-01-30T00:00:00Z",
             Some("2026-02-10T00:00:00Z"),
         )];
-        let january = Span {
-            from: at("2026-01-01T00:00:00Z"),
-            to: at("2026-02-01T00:00:00Z"),
-        };
-        let got = waiting(&rows, january, at(NOW));
-        assert_eq!(got.days_waiting_on_them, 2.0);
+        let got = waiting(&ended, jan, at(NOW));
+        assert_eq!(got.days_waiting_on_them, 0.0);
         assert_eq!(stage(&got, Stage::AwaitingReview).median_hours, Some(264.0));
-        let february = Span {
-            from: at("2026-02-01T00:00:00Z"),
-            to: at("2026-03-01T00:00:00Z"),
-        };
-        let got = waiting(&rows, february, at(NOW));
-        assert_eq!(got.days_waiting_on_them, 9.0);
+        let got = waiting(&ended, feb, at(NOW));
+        assert_eq!(got.days_waiting_on_them, 0.0);
         assert_eq!(stage(&got, Stage::AwaitingReview).samples, 0);
+        assert!(contributes(&ended, feb, at(NOW)));
+        assert!(!contributes(
+            &ended,
+            Span {
+                from: at("2026-03-01T00:00:00Z"),
+                to: at("2026-04-01T00:00:00Z")
+            },
+            at(NOW)
+        ));
     }
 }

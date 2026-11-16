@@ -2189,7 +2189,7 @@ Lane setup. Generate `a11y-all-views` with `node tools/github-stub/scenarios/mak
 - [ ] Metric. `/api/stats` p95 on `wrangler dev` with the two-year fixture, D1 `rows_read` per request, and gzipped Worker size at trunk and head.
 - [ ] Probe. Send 200 requests per period and take the p95. Read `rows_read` from the `meta` block of each select run with `wrangler d1 execute --json`. Run `node scripts/check-size.mjs` at both SHAs, interleaved.
 - [ ] Baseline. Trunk has no `/api/stats`, so record only the trunk Worker size first.
-- [ ] Rule. Fail when the p95 for any period is 150 ms or more, when one request reads more than 20,000 rows, or when the Worker grows more than 20 KB gzipped over trunk or passes 400 KB.
+- [ ] Rule. Fail when the p95 for any period is 150 ms or more, when one request reads more than 20,000 rows, or when the Worker grows more than 20 KB gzipped over trunk or passes 400 KB. R28 alone may grow the Worker by up to 28 KB, as "Plan problems found while building" records, because the root accepted it, the 400 KB budget holds, and R29 adds no Worker code. Every other R keeps its own limit.
 
 **Review gate.** None. R28 changes no screen.
 

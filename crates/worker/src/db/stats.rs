@@ -45,10 +45,20 @@ const MERGES: &str = "SELECT f.repo, f.external, f.merged_at, r.stars \
 const REVIEWS: &str =
     "SELECT repo, external, state, submitted_at FROM review_facts WHERE submitted_at >= ?1";
 
+/// Every transition since `?1`, and for each pull request still active at `?1` its
+/// last transition before it, so a segment that spans the start is counted.
+/// The rows come grouped by pull request, oldest first.
 const TRANSITIONS: &str = "SELECT t.item_node_id, f.external, t.stage, t.turn, t.at, \
      COALESCE(f.merged_at, f.closed_at) AS ended_at \
      FROM pr_transitions t JOIN pr_facts f ON f.node_id = t.item_node_id WHERE t.at >= ?1 \
-     ORDER BY t.item_node_id, t.at";
+     UNION ALL \
+     SELECT t.item_node_id, f.external, t.stage, t.turn, t.at, \
+     COALESCE(f.merged_at, f.closed_at) AS ended_at \
+     FROM pr_transitions t JOIN pr_facts f ON f.node_id = t.item_node_id \
+     WHERE t.at < ?1 AND COALESCE(f.merged_at, f.closed_at, ?1) >= ?1 \
+     AND NOT EXISTS (SELECT 1 FROM pr_transitions n WHERE n.item_node_id = t.item_node_id \
+       AND n.at < ?1 AND (n.at > t.at OR (n.at = t.at AND n.id > t.id))) \
+     ORDER BY item_node_id, at";
 
 const ISSUES: &str = "SELECT COUNT(*) AS n FROM (SELECT DISTINCT l.issue_repo, l.issue_number \
      FROM pr_issue_links l JOIN pr_facts f ON f.node_id = l.pr_node_id \
@@ -310,7 +320,9 @@ mod tests {
                ('RV_0', 'o/big', 1, 5, 'x', 'approved', {before}, 'live');
              INSERT INTO pr_transitions (item_node_id, stage, turn, at) VALUES \
                ('PR_a', 'awaiting_review', 'them', {c}), \
-               ('PR_c', 'awaiting_review', 'them', {before});
+               ('PR_c', 'awaiting_review', 'them', {before}), \
+               ('PR_b', 'ci_running', 'them', {long_before}), \
+               ('PR_b', 'awaiting_review', 'them', {before_b});
              INSERT INTO pr_issue_links VALUES ('PR_a', 'o/big', 9, 1, 0), \
                ('PR_a', 'o/big', 10, 0, 0), ('PR_c', 'o/big', 11, 1, 1);
              INSERT INTO events (id, item_node_id, repo, kind, actor_login, actor_is_me, \
@@ -326,6 +338,8 @@ mod tests {
             old = since - 100,
             older = since - 9_999,
             before = since - 1,
+            long_before = since - 900,
+            before_b = since - 500,
         ))
         .expect("seed");
     }
@@ -347,8 +361,23 @@ mod tests {
         assert_eq!(got[3][0]["language"], "Rust");
         assert_eq!(got[3][0]["lines"], 50);
         assert_eq!(got[5].len(), 1, "reviews since the window");
-        assert_eq!(got[6].len(), 1, "transitions since the window");
-        assert_eq!(got[6][0]["ended_at"], PERIOD.fetch_from(NOW).0 + 5_000);
+        let since = PERIOD.fetch_from(NOW).0;
+        let transitions: Vec<(&str, i64)> = got[6]
+            .iter()
+            .map(|r| {
+                (
+                    r["item_node_id"].as_str().unwrap_or(""),
+                    r["at"].as_i64().unwrap_or(0),
+                )
+            })
+            .collect();
+        assert_eq!(
+            transitions,
+            [("PR_a", since + 100), ("PR_b", since - 500)],
+            "since the window, plus the last one before it for an active pull request, by pull request"
+        );
+        assert_eq!(got[6][0]["ended_at"], since + 5_000);
+        assert!(got[6][1]["ended_at"].is_null());
         assert_eq!(
             got[7].len(),
             2,
