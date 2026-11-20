@@ -9,7 +9,7 @@ serde_json.workspace = true
 
 [dependencies]
 domain.workspace = true
-gloo-net = { version = "0.7", default-features = false, features = ["http", "json"] }
+gloo-net = { version = "0.8", default-features = false, features = ["http", "json"] }
 js-sys = "0.3"
 leptos.workspace = true
 serde.workspace = true

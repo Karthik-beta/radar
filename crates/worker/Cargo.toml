@@ -30,7 +30,7 @@ probe = []
 sql-dump = []
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-rusqlite = { version = "0.41", features = ["bundled"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
 toml = "1.2"
 
 [[example]]
